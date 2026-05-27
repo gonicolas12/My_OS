@@ -1,0 +1,29 @@
+# My_OS — dépendances Python
+# Versions non figées : ajuster au premier `pip install` selon l'environnement Arch.
+# Installer aussi Ollama séparément : https://ollama.com/download
+
+# --- Interface (couche 4) ---
+PySide6              # popup Qt natif
+
+# --- Daemon / système (couche 1 & pilotage) ---
+pynput               # capture du raccourci clavier global (X11)
+psutil               # processus et ressources système
+dbus-python          # paramètres système via D-Bus (luminosité, audio, réseau)
+                     # (alternative : QtDBus fourni par PySide6)
+
+# --- IPC (daemon <-> popup) ---
+pyzmq                # messagerie robuste sur socket (optionnel : module socket standard suffit au départ)
+
+# --- Modèles (couche 3) ---
+ollama               # client Python pour le modèle local Qwen
+anthropic            # API cloud Claude (mode opt-in)
+
+# --- Secrets ---
+keyring              # stockage clé API via le trousseau OS (Secret Service)
+
+# --- Outils dev ---
+pytest               # tests (cibler permissions/ en priorité)
+ruff                 # lint + format
+
+# Note : SQLite (journal d'audit) est dans la lib standard Python, pas de dépendance.
+# Note : polkit est un composant système (pas un paquet pip) — installer via pacman si absent.

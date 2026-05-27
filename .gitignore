@@ -1,0 +1,37 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# --- Tests / outils ---
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- My_OS : données locales (ne JAMAIS commiter) ---
+data/audit.db          # journal d'audit local
+data/*.db
+*.log
+config.local.yaml      # config locale éventuelle
+
+# --- Secrets (par sécurité — ils ne devraient jamais être en fichier) ---
+*.key
+*.pem
+.env
+secrets.*
+
+# --- Claude Code : mémoire locale (privée, non versionnée) ---
+CLAUDE.local.md
+
+# --- IDE / OS ---
+.vscode/
+.idea/
+*.swp
+.DS_Store
