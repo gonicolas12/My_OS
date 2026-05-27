@@ -10,15 +10,15 @@ My_OS s'organise en cinq couches, construites de bas en haut. Chaque couche ne d
 
 ```
 ┌─────────────────────────────────────────────────┐
-│ Couche 4 — Popup Qt (PySide6)                     │  interface invoquée au raccourci
+│ Couche 4 — Popup Qt (PySide6)                   │  interface invoquée au raccourci
 ├─────────────────────────────────────────────────┤
-│ Couche 3a — Modèle local │ 3b — Routeur cloud     │  Qwen/Ollama (défaut) · Claude (opt-in)
+│ Couche 3a — Modèle local │ 3b — Routeur cloud   │  Qwen/Ollama (défaut) · Claude (opt-in)
 ├─────────────────────────────────────────────────┤
-│ Couche 2 — Pont MCP + moteur de permissions       │  outils système + garde + audit
+│ Couche 2 — Pont MCP + moteur de permissions     │  outils système + garde + audit
 ├─────────────────────────────────────────────────┤
-│ Couche 1 — Daemon myosd                           │  service résident, raccourci, IPC
+│ Couche 1 — Daemon myosd                         │  service résident, raccourci, IPC
 ├─────────────────────────────────────────────────┤
-│ Couche 0 — Base Arch Linux                        │  kernel, drivers, paquets
+│ Couche 0 — Base Arch Linux                      │  kernel, drivers, paquets
 └─────────────────────────────────────────────────┘
 ```
 
