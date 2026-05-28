@@ -50,7 +50,9 @@ class IPCServer:
         self._server_sock = sock
         self._running = True
 
-        threading.Thread(target=self._accept_loop, name="ipc-accept", daemon=True).start()
+        threading.Thread(
+            target=self._accept_loop, name="ipc-accept", daemon=True
+        ).start()
         _log.info("Serveur IPC à l'écoute sur %s", self._socket_path)
 
     def send_to_client(self, message: dict) -> bool:

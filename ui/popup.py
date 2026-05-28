@@ -80,10 +80,11 @@ class IPCClient(QThread):
         self._close_socket()
 
     def _connect(self) -> bool:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
-            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             sock.connect(str(self._socket_path))
         except OSError:
+            sock.close()
             return False
         self._sock = sock
         _log.info("Connecté au daemon (%s)", self._socket_path)

@@ -1,0 +1,4 @@
+# Forcer les fins de ligne LF pour les fichiers exécutés sous Linux
+# (sinon les CRLF Windows cassent le shebang et systemd).
+*.sh text eol=lf
+*.service text eol=lf
