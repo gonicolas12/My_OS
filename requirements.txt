@@ -8,8 +8,8 @@ PySide6              # popup Qt natif
 # --- Daemon / système (couche 1 & pilotage) ---
 pynput               # capture du raccourci clavier global (X11)
 psutil               # processus et ressources système
-dbus-python          # paramètres système via D-Bus (luminosité, audio, réseau)
-                     # (alternative : QtDBus fourni par PySide6)
+dbus-python ; sys_platform == "linux"   # D-Bus (luminosité, audio, réseau) — Linux uniquement (jalon 3)
+                     # pas de wheel Windows (compilation native) ; alternative cross-platform : QtDBus de PySide6
 
 # --- IPC (daemon <-> popup) ---
 pyzmq                # messagerie robuste sur socket (optionnel : module socket standard suffit au départ)
