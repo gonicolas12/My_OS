@@ -33,9 +33,12 @@ QLineEdit:focus {{
 """
 
 
+_THEMES = {"dark": _DARK_QSS}
+
+
 def build_stylesheet(theme: str = "dark") -> str:
     """Renvoie la feuille de style QSS pour le thème demandé.
 
-    Seul le thème sombre existe au jalon 1 ; tout autre nom y retombe.
+    Seul le thème « dark » existe au jalon 1 ; tout autre nom y retombe.
     """
-    return _DARK_QSS
+    return _THEMES.get(theme, _DARK_QSS)

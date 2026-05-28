@@ -10,16 +10,13 @@ import logging
 import sys
 
 _LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-_configured = False
 
 
 def get_logger(name: str) -> logging.Logger:
     """Renvoie un logger configuré pour My_OS.
 
-    Le handler racine n'est installé qu'une seule fois, au premier appel.
+    ``logging.basicConfig`` est idempotent : le handler racine n'est installé
+    qu'au premier appel, les appels suivants sont sans effet.
     """
-    global _configured
-    if not _configured:
-        logging.basicConfig(level=logging.INFO, stream=sys.stderr, format=_LOG_FORMAT)
-        _configured = True
+    logging.basicConfig(level=logging.INFO, stream=sys.stderr, format=_LOG_FORMAT)
     return logging.getLogger(name)

@@ -19,6 +19,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtGui import QCloseEvent, QKeyEvent
 from PySide6.QtWidgets import (
     QApplication,
     QLineEdit,
@@ -50,6 +51,7 @@ class IPCClient(QThread):
         self._running = True
 
     def run(self) -> None:
+        """Boucle de connexion puis de lecture : relaie les messages à l'UI."""
         while self._running:
             if not self._connect():
                 self.msleep(_RECONNECT_MS)
@@ -169,13 +171,15 @@ class Popup(QWidget):
                 f"{html.escape(str(message.get('message', '')))}</span>"
             )
 
-    def keyPressEvent(self, event) -> None:  # noqa: ANN001 (signature Qt)
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        """Cache le popup sur Échap ; comportement par défaut sinon."""
         if event.key() == Qt.Key.Key_Escape:
             self.hide()
             return
         super().keyPressEvent(event)
 
-    def closeEvent(self, event) -> None:  # noqa: ANN001 (signature Qt)
+    def closeEvent(self, event: QCloseEvent) -> None:
+        """Arrête proprement le thread IPC avant la fermeture de la fenêtre."""
         self._client.stop()
         self._client.wait(1000)
         super().closeEvent(event)
