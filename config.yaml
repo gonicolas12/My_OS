@@ -1,0 +1,16 @@
+# Configuration de My_OS — jalon 1 (socle)
+#
+# Le chemin de la socket IPC n'est volontairement PAS configurable ici : il est
+# calculé à l'exécution ($XDG_RUNTIME_DIR/myos.sock) pour rester cohérent entre
+# le daemon et le popup (cf. docs/INTERFACES.md §1).
+#
+# Aucun secret dans ce fichier (clé API cloud -> keyring, cf. docs/SECURITY.md).
+
+# Raccourci clavier global (syntaxe pynput, ex. "<ctrl>+<alt>+space").
+hotkey: "<ctrl>+<alt>+space"
+
+# Popup Qt.
+ui:
+  theme: dark
+  width: 600
+  height: 400

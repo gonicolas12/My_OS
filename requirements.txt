@@ -21,6 +21,9 @@ anthropic            # API cloud Claude (mode opt-in)
 # --- Secrets ---
 keyring              # stockage clé API via le trousseau OS (Secret Service)
 
+# --- Configuration ---
+PyYAML               # lecture de config.yaml
+
 # --- Outils dev ---
 pytest               # tests (cibler permissions/ en priorité)
 ruff                 # lint + format
