@@ -6,7 +6,11 @@
 
 ## 1 · Protocole IPC (daemon ↔ popup)
 
-Communication sur une **socket Unix locale** (`/run/user/<uid>/myos.sock` ou équivalent). Messages encodés en JSON, un message par ligne (`\n` comme délimiteur) ou préfixés par leur longueur (à décider à l'implémentation — documenter le choix retenu).
+Communication sur une **socket Unix locale**. Le daemon est le **serveur** (crée et écoute la socket), le popup est le **client**.
+
+**Choix de cadrage retenu (jalon 1) :** JSON encodé en UTF-8, **un message par ligne**, `\n` comme délimiteur (pas de préfixe de longueur). Un message ne contient donc jamais de `\n` littéral non échappé.
+
+**Chemin de la socket :** `$XDG_RUNTIME_DIR/myos.sock` si la variable est définie (cas normal en session systemd utilisateur), sinon repli sur `/run/user/<uid>/myos.sock`. Le chemin est résolu par `core/config.py` et partagé entre daemon et popup.
 
 ### Message popup → daemon
 ```json
@@ -36,6 +40,16 @@ Communication sur une **socket Unix locale** (`/run/user/<uid>/myos.sock` ou éq
   "scope": "this_folder"        // optionnel : this_file | this_folder | session
 }
 ```
+
+### Messages de contrôle daemon → popup
+Le raccourci global est capté par le daemon ; c'est lui qui ordonne au popup (résident, caché) de s'afficher. Ce message de contrôle n'est pas lié à une requête, donc sans champ `id`.
+```json
+{ "type": "show" }   // le popup s'affiche centré, au-dessus de tout, et prend le focus
+```
+La fermeture (Échap) est gérée localement par le popup (il se cache) ; aucun message n'est requis vers le daemon.
+
+### Note jalon 1 (socle)
+Tant que ni modèle ni outils ne sont branchés, le daemon répond à un `user_message` par un `token` d'accusé de réception puis un `done`. C'est un **stub temporaire** du jalon 1, remplacé par l'orchestrateur réel au jalon 2.
 
 ---
 
