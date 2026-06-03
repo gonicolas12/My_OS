@@ -20,7 +20,7 @@ import yaml
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _DEFAULT_CONFIG_PATH = _PROJECT_ROOT / "config.yaml"
 
-DEFAULT_HOTKEY = "<ctrl>+<alt>+space"
+DEFAULT_HOTKEY = "<ctrl>+<alt>+<space>"
 SOCKET_NAME = "myos.sock"
 
 
