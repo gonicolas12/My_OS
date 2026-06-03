@@ -15,3 +15,12 @@ ui:
   theme: dark
   width: 600
   height: 400
+
+# Backend modèle utilisé par l'orchestrator.
+#   backend: stub    -> StubRuleModel (regex FR/EN, pas besoin d'Ollama)
+#   backend: ollama  -> client local Ollama avec tool calling (nécessite
+#                       `ollama serve` + `ollama pull <name>` dans la VM)
+model:
+  backend: stub
+  name: qwen3:4b
+  # host: http://127.0.0.1:11434   # par défaut, laisser commenté

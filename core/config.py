@@ -45,6 +45,15 @@ class UIConfig:
     height: int = 400
 
 
+@dataclass
+class ModelConfig:
+    """Choix du backend modèle utilisé par l'orchestrator."""
+
+    backend: str = "stub"  # "stub" | "ollama"
+    name: str = "qwen3:4b"  # modèle Ollama si backend="ollama"
+    host: str | None = None  # URL HTTP Ollama (None = défaut local)
+
+
 def default_audit_db_path() -> Path:
     """Chemin par défaut du journal d'audit (cf. docs/ARCHITECTURE.md §7)."""
     return _PROJECT_ROOT / "data" / "audit.db"
@@ -58,6 +67,7 @@ class Config:
     socket_path: Path = field(default_factory=resolve_socket_path)
     audit_db_path: Path = field(default_factory=default_audit_db_path)
     ui: UIConfig = field(default_factory=UIConfig)
+    model: ModelConfig = field(default_factory=ModelConfig)
 
 
 def load_config(path: Path | None = None) -> Config:
@@ -77,9 +87,14 @@ def load_config(path: Path | None = None) -> Config:
     allowed_ui = {"theme", "width", "height"}
     ui = UIConfig(**{k: v for k, v in ui_raw.items() if k in allowed_ui})
 
+    model_raw = data.get("model") or {}
+    allowed_model = {"backend", "name", "host"}
+    model = ModelConfig(**{k: v for k, v in model_raw.items() if k in allowed_model})
+
     return Config(
         hotkey=data.get("hotkey", DEFAULT_HOTKEY),
         socket_path=resolve_socket_path(),
         audit_db_path=default_audit_db_path(),
         ui=ui,
+        model=model,
     )

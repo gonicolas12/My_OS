@@ -30,4 +30,5 @@ method-rgx = "[a-z_][a-zA-Z0-9_]{2,}$"
 disable = [
     "import-outside-toplevel", # import paresseux volontaire (pynput sans serveur X)
     "too-few-public-methods",  # dataclasses et petites classes intentionnelles
+    "duplicate-code",          # bruit fréquent sur les énumérations partagées
 ]

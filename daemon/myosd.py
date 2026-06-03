@@ -22,18 +22,39 @@ from __future__ import annotations
 import signal
 import threading
 
-from core.config import Config, load_config
+from core.config import Config, ModelConfig, load_config
 from core.logger import get_logger
 from daemon.confirmation_provider import IPCConfirmationProvider
 from daemon.hotkey_listener import HotkeyListener
 from daemon.ipc_server import IPCServer
-from daemon.orchestrator import Orchestrator
+from daemon.orchestrator import Model, Orchestrator
 from models.stub_model import StubRuleModel
 from permissions.audit_log import AuditLog
 from permissions.session_grants import SessionGrants
 from tools.files import FILE_TOOLS
 
 _log = get_logger("myosd")
+
+
+def _build_model(model_config: ModelConfig) -> Model:
+    """Construit le backend modèle demandé dans la config.
+
+    Le client Ollama n'est importé que si nécessaire — ça évite d'exiger la
+    présence du module ``ollama`` quand on utilise le stub.
+    """
+    backend = (model_config.backend or "stub").lower()
+    if backend == "ollama":
+        from models.local_llm import OllamaClient  # pylint: disable=import-outside-toplevel
+
+        _log.info("Modèle : Ollama (%s)", model_config.name)
+        return OllamaClient(model=model_config.name, host=model_config.host)
+    if backend != "stub":
+        _log.warning(
+            "Backend modèle inconnu %r, repli sur le stub à base de règles",
+            backend,
+        )
+    _log.info("Modèle : stub à base de règles")
+    return StubRuleModel()
 
 
 class Daemon:  # pylint: disable=too-many-instance-attributes
@@ -43,7 +64,7 @@ class Daemon:  # pylint: disable=too-many-instance-attributes
         self._config = config
         self._audit = AuditLog(config.audit_db_path)
         self._grants = SessionGrants()
-        self._model = StubRuleModel()
+        self._model = _build_model(config.model)
         self._server = IPCServer(
             config.socket_path,
             on_user_message=self._on_user_message,
@@ -66,7 +87,7 @@ class Daemon:  # pylint: disable=too-many-instance-attributes
         """Démarre serveur + raccourci et bloque jusqu'à SIGINT/SIGTERM."""
         _log.info(
             "Démarrage de myosd (utilisateur, sans privilège root) — modèle=%s",
-            self._model.name,
+            getattr(self._model, "name", type(self._model).__name__),
         )
         self._server.start()
         self._hotkey.start()
