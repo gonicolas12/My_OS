@@ -29,6 +29,7 @@ secrets.*
 
 # --- Claude Code : mémoire locale (privée, non versionnée) ---
 CLAUDE.local.md
+.claude/
 
 # --- IDE / OS ---
 .vscode/

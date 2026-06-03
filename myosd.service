@@ -1,0 +1,32 @@
+# Service systemd UTILISATEUR pour le daemon myosd.
+# IMPORTANT : service utilisateur, jamais root (cf. docs/SECURITY.md menace 3).
+# Ne PAS placer ce fichier dans /etc/systemd/system ; il s'installe côté
+# utilisateur dans ~/.config/systemd/user/.
+#
+# Installation (à faire une fois le jalon 1 stable) :
+#   mkdir -p ~/.config/systemd/user
+#   cp myosd.service ~/.config/systemd/user/
+#   # adapter WorkingDirectory/PYTHONPATH ci-dessous au chemin du dépôt
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now myosd.service
+#
+# Le daemon a besoin de l'accès au serveur X (raccourci global). En session
+# graphique, importer l'environnement une fois :
+#   systemctl --user import-environment DISPLAY XAUTHORITY
+
+[Unit]
+Description=My_OS daemon (myosd) — assistant IA résident, sans privilège root
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+# Adapter ce chemin à l'emplacement réel du dépôt cloné :
+WorkingDirectory=%h/my_os
+Environment=PYTHONPATH=%h/my_os
+ExecStart=/usr/bin/env python3 -m daemon.myosd
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target
