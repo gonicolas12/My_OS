@@ -45,12 +45,18 @@ class UIConfig:
     height: int = 400
 
 
+def default_audit_db_path() -> Path:
+    """Chemin par défaut du journal d'audit (cf. docs/ARCHITECTURE.md §7)."""
+    return _PROJECT_ROOT / "data" / "audit.db"
+
+
 @dataclass
 class Config:
     """Configuration résolue de My_OS."""
 
     hotkey: str = DEFAULT_HOTKEY
     socket_path: Path = field(default_factory=resolve_socket_path)
+    audit_db_path: Path = field(default_factory=default_audit_db_path)
     ui: UIConfig = field(default_factory=UIConfig)
 
 
@@ -74,5 +80,6 @@ def load_config(path: Path | None = None) -> Config:
     return Config(
         hotkey=data.get("hotkey", DEFAULT_HOTKEY),
         socket_path=resolve_socket_path(),
+        audit_db_path=default_audit_db_path(),
         ui=ui,
     )
