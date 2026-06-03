@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 from core.config import Config, load_config
 from core.ipc import iter_messages, send_message
 from core.logger import get_logger
+from ui.confirm_dialog import ConfirmDialog
 from ui.styles import build_stylesheet
 
 _log = get_logger("popup")
@@ -176,6 +177,22 @@ class Popup(QWidget):
                 f"<span style='color:#ff6b6b;'>Erreur : "
                 f"{html.escape(str(message.get('message', '')))}</span>"
             )
+        elif mtype == "confirmation_needed":
+            self._show_confirmation_dialog(message)
+
+    def _show_confirmation_dialog(self, payload: dict) -> None:
+        """Affiche le dialog modal et renvoie la réponse au daemon."""
+        dialog = ConfirmDialog(payload, parent=self)
+        dialog.exec()
+        decision, scope = dialog.response
+        response: dict = {
+            "type": "confirmation_response",
+            "request_id": str(payload.get("request_id", "")),
+            "decision": decision,
+        }
+        if scope is not None:
+            response["scope"] = scope
+        self._client.send(response)
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Arrête proprement le thread IPC avant la fermeture de la fenêtre."""
