@@ -20,7 +20,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QCloseEvent, QKeyEvent
+from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QLineEdit,
@@ -136,6 +136,11 @@ class Popup(QWidget):
         layout.addWidget(self._view)
         layout.addWidget(self._input)
 
+        # Échap cache le popup. Raccourci au niveau fenêtre (et non keyPressEvent)
+        # car le QLineEdit focalisé avale la touche avant qu'elle remonte.
+        escape = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
+        escape.activated.connect(self.hide)
+
     def _show_centered(self) -> None:
         screen = QApplication.primaryScreen()
         if screen is not None:
@@ -171,13 +176,6 @@ class Popup(QWidget):
                 f"<span style='color:#ff6b6b;'>Erreur : "
                 f"{html.escape(str(message.get('message', '')))}</span>"
             )
-
-    def keyPressEvent(self, event: QKeyEvent) -> None:
-        """Cache le popup sur Échap ; comportement par défaut sinon."""
-        if event.key() == Qt.Key.Key_Escape:
-            self.hide()
-            return
-        super().keyPressEvent(event)
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Arrête proprement le thread IPC avant la fermeture de la fenêtre."""
