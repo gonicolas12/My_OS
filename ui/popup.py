@@ -13,6 +13,7 @@ une DONNÉE, jamais du balisage de confiance (cf. docs/SECURITY.md §2.2).
 from __future__ import annotations
 
 import html
+import signal
 import socket
 import sys
 from pathlib import Path
@@ -187,6 +188,10 @@ class Popup(QWidget):
 
 def main() -> None:
     """Lance le popup résident (caché jusqu'au premier ``show``)."""
+    # La boucle Qt n'attrape pas les signaux Python : on rétablit le handler OS
+    # par défaut pour que Ctrl+C dans le terminal de dev arrête le processus.
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)  # rester résident quand le popup se cache
     config = load_config()
