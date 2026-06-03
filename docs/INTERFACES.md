@@ -176,6 +176,40 @@ Boucle de traitement d'une requête :
 
 ---
 
+## 6.5 · Modèle injectable côté orchestrator (jalon 2)
+
+Au jalon 2, l'orchestrator dépend d'un **modèle** par injection (testable
+avec un mock). Le streaming `generate()` du §5 reste prévu pour la suite ;
+le contrat minimal utilisé pour décider quels outils appeler est :
+
+```python
+@dataclass
+class ToolCall:
+    tool: str          # nom déclaré par l'outil (cf. BaseTool.name)
+    args: dict         # arguments à passer à tool.run()
+
+@dataclass
+class Plan:
+    narration: str            # texte court affiché à l'utilisateur (peut être vide)
+    tool_calls: list[ToolCall]  # actions à enchaîner
+
+class Model(Protocol):
+    def plan(self, user_message: str) -> Plan: ...
+```
+
+L'orchestrator dépend aussi d'un fournisseur de confirmation injectable
+(pour découpler l'attente bloquante du transport IPC, et permettre les tests) :
+
+```python
+class ConfirmationProvider(Protocol):
+    def ask(self, payload: dict) -> ConfirmationResponse: ...
+```
+
+En production, l'implémentation envoie `payload` (un `confirmation_needed`
+construit par `permissions.confirmation.build_confirmation_needed`) sur la
+socket, attend le `confirmation_response` côté daemon et le parse avec
+`parse_confirmation_response`. En tests, on injecte un stub.
+
 ## 7 · Règle d'or
 
 Quand un contrat ci-dessus est insuffisant pour coder, **étendre ce document d'abord**, puis implémenter. Ne jamais laisser deux modules diverger sur un format de message ou une signature.
