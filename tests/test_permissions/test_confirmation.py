@@ -52,7 +52,11 @@ def test_build_confirmation_needed_contient_tous_les_champs() -> None:
 
 def test_parse_approve_once() -> None:
     resp = parse_confirmation_response(
-        {"type": "confirmation_response", "request_id": "rid-1", "decision": "approve_once"}
+        {
+            "type": "confirmation_response",
+            "request_id": "rid-1",
+            "decision": "approve_once",
+        }
     )
     assert resp == ConfirmationResponse(request_id="rid-1", decision="approve_once")
     assert resp.is_approval is True
@@ -98,7 +102,10 @@ def test_parse_approve_once_ignore_le_champ_scope() -> None:
     [
         ({"type": "wrong"}, "type"),
         ({"type": "confirmation_response", "decision": "deny"}, "request_id"),
-        ({"type": "confirmation_response", "request_id": "", "decision": "deny"}, "request_id"),
+        (
+            {"type": "confirmation_response", "request_id": "", "decision": "deny"},
+            "request_id",
+        ),
         (
             {"type": "confirmation_response", "request_id": "rid", "decision": "huh"},
             "decision",

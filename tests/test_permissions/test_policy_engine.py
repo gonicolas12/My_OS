@@ -144,7 +144,9 @@ def test_grant_sur_un_dossier_different_ne_couvre_pas() -> None:
 
 
 def test_escalade_par_arguments_augmente_le_niveau() -> None:
-    decision = evaluate(_EscalatingTool(), {"path": "/etc/foo", "sensitive": True}, _empty_grants())
+    decision = evaluate(
+        _EscalatingTool(), {"path": "/etc/foo", "sensitive": True}, _empty_grants()
+    )
     assert decision.risk_level == 2
     assert decision.action == "confirm"
     assert decision.requires_elevation is True
@@ -184,6 +186,8 @@ def test_summary_contient_le_niveau_et_le_nom_de_l_outil() -> None:
         ("blocked", "blocked"),
     ],
 )
-def test_decision_action_est_l_un_des_trois_etats(action: str, expected_field: str) -> None:
+def test_decision_action_est_l_un_des_trois_etats(
+    action: str, expected_field: str
+) -> None:
     decision = Decision(action=action, risk_level=0, summary="x")
     assert decision.action == expected_field

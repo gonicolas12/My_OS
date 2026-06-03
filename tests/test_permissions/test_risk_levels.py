@@ -23,7 +23,14 @@ def test_chaque_outil_declare_un_niveau_valide() -> None:
 
 def test_outils_fichiers_jalon_2_declares() -> None:
     # Les outils du jalon 2 doivent figurer dans la table.
-    attendus = {"read_file", "list_dir", "write_file", "move_file", "create_file", "delete_file"}
+    attendus = {
+        "read_file",
+        "list_dir",
+        "write_file",
+        "move_file",
+        "create_file",
+        "delete_file",
+    }
     assert attendus.issubset(TOOL_RISK_LEVELS.keys())
 
 
@@ -84,7 +91,10 @@ def test_normalisation_traversee_de_repertoire() -> None:
 def test_chemins_sensibles_dans_le_home() -> None:
     home = "/home/alice"
     assert is_sensitive_path(f"{home}/.ssh/id_rsa", home=home) is True
-    assert is_sensitive_path(f"{home}/.config/systemd/user/myosd.service", home=home) is True
+    assert (
+        is_sensitive_path(f"{home}/.config/systemd/user/myosd.service", home=home)
+        is True
+    )
 
 
 def test_chemins_quelconques_du_home_ne_sont_pas_sensibles() -> None:

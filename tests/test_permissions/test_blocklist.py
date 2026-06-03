@@ -72,7 +72,9 @@ def test_write_file_dans_bootloader_est_bloque(path: str) -> None:
 
 def test_write_file_quelconque_n_est_pas_bloque() -> None:
     assert is_blocked("write_file", {"path": "/home/alice/note.md"}) is False
-    assert is_blocked("write_file", {"path": "/etc/myconf"}) is False  # niveau 2, pas bloqué
+    assert (
+        is_blocked("write_file", {"path": "/etc/myconf"}) is False
+    )  # niveau 2, pas bloqué
 
 
 def test_outil_non_liste_n_est_jamais_bloque() -> None:
