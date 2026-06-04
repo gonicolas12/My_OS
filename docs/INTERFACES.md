@@ -199,12 +199,21 @@ class ToolCall:
 
 @dataclass
 class Plan:
-    narration: str            # texte court affiché à l'utilisateur (peut être vide)
+    narration: str            # texte complet de la réponse (peut être vide)
     tool_calls: list[ToolCall]  # actions à enchaîner
 
+TokenCallback = Callable[[str], None]
+
 class Model(Protocol):
-    def plan(self, user_message: str) -> Plan: ...
+    def plan(self, user_message: str, on_token: TokenCallback | None = None) -> Plan: ...
 ```
+
+**Streaming.** Si `on_token` est fourni, le modèle l'appelle pour chaque
+fragment de texte au fil de la génération (le popup l'affiche en direct).
+`Plan.narration` reste le texte complet (pour l'audit / les tests). Un modèle
+qui ignore `on_token` reste valide : l'orchestrator a un repli qui envoie
+`Plan.narration` en une fois. Le daemon stream chaque fragment au popup via un
+message `token` (cf. §1).
 
 L'orchestrator dépend aussi d'un fournisseur de confirmation injectable
 (pour découpler l'attente bloquante du transport IPC, et permettre les tests) :

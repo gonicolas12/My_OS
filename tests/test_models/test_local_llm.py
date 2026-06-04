@@ -9,12 +9,12 @@ from typing import Any
 from models.local_llm import FILE_TOOLS_SCHEMA, OllamaClient
 
 
-def _fake_response(
+def _chunk(
     *,
     content: str = "",
     tool_calls: list[tuple[str, dict]] | None = None,
 ) -> SimpleNamespace:
-    """Construit une réponse minimale compatible avec ollama.ChatResponse."""
+    """Construit un fragment de stream compatible avec ollama.ChatResponse."""
     calls = [
         SimpleNamespace(function=SimpleNamespace(name=name, arguments=args))
         for name, args in (tool_calls or [])
@@ -25,21 +25,24 @@ def _fake_response(
 
 
 class _FakeClient:
-    def __init__(self, response: SimpleNamespace) -> None:
-        self._response = response
+    """Client Ollama factice : ``chat`` renvoie une suite de fragments (stream)."""
+
+    def __init__(self, chunks: list[SimpleNamespace]) -> None:
+        self._chunks = chunks
         self.last_kwargs: dict[str, Any] | None = None
 
-    def chat(self, **kwargs: Any) -> SimpleNamespace:
+    def chat(self, **kwargs: Any) -> list[SimpleNamespace]:
         self.last_kwargs = kwargs
-        return self._response
+        return self._chunks
 
 
-def test_plan_renvoie_narration_et_tool_calls() -> None:
+def test_plan_assemble_narration_et_tool_calls_depuis_les_fragments() -> None:
     fake = _FakeClient(
-        _fake_response(
-            content="Je vais lire /tmp/x.",
-            tool_calls=[("read_file", {"path": "/tmp/x"})],
-        )
+        [
+            _chunk(content="Je vais "),
+            _chunk(content="lire /tmp/x."),
+            _chunk(tool_calls=[("read_file", {"path": "/tmp/x"})]),
+        ]
     )
     client = OllamaClient(client=fake)
 
@@ -51,8 +54,24 @@ def test_plan_renvoie_narration_et_tool_calls() -> None:
     assert plan.tool_calls[0].args == {"path": "/tmp/x"}
 
 
+def test_plan_streame_chaque_fragment_via_on_token() -> None:
+    fake = _FakeClient(
+        [_chunk(content="Bon"), _chunk(content="soir"), _chunk(content=" !")]
+    )
+    received: list[str] = []
+    OllamaClient(client=fake).plan("salut", received.append)
+    assert received == ["Bon", "soir", " !"]
+
+
+def test_plan_active_le_streaming() -> None:
+    fake = _FakeClient([_chunk(content="ok")])
+    OllamaClient(client=fake).plan("ping")
+    assert fake.last_kwargs is not None
+    assert fake.last_kwargs["stream"] is True
+
+
 def test_plan_passe_le_systeme_et_le_user_au_modele() -> None:
-    fake = _FakeClient(_fake_response())
+    fake = _FakeClient([_chunk()])
     OllamaClient(client=fake).plan("salut")
 
     assert fake.last_kwargs is not None
@@ -63,7 +82,7 @@ def test_plan_passe_le_systeme_et_le_user_au_modele() -> None:
 
 
 def test_plan_envoie_le_schema_des_outils() -> None:
-    fake = _FakeClient(_fake_response())
+    fake = _FakeClient([_chunk()])
     OllamaClient(client=fake).plan("ping")
 
     assert fake.last_kwargs is not None
@@ -80,7 +99,7 @@ def test_plan_envoie_le_schema_des_outils() -> None:
 
 
 def test_plan_sans_tool_calls_donne_un_plan_de_narration_seule() -> None:
-    fake = _FakeClient(_fake_response(content="Je n'ai pas besoin d'outil."))
+    fake = _FakeClient([_chunk(content="Je n'ai pas besoin d'outil.")])
     plan = OllamaClient(client=fake).plan("dis-moi bonjour")
     assert plan.tool_calls == []
     assert plan.narration == "Je n'ai pas besoin d'outil."
@@ -108,9 +127,7 @@ def test_schema_couvre_tous_les_outils_du_jalon_2() -> None:
 def test_arguments_none_devient_dict_vide() -> None:
     # Certains modèles renvoient arguments=None ; on ne doit pas paniquer.
     fake = _FakeClient(
-        _fake_response(
-            tool_calls=[("read_file", None)],  # type: ignore[arg-type]
-        )
+        [_chunk(tool_calls=[("read_file", None)])]  # type: ignore[list-item]
     )
     plan = OllamaClient(client=fake).plan("?")
     assert plan.tool_calls[0].args == {}

@@ -53,11 +53,20 @@ class Plan:
     tool_calls: list[ToolCall] = field(default_factory=list)
 
 
+# Callback de streaming : reçoit chaque fragment de texte au fil de la génération.
+TokenCallback = Callable[[str], None]
+
+
 class Model(Protocol):
     """Contrat minimal d'un modèle côté orchestrator (cf. INTERFACES §6.5)."""
 
-    def plan(self, user_message: str) -> Plan:
-        """Renvoie un :class:`Plan` (narration + ``ToolCall``) pour ce message."""
+    def plan(self, user_message: str, on_token: TokenCallback | None = None) -> Plan:
+        """Renvoie un :class:`Plan` (narration complète + ``ToolCall``).
+
+        Si ``on_token`` est fourni, le modèle l'appelle pour chaque fragment de
+        texte au fur et à mesure de la génération (streaming). ``Plan.narration``
+        reste le texte complet, pour l'audit/les tests.
+        """
 
 
 class ConfirmationProvider(Protocol):
@@ -102,19 +111,31 @@ class Orchestrator:
             )
             return
 
+        # Streaming : la narration est envoyée fragment par fragment au popup
+        # au fil de la génération du modèle.
+        emitted = False
+
+        def emit_token(fragment: str) -> None:
+            nonlocal emitted
+            if fragment:
+                emitted = True
+                reply({"type": "token", "id": user_message_id, "text": fragment})
+
         try:
-            plan = self._model.plan(content)
+            plan = self._model.plan(content, emit_token)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             reply(
                 {
                     "type": "error",
                     "id": user_message_id,
-                    "message": f"échec du planification : {exc}",
+                    "message": f"échec de la planification : {exc}",
                 }
             )
             return
 
-        if plan.narration:
+        # Repli : si le modèle n'a pas streamé (on_token ignoré) mais a une
+        # narration, on l'envoie en une fois.
+        if not emitted and plan.narration:
             reply({"type": "token", "id": user_message_id, "text": plan.narration})
 
         for tool_call in plan.tool_calls:

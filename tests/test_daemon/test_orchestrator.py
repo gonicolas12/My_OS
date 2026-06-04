@@ -5,7 +5,7 @@ l'orchestrator est piloté par un modèle mocké qui renvoie un ``Plan`` connu,
 et par un fournisseur de confirmation qui débite des réponses pré-écrites.
 """
 
-# pylint: disable=missing-function-docstring,redefined-outer-name,use-implicit-booleaness-not-comparison
+# pylint: disable=missing-function-docstring,redefined-outer-name,use-implicit-booleaness-not-comparison,unused-argument
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -27,12 +27,15 @@ class _FakeLLM:
     def __init__(self, plan: Plan) -> None:
         self._plan = plan
 
-    def plan(self, _user_message: str) -> Plan:
+    def plan(self, _user_message, on_token=None) -> Plan:
+        # Simule le streaming : émet la narration en un fragment.
+        if on_token is not None and self._plan.narration:
+            on_token(self._plan.narration)
         return self._plan
 
 
 class _FailingLLM:
-    def plan(self, _user_message: str) -> Plan:
+    def plan(self, _user_message, on_token=None) -> Plan:
         raise RuntimeError("modèle indisponible")
 
 
@@ -363,6 +366,55 @@ def test_normalize_args_est_applique_avant_run_et_audit(audit: AuditLog) -> None
     assert "lu /home/test/notes.txt" in tokens[0]["text"]
     entries = audit.fetch_all()
     assert entries[0]["args"]["path"] == "/home/test/notes.txt"
+
+
+class _StreamingLLM:
+    """Modèle qui émet la narration fragment par fragment via on_token."""
+
+    def __init__(self, fragments: list[str]) -> None:
+        self._fragments = fragments
+
+    def plan(self, _user_message, on_token=None) -> Plan:
+        for fragment in self._fragments:
+            if on_token is not None:
+                on_token(fragment)
+        return Plan(narration="".join(self._fragments), tool_calls=[])
+
+
+def test_streaming_emet_un_token_par_fragment(audit: AuditLog) -> None:
+    orch = Orchestrator(
+        model=_StreamingLLM(["Bon", "soir", " !"]),
+        tools={},
+        grants=SessionGrants(),
+        audit=audit,
+        confirmation_provider=_FakeConfirmation([]),
+    )
+    replies: list[dict] = []
+    orch.handle({"id": "m1", "content": "salut"}, replies.append)
+
+    tokens = [r["text"] for r in replies if r["type"] == "token"]
+    assert tokens == ["Bon", "soir", " !"]
+    assert replies[-1]["type"] == "done"
+
+
+def test_fallback_si_modele_ne_streame_pas(audit: AuditLog) -> None:
+    # Un modèle qui ignore on_token mais renvoie une narration : l'orchestrator
+    # l'envoie en une fois (repli).
+    class _NonStreaming:
+        def plan(self, _user_message, on_token=None) -> Plan:  # noqa: ARG002
+            return Plan(narration="réponse complète", tool_calls=[])
+
+    orch = Orchestrator(
+        model=_NonStreaming(),
+        tools={},
+        grants=SessionGrants(),
+        audit=audit,
+        confirmation_provider=_FakeConfirmation([]),
+    )
+    replies: list[dict] = []
+    orch.handle({"id": "m1", "content": "?"}, replies.append)
+    tokens = [r["text"] for r in replies if r["type"] == "token"]
+    assert tokens == ["réponse complète"]
 
 
 def test_done_est_toujours_envoye_a_la_fin(audit: AuditLog) -> None:

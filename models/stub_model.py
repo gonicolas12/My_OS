@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 
-from daemon.orchestrator import Plan, ToolCall
+from daemon.orchestrator import Plan, TokenCallback, ToolCall
 
 _PATH = r"(?P<path>[\w./~\-]+)"
 _SRC = r"(?P<src>[\w./~\-]+)"
@@ -69,23 +69,32 @@ class StubRuleModel:
 
     name = "stub-rules"
 
-    def plan(self, user_message: str) -> Plan:
-        """Retourne un Plan basé sur un match regex, sinon un Plan vide narré."""
+    def plan(self, user_message: str, on_token: TokenCallback | None = None) -> Plan:
+        """Retourne un Plan basé sur un match regex, sinon un Plan vide narré.
+
+        Le stub génère instantanément : ``on_token`` (s'il est fourni) reçoit
+        la narration en une fois.
+        """
         for pattern, tool_name, keys in _PATTERNS:
             match = pattern.search(user_message)
             if match is None:
                 continue
             args = {key: match.group(key) for key in keys}
             narration = f"OK — je vais exécuter {tool_name}({args})."
+            if on_token is not None:
+                on_token(narration)
             return Plan(
                 narration=narration, tool_calls=[ToolCall(tool=tool_name, args=args)]
             )
 
+        narration = (
+            "Je n'ai pas compris (modèle stub : essayez « lis /chemin », "
+            "« écris hello dans /tmp/x », « supprime /tmp/x », "
+            "« déplace /a vers /b »)."
+        )
+        if on_token is not None:
+            on_token(narration)
         return Plan(
-            narration=(
-                "Je n'ai pas compris (modèle stub : essayez « lis /chemin », "
-                "« écris hello dans /tmp/x », « supprime /tmp/x », "
-                "« déplace /a vers /b »)."
-            ),
+            narration=narration,
             tool_calls=[],
         )
