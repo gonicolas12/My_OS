@@ -50,7 +50,7 @@ class ModelConfig:
     """Choix du backend modèle utilisé par l'orchestrator."""
 
     backend: str = "stub"  # "stub" | "ollama"
-    name: str = "qwen3:4b"  # modèle Ollama si backend="ollama"
+    name: str = "qwen3.5:2b"  # modèle Ollama si backend="ollama"
     host: str | None = None  # URL HTTP Ollama (None = défaut local)
 
 

@@ -1,4 +1,4 @@
-"""Client Ollama pour un modèle local (Qwen 3.5 4B par défaut).
+"""Client Ollama pour un modèle local (Qwen 3.5 par défaut).
 
 Implémente le protocole :class:`daemon.orchestrator.Model` en s'appuyant sur
 le mécanisme de **tool calling** d'Ollama : le modèle reçoit un schéma JSON
@@ -10,7 +10,7 @@ Pour l'activer côté VM :
 
 .. code-block:: bash
 
-   ollama pull qwen3:4b   # ~2.4 Go
+   ollama pull qwen3.5:2b   # ~2.5 Go
    # puis démarrer myosd avec OllamaClient injecté à la place de StubRuleModel
 
 Sécurité (cf. SECURITY §2.2) : le contenu de fichiers lu par le LLM via
@@ -37,7 +37,7 @@ def _make_ollama_client(host: str | None) -> Any:
     return ollama.Client(host=host) if host else ollama.Client()
 
 
-DEFAULT_MODEL = "qwen3:4b"
+DEFAULT_MODEL = "qwen3.5:2b"
 
 # Le prompt système oriente le modèle mais ne lui confère AUCUNE autorité :
 # toute action passe ensuite par le policy_engine (CLAUDE.md invariant 1).

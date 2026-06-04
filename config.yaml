@@ -22,5 +22,5 @@ ui:
 #                       `ollama serve` + `ollama pull <name>` dans la VM)
 model:
   backend: stub
-  name: qwen3:4b
+  name: qwen3.5:2b
   # host: http://127.0.0.1:11434   # par défaut, laisser commenté
