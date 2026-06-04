@@ -15,7 +15,8 @@ dbus-python ; sys_platform == "linux"   # D-Bus (luminosité, audio, réseau) �
 pyzmq                # messagerie robuste sur socket (optionnel : module socket standard suffit au départ)
 
 # --- Modèles (couche 3) ---
-ollama               # client Python pour le modèle local Qwen
+ollama               # client local Qwen — requis seulement si model.backend=ollama
+                     # (import paresseux : le mode stub et les tests s'en passent)
 anthropic            # API cloud Claude (mode opt-in)
 
 # --- Secrets ---
