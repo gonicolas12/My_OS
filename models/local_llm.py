@@ -28,6 +28,15 @@ from daemon.orchestrator import Plan, ToolCall
 if TYPE_CHECKING:
     import ollama
 
+
+def _make_ollama_client(host: str | None) -> Any:
+    """Instancie un client Ollama. Import paresseux : la dépendance ``ollama``
+    n'est requise qu'ici, pas pour importer le module (mode stub / tests)."""
+    import ollama
+
+    return ollama.Client(host=host) if host else ollama.Client()
+
+
 DEFAULT_MODEL = "qwen3:4b"
 
 # Le prompt système oriente le modèle mais ne lui confère AUCUNE autorité :
@@ -160,15 +169,7 @@ class OllamaClient:
         client: ollama.Client | None = None,
     ) -> None:
         self._model = model
-        if client is not None:
-            self._client = client
-        else:
-            # Import paresseux : le module reste importable sans la dépendance
-            # `ollama` (mode stub / suite de tests), elle n'est requise que
-            # pour réellement parler au daemon Ollama.
-            import ollama
-
-            self._client = ollama.Client(host=host) if host else ollama.Client()
+        self._client = client if client is not None else _make_ollama_client(host)
 
     def plan(self, user_message: str) -> Plan:
         """Soumet le message au modèle et convertit la réponse en :class:`Plan`."""
