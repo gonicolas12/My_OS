@@ -5,14 +5,15 @@ s'affiche (centré, au-dessus de tout, focus) quand le daemon envoie ``show``
 (déclenché par le raccourci global). L'utilisateur tape un message, le popup
 l'envoie au daemon ; Échap referme le popup.
 
-Affichage via ``QTextBrowser`` (et non ``QWebEngineView``) pour une ouverture
-instantanée. Tout texte dynamique est échappé avant insertion : un contenu reste
-une DONNÉE, jamais du balisage de confiance (cf. docs/SECURITY.md §2.2).
+La réponse du modèle s'affiche en streaming (token par token) et est rendue en
+markdown via ``QTextBrowser.setMarkdown`` (et non ``QWebEngineView`` : ouverture
+instantanée, aucun moteur web). Le contenu affiché reste une DONNÉE — QTextBrowser
+n'exécute aucun script et les liens ne s'ouvrent pas seuls (cf. docs/SECURITY.md
+§2.2 et ui/markdown_render.py).
 """
 
 from __future__ import annotations
 
-import html
 import signal
 import socket
 import sys
@@ -36,6 +37,7 @@ from core.config import Config, load_config
 from core.ipc import iter_messages, send_message
 from core.logger import get_logger
 from ui.confirm_dialog import ConfirmDialog
+from ui.markdown_render import conversation_to_markdown
 from ui.styles import build_stylesheet
 
 _log = get_logger("popup")
@@ -154,6 +156,7 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         self._config = config
         self._status_base = ""
         self._status_dots = 0
+        self._messages: list[dict[str, str]] = []
         self._build_window()
         self._build_ui()
 
@@ -248,12 +251,27 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         self.activateWindow()
         self._input.setFocus()
 
+    def _render(self) -> None:
+        """Rend toute la conversation en markdown et défile vers le bas."""
+        self._view.setMarkdown(conversation_to_markdown(self._messages))
+        scrollbar = self._view.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+
+    def _append_to_assistant(self, text: str) -> None:
+        """Ajoute du texte au message assistant en cours (en crée un au besoin)."""
+        if not self._messages or self._messages[-1]["role"] != "assistant":
+            self._messages.append({"role": "assistant", "text": ""})
+        self._messages[-1]["text"] += text
+
     def _send_current_input(self) -> None:
         text = self._input.text().strip()
         if not text:
             return
-        self._view.append(f"<b>Vous :</b> {html.escape(text)}")
         self._input.clear()
+        self._messages.append({"role": "user", "text": text})
+        # Bulle assistant vide, prête à recevoir le streaming.
+        self._messages.append({"role": "assistant", "text": ""})
+        self._render()
         self._set_status("Le modèle réfléchit")
         self._client.send(
             {
@@ -267,16 +285,15 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
     def _on_message(self, message: dict) -> None:
         mtype = message.get("type")
         if mtype == "token":
-            self._view.append(f"<i>{html.escape(str(message.get('text', '')))}</i>")
-            self._set_status("Action en cours")
+            # Streaming : chaque fragment s'ajoute à la réponse en cours.
+            self._append_to_assistant(str(message.get("text", "")))
+            self._render()
         elif mtype == "done":
             self._clear_status()
         elif mtype == "error":
             self._clear_status()
-            self._view.append(
-                f"<span style='color:#ff6b6b;'>Erreur : "
-                f"{html.escape(str(message.get('message', '')))}</span>"
-            )
+            self._append_to_assistant(f"\n\n⚠ Erreur : {message.get('message', '')}")
+            self._render()
         elif mtype == "confirmation_needed":
             self._show_confirmation_dialog(message)
 
@@ -295,7 +312,7 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
             response["scope"] = scope
         self._client.send(response)
         # Reprise : l'exécution de l'action suit la confirmation.
-        self._set_status("Action en cours")
+        self._set_status("Le modèle réfléchit")
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Arrête proprement le thread IPC avant la fermeture de la fenêtre."""
