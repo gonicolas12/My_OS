@@ -1,21 +1,27 @@
-"""Orchestrator : pilote une requête utilisateur de bout en bout.
+"""Orchestrator : pilote une requête utilisateur via une boucle agentique.
 
 Cycle de vie (cf. docs/INTERFACES.md §6 + §6.5) :
 
-1. Reçoit ``user_message`` du popup.
-2. Demande un :class:`Plan` au modèle (:meth:`Model.plan`).
-3. Stream la narration vers le popup (un ``token``).
-4. Pour chaque :class:`ToolCall`, passe par le **choke point** :
-   :func:`permissions.policy_engine.evaluate`.
+1. Reçoit ``user_message`` du popup ; initialise l'historique conversationnel.
+2. **Boucle** (jusqu'à une réponse finale ou ``MAX_STEPS``) :
+   a. appelle le modèle (:meth:`Model.respond`) avec l'historique, streame sa
+      narration vers le popup (``token``) ;
+   b. si le modèle ne demande aucun outil → réponse finale, on sort ;
+   c. sinon, pour chaque :class:`ToolCall`, passe par le **choke point**
+      :func:`permissions.policy_engine.evaluate` :
+        * ``blocked``  → audit + message, aucune exécution ;
+        * ``auto``     → ``log_pending`` + ``run`` + ``update_result`` ;
+        * ``confirm``  → ``confirmation_provider.ask`` ; refus → audit
+          ``denied`` ; approbation → exécution puis grant éventuel ;
+   d. **réinjecte** chaque résultat dans l'historique (message ``tool``) et
+      reboucle : le modèle observe les résultats et décide de la suite.
+3. Envoie un ``done`` final.
 
-   * ``blocked``  → audit + token d'info, aucune exécution.
-   * ``auto``     → ``log_pending`` + ``run`` + ``update_result`` + token sortie.
-   * ``confirm``  → ``confirmation_provider.ask`` ; selon la réponse,
-     refus → audit ``denied`` ; approbation → exécution puis grant éventuel.
-5. Envoie un ``done`` final.
+Les résultats d'outils réinjectés sont des DONNÉES (le system prompt du modèle
+le rappelle) : un contenu lu ne commande jamais une action (SECURITY §2.2).
 
 Le LLM réel n'est jamais appelé directement ici : on dépend d'un protocole
-:class:`Model` injecté, ce qui rend la chaîne testable avec un ``FakeLLM``
+:class:`Model` injecté, ce qui rend la chaîne testable avec un modèle scripté
 sans Ollama (cf. CLAUDE.md « mock-first »).
 """
 
@@ -56,16 +62,30 @@ class Plan:
 # Callback de streaming : reçoit chaque fragment de texte au fil de la génération.
 TokenCallback = Callable[[str], None]
 
+# Un message de l'historique conversationnel. Formes :
+#   {"role": "user", "content": str}
+#   {"role": "assistant", "content": str, "tool_calls": list[ToolCall]}
+#   {"role": "tool", "tool": str, "content": str}   # résultat réinjecté
+Message = dict
+
+# Plafond d'itérations de la boucle agentique (anti-boucle infinie).
+MAX_STEPS = 6
+
 
 class Model(Protocol):
     """Contrat minimal d'un modèle côté orchestrator (cf. INTERFACES §6.5)."""
 
-    def plan(self, user_message: str, on_token: TokenCallback | None = None) -> Plan:
-        """Renvoie un :class:`Plan` (narration complète + ``ToolCall``).
+    def respond(
+        self, messages: list[Message], on_token: TokenCallback | None = None
+    ) -> Plan:
+        """Renvoie un :class:`Plan` (narration + ``ToolCall``) pour cet historique.
 
-        Si ``on_token`` est fourni, le modèle l'appelle pour chaque fragment de
-        texte au fur et à mesure de la génération (streaming). ``Plan.narration``
-        reste le texte complet, pour l'audit/les tests.
+        ``messages`` est l'historique conversationnel complet (user/assistant/
+        tool). Si ``on_token`` est fourni, le modèle l'appelle pour chaque
+        fragment de texte au fil de la génération (streaming). ``Plan.narration``
+        reste le texte complet du tour, pour l'audit/les tests.
+
+        Un ``Plan`` sans ``tool_calls`` signale une réponse finale (fin de boucle).
         """
 
 
@@ -98,7 +118,12 @@ class Orchestrator:
         self._confirmation = confirmation_provider
 
     def handle(self, message: dict, reply: Reply) -> None:
-        """Traite un ``user_message`` complet (validation, plan, exécution, done)."""
+        """Traite un ``user_message`` via la boucle agentique, jusqu'au ``done``.
+
+        Tant que le modèle demande des outils, on les exécute (via le choke
+        point) et on réinjecte les résultats dans l'historique, puis on rappelle
+        le modèle — jusqu'à une réponse finale sans outil ou ``MAX_STEPS``.
+        """
         user_message_id = str(message.get("id") or "")
         content = message.get("content")
         if not isinstance(content, str) or not content.strip():
@@ -111,39 +136,77 @@ class Orchestrator:
             )
             return
 
-        # Streaming : la narration est envoyée fragment par fragment au popup
-        # au fil de la génération du modèle.
+        messages: list[Message] = [{"role": "user", "content": content}]
+
+        for _step in range(MAX_STEPS):
+            plan = self._run_model(messages, user_message_id, reply)
+            if plan is None:
+                return  # erreur déjà signalée au popup
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": plan.narration,
+                    "tool_calls": plan.tool_calls,
+                }
+            )
+            if not plan.tool_calls:
+                break  # réponse finale : fin de la boucle
+            for tool_call in plan.tool_calls:
+                output = self._handle_tool_call(user_message_id, tool_call, reply)
+                messages.append(
+                    {"role": "tool", "tool": tool_call.tool, "content": output}
+                )
+        else:
+            reply(
+                {
+                    "type": "token",
+                    "id": user_message_id,
+                    "text": "\n(Limite d'itérations atteinte — tâche interrompue.)\n",
+                }
+            )
+
+        reply({"type": "done", "id": user_message_id})
+
+    def _run_model(
+        self, messages: list[Message], msg_id: str, reply: Reply
+    ) -> Plan | None:
+        """Appelle le modèle pour un tour, streame sa narration, renvoie le Plan.
+
+        Renvoie ``None`` si le modèle a échoué (l'erreur est déjà envoyée au
+        popup), pour que :meth:`handle` interrompe la boucle.
+        """
         emitted = False
 
         def emit_token(fragment: str) -> None:
             nonlocal emitted
             if fragment:
                 emitted = True
-                reply({"type": "token", "id": user_message_id, "text": fragment})
+                reply({"type": "token", "id": msg_id, "text": fragment})
 
         try:
-            plan = self._model.plan(content, emit_token)
+            plan = self._model.respond(messages, emit_token)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             reply(
                 {
                     "type": "error",
-                    "id": user_message_id,
-                    "message": f"échec de la planification : {exc}",
+                    "id": msg_id,
+                    "message": f"échec du modèle : {exc}",
                 }
             )
-            return
+            return None
 
-        # Repli : si le modèle n'a pas streamé (on_token ignoré) mais a une
-        # narration, on l'envoie en une fois.
+        # Repli : si le modèle n'a pas streamé mais a une narration, on l'envoie.
         if not emitted and plan.narration:
-            reply({"type": "token", "id": user_message_id, "text": plan.narration})
+            reply({"type": "token", "id": msg_id, "text": plan.narration})
+        return plan
 
-        for tool_call in plan.tool_calls:
-            self._handle_tool_call(user_message_id, tool_call, reply)
+    def _handle_tool_call(self, msg_id: str, call: ToolCall, reply: Reply) -> str:
+        """Évalue + exécute un appel d'outil. Renvoie le texte à réinjecter au modèle.
 
-        reply({"type": "done", "id": user_message_id})
-
-    def _handle_tool_call(self, msg_id: str, call: ToolCall, reply: Reply) -> None:
+        Le même texte est aussi envoyé au popup (token) pour la transparence.
+        Couvre tous les cas (inconnu / bloqué / refusé / erreur / succès) afin que
+        le modèle « voie » toujours ce qui s'est passé et puisse s'adapter.
+        """
         tool = self._tools.get(call.tool)
         if tool is None:
             # Outil inconnu : tracé comme blocked au niveau 3 ; rien d'autre n'est sûr.
@@ -155,14 +218,7 @@ class Orchestrator:
                 success=False,
                 reversible=False,
             )
-            reply(
-                {
-                    "type": "token",
-                    "id": msg_id,
-                    "text": f"Outil inconnu : {call.tool}\n",
-                }
-            )
-            return
+            return self._emit_result(msg_id, reply, f"Outil inconnu : {call.tool}")
 
         # Normalise les arguments (ex. expansion de ~) AVANT toute évaluation :
         # blocklist, escalade, grants et run voient ainsi le chemin réel.
@@ -178,14 +234,7 @@ class Orchestrator:
                 success=False,
                 reversible=False,
             )
-            reply(
-                {
-                    "type": "token",
-                    "id": msg_id,
-                    "text": f"Bloqué : {decision.summary}\n",
-                }
-            )
-            return
+            return self._emit_result(msg_id, reply, f"Bloqué : {decision.summary}")
 
         audit_decision = "auto"
         if decision.action == "confirm":
@@ -207,14 +256,9 @@ class Orchestrator:
                     success=False,
                     reversible=False,
                 )
-                reply(
-                    {
-                        "type": "token",
-                        "id": msg_id,
-                        "text": f"Refusé : {decision.summary}\n",
-                    }
+                return self._emit_result(
+                    msg_id, reply, f"Refusé par l'utilisateur : {decision.summary}"
                 )
-                return
             if response.creates_grant and response.scope is not None:
                 self._record_grant(tool, args, response.scope)
             audit_decision = "approved"
@@ -230,18 +274,17 @@ class Orchestrator:
             result = tool.run(args)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             self._audit.update_result(row_id, success=False, reversible=False)
-            reply(
-                {
-                    "type": "token",
-                    "id": msg_id,
-                    "text": f"Erreur d'exécution : {exc}\n",
-                }
-            )
-            return
+            return self._emit_result(msg_id, reply, f"Erreur d'exécution : {exc}")
         self._audit.update_result(
             row_id, success=result.success, reversible=result.reversible
         )
-        reply({"type": "token", "id": msg_id, "text": result.output + "\n"})
+        return self._emit_result(msg_id, reply, result.output)
+
+    @staticmethod
+    def _emit_result(msg_id: str, reply: Reply, text: str) -> str:
+        """Envoie le résultat au popup (token) et le renvoie pour réinjection."""
+        reply({"type": "token", "id": msg_id, "text": text + "\n"})
+        return text
 
     def _record_grant(self, tool: BaseTool, args: dict, scope: str) -> None:
         if scope == "session":

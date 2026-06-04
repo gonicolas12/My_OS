@@ -9,6 +9,10 @@ from typing import Any
 from models.local_llm import FILE_TOOLS_SCHEMA, OllamaClient
 
 
+def _history(user_message: str) -> list[dict]:
+    return [{"role": "user", "content": user_message}]
+
+
 def _chunk(
     *,
     content: str = "",
@@ -46,7 +50,7 @@ def test_plan_assemble_narration_et_tool_calls_depuis_les_fragments() -> None:
     )
     client = OllamaClient(client=fake)
 
-    plan = client.plan("lis /tmp/x")
+    plan = client.respond(_history("lis /tmp/x"))
 
     assert plan.narration == "Je vais lire /tmp/x."
     assert len(plan.tool_calls) == 1
@@ -59,20 +63,20 @@ def test_plan_streame_chaque_fragment_via_on_token() -> None:
         [_chunk(content="Bon"), _chunk(content="soir"), _chunk(content=" !")]
     )
     received: list[str] = []
-    OllamaClient(client=fake).plan("salut", received.append)
+    OllamaClient(client=fake).respond(_history("salut"), received.append)
     assert received == ["Bon", "soir", " !"]
 
 
 def test_plan_active_le_streaming() -> None:
     fake = _FakeClient([_chunk(content="ok")])
-    OllamaClient(client=fake).plan("ping")
+    OllamaClient(client=fake).respond(_history("ping"))
     assert fake.last_kwargs is not None
     assert fake.last_kwargs["stream"] is True
 
 
 def test_plan_passe_le_systeme_et_le_user_au_modele() -> None:
     fake = _FakeClient([_chunk()])
-    OllamaClient(client=fake).plan("salut")
+    OllamaClient(client=fake).respond(_history("salut"))
 
     assert fake.last_kwargs is not None
     messages = fake.last_kwargs["messages"]
@@ -83,7 +87,7 @@ def test_plan_passe_le_systeme_et_le_user_au_modele() -> None:
 
 def test_plan_envoie_le_schema_des_outils() -> None:
     fake = _FakeClient([_chunk()])
-    OllamaClient(client=fake).plan("ping")
+    OllamaClient(client=fake).respond(_history("ping"))
 
     assert fake.last_kwargs is not None
     tools = fake.last_kwargs["tools"]
@@ -100,7 +104,7 @@ def test_plan_envoie_le_schema_des_outils() -> None:
 
 def test_plan_sans_tool_calls_donne_un_plan_de_narration_seule() -> None:
     fake = _FakeClient([_chunk(content="Je n'ai pas besoin d'outil.")])
-    plan = OllamaClient(client=fake).plan("dis-moi bonjour")
+    plan = OllamaClient(client=fake).respond(_history("dis-moi bonjour"))
     assert plan.tool_calls == []
     assert plan.narration == "Je n'ai pas besoin d'outil."
 
@@ -129,5 +133,23 @@ def test_arguments_none_devient_dict_vide() -> None:
     fake = _FakeClient(
         [_chunk(tool_calls=[("read_file", None)])]  # type: ignore[list-item]
     )
-    plan = OllamaClient(client=fake).plan("?")
+    plan = OllamaClient(client=fake).respond(_history("?"))
     assert plan.tool_calls[0].args == {}
+
+
+def test_historique_est_traduit_au_format_ollama() -> None:
+    # L'historique générique (user/assistant/tool) est passé après le system.
+    fake = _FakeClient([_chunk(content="ok")])
+    history = [
+        {"role": "user", "content": "liste /tmp"},
+        {"role": "assistant", "content": "je liste", "tool_calls": []},
+        {"role": "tool", "tool": "list_dir", "content": "a.txt b.txt"},
+    ]
+    OllamaClient(client=fake).respond(history)
+
+    assert fake.last_kwargs is not None
+    sent = fake.last_kwargs["messages"]
+    assert sent[0]["role"] == "system"
+    assert [m["role"] for m in sent[1:]] == ["user", "assistant", "tool"]
+    # Le résultat d'outil est transmis comme message role=tool.
+    assert sent[-1] == {"role": "tool", "content": "a.txt b.txt"}

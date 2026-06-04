@@ -37,6 +37,25 @@ def _make_ollama_client(host: str | None) -> Any:
     return ollama.Client(host=host) if host else ollama.Client()
 
 
+def _to_ollama(messages: list[dict]) -> list[dict]:
+    """Traduit l'historique générique de l'orchestrator au format chat d'Ollama.
+
+    - ``user`` / ``assistant`` : passés tels quels (contenu seul ; les tool_calls
+      de l'assistant ne sont pas renvoyés, le résultat ``tool`` suffit au contexte).
+    - ``tool`` : ``{"role": "tool", "content": <résultat>}`` (Ollama identifie le
+      résultat par sa position ; le champ ``tool`` interne est informatif).
+    """
+    out: list[dict] = []
+    for message in messages:
+        role = message.get("role")
+        content = str(message.get("content", ""))
+        if role == "tool":
+            out.append({"role": "tool", "content": content})
+        elif role in ("user", "assistant"):
+            out.append({"role": role, "content": content})
+    return out
+
+
 DEFAULT_MODEL = "qwen3.5:2b"
 
 # Le prompt système oriente le modèle mais ne lui confère AUCUNE autorité :
@@ -190,18 +209,21 @@ class OllamaClient:
         self._model = model
         self._client = client if client is not None else _make_ollama_client(host)
 
-    def plan(self, user_message: str, on_token: TokenCallback | None = None) -> Plan:
-        """Soumet le message au modèle en streaming et le convertit en :class:`Plan`.
+    def respond(
+        self, messages: list[dict], on_token: TokenCallback | None = None
+    ) -> Plan:
+        """Soumet l'historique au modèle en streaming et le convertit en :class:`Plan`.
 
-        Le texte est diffusé fragment par fragment via ``on_token`` au fil de la
-        génération ; les appels d'outils sont accumulés (Ollama les fournit
-        généralement dans le dernier fragment).
+        Le system prompt est préfixé à chaque appel ; l'historique générique
+        (user/assistant/tool) est traduit au format Ollama. Le texte est diffusé
+        fragment par fragment via ``on_token`` ; les appels d'outils sont
+        accumulés (Ollama les fournit généralement dans le dernier fragment).
         """
         stream = self._client.chat(
             model=self._model,
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": user_message},
+                *_to_ollama(messages),
             ],
             tools=FILE_TOOLS_SCHEMA,
             stream=True,

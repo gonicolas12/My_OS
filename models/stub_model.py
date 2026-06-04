@@ -69,12 +69,24 @@ class StubRuleModel:
 
     name = "stub-rules"
 
-    def plan(self, user_message: str, on_token: TokenCallback | None = None) -> Plan:
-        """Retourne un Plan basé sur un match regex, sinon un Plan vide narré.
+    def respond(
+        self, messages: list[dict], on_token: TokenCallback | None = None
+    ) -> Plan:
+        """Renvoie un Plan pour le dernier message de l'historique.
 
-        Le stub génère instantanément : ``on_token`` (s'il est fourni) reçoit
-        la narration en une fois.
+        Le stub ne gère pas de vrai raisonnement multi-tours : si le dernier
+        message est un résultat d'outil (``role == "tool"``), il renvoie une
+        réponse finale (pas de nouvel outil) pour clore proprement la boucle.
+        Sinon, il applique ses regex sur le dernier message ``user``.
+
+        Génère instantanément : ``on_token`` (s'il est fourni) reçoit la
+        narration en une fois.
         """
+        last = messages[-1] if messages else {}
+        if last.get("role") == "tool":
+            return self._final("C'est fait.", on_token)
+
+        user_message = self._last_user_content(messages)
         for pattern, tool_name, keys in _PATTERNS:
             match = pattern.search(user_message)
             if match is None:
@@ -87,14 +99,22 @@ class StubRuleModel:
                 narration=narration, tool_calls=[ToolCall(tool=tool_name, args=args)]
             )
 
-        narration = (
+        return self._final(
             "Je n'ai pas compris (modèle stub : essayez « lis /chemin », "
             "« écris hello dans /tmp/x », « supprime /tmp/x », "
-            "« déplace /a vers /b »)."
+            "« déplace /a vers /b »).",
+            on_token,
         )
+
+    @staticmethod
+    def _last_user_content(messages: list[dict]) -> str:
+        for message in reversed(messages):
+            if message.get("role") == "user":
+                return str(message.get("content", ""))
+        return ""
+
+    @staticmethod
+    def _final(narration: str, on_token: TokenCallback | None) -> Plan:
         if on_token is not None:
             on_token(narration)
-        return Plan(
-            narration=narration,
-            tool_calls=[],
-        )
+        return Plan(narration=narration, tool_calls=[])
