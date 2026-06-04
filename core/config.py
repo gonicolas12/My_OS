@@ -1,17 +1,23 @@
 """Chargement et résolution de la configuration de My_OS.
 
-La configuration provient de ``config.yaml`` (racine du projet), avec des
-valeurs par défaut sûres. Le chemin de la socket IPC n'est jamais lu depuis le
-fichier : il est calculé à l'exécution et partagé entre le daemon et le popup,
-afin que les deux processus ne puissent pas diverger (cf. docs/INTERFACES.md §1).
+La configuration provient de ``config.yaml`` (défauts versionnés), surchargée
+si présent par ``config.local.yaml`` (overrides personnels, **non versionnés** —
+cf. ``.gitignore``). Cela permet d'avoir des réglages propres à une machine
+(ex. ``backend: ollama``) sans entrer en conflit avec ``config.yaml`` à chaque
+mise à jour du dépôt.
 
-Aucun secret ne transite par ce fichier (clé API cloud → ``keyring``,
+Le chemin de la socket IPC n'est jamais lu depuis le fichier : il est calculé à
+l'exécution et partagé entre le daemon et le popup, afin que les deux processus
+ne puissent pas diverger (cf. docs/INTERFACES.md §1).
+
+Aucun secret ne transite par ces fichiers (clé API cloud → ``keyring``,
 cf. docs/SECURITY.md menace 4).
 """
 
 from __future__ import annotations
 
 import os
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -19,6 +25,7 @@ import yaml
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _DEFAULT_CONFIG_PATH = _PROJECT_ROOT / "config.yaml"
+_LOCAL_CONFIG_PATH = _PROJECT_ROOT / "config.local.yaml"
 
 DEFAULT_HOTKEY = "<ctrl>+<alt>+<space>"
 SOCKET_NAME = "myos.sock"
@@ -32,7 +39,13 @@ def resolve_socket_path() -> Path:
     """
     runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
     if not runtime_dir:
-        runtime_dir = f"/run/user/{os.getuid()}"
+        getuid = getattr(os, "getuid", None)
+        if getuid is not None:
+            runtime_dir = f"/run/user/{getuid()}"
+        else:
+            # Ni XDG_RUNTIME_DIR ni getuid (ex. Windows en dev/test) : repli sur
+            # un dossier temporaire. La cible de déploiement reste Linux.
+            runtime_dir = tempfile.gettempdir()
     return Path(runtime_dir) / SOCKET_NAME
 
 
@@ -70,18 +83,41 @@ class Config:
     model: ModelConfig = field(default_factory=ModelConfig)
 
 
+def _read_yaml(path: Path) -> dict:
+    """Lit un YAML en dict ; renvoie ``{}`` si absent ou si le contenu n'est pas un mapping."""
+    if not path.exists():
+        return {}
+    loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Fusionne ``override`` dans ``base`` (récursif sur les sous-dicts)."""
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
 def load_config(path: Path | None = None) -> Config:
-    """Charge la configuration depuis ``config.yaml`` avec des valeurs par défaut.
+    """Charge la configuration et renvoie un :class:`Config` résolu.
+
+    Sans ``path`` : lit ``config.yaml`` puis applique ``config.local.yaml`` en
+    surcharge s'il existe. Avec ``path`` explicite (tests) : lit uniquement ce
+    fichier, sans surcharge locale.
 
     Les clés inconnues sont ignorées. Le chemin de la socket est toujours
     recalculé (jamais pris dans le fichier) pour rester cohérent entre processus.
     """
-    config_path = path or _DEFAULT_CONFIG_PATH
-    data: dict = {}
-    if config_path.exists():
-        loaded = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-        if isinstance(loaded, dict):
-            data = loaded
+    if path is not None:
+        data = _read_yaml(path)
+    else:
+        data = _deep_merge(
+            _read_yaml(_DEFAULT_CONFIG_PATH), _read_yaml(_LOCAL_CONFIG_PATH)
+        )
 
     ui_raw = data.get("ui") or {}
     allowed_ui = {"theme", "width", "height"}

@@ -1,4 +1,11 @@
-# Configuration de My_OS — jalon 1 (socle)
+# Configuration de My_OS — défauts versionnés.
+#
+# Pour des réglages PERSONNELS (propres à votre machine, ex. backend: ollama),
+# créez un fichier config.local.yaml à la racine : il surcharge ce fichier et
+# n'est PAS versionné (cf. .gitignore). Évite les conflits git à chaque pull.
+# Exemple de config.local.yaml :
+#     model:
+#       backend: ollama
 #
 # Le chemin de la socket IPC n'est volontairement PAS configurable ici : il est
 # calculé à l'exécution ($XDG_RUNTIME_DIR/myos.sock) pour rester cohérent entre
