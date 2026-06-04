@@ -93,6 +93,23 @@ class _RaisingTool(BaseTool):
         raise RuntimeError("explosion volontaire")
 
 
+class _NormalizingReader(BaseTool):
+    """Outil niveau 0 qui normalise ~ en /home/test, pour vérifier le câblage."""
+
+    name = "read_file"
+    description = "lecture avec normalisation"
+    risk_level = 0
+
+    def normalize_args(self, args: dict) -> dict:
+        return {**args, "path": args.get("path", "").replace("~", "/home/test")}
+
+    def affected_paths(self, args: dict) -> list[str]:
+        return [args["path"]] if "path" in args else []
+
+    def run(self, args: dict) -> ToolResult:
+        return ToolResult(success=True, output=f"lu {args['path']}")
+
+
 # ---------- fixtures ----------
 
 
@@ -330,6 +347,22 @@ def test_narration_est_streamee_avant_les_outils(audit: AuditLog) -> None:
     tokens = [r for r in replies if r["type"] == "token"]
     assert tokens[0]["text"] == "je vais lire le fichier"
     assert "contenu de" in tokens[1]["text"]
+
+
+def test_normalize_args_est_applique_avant_run_et_audit(audit: AuditLog) -> None:
+    # L'outil normalise ~ → /home/test ; run ET l'audit doivent voir le chemin
+    # normalisé, preuve que normalize_args est appelé en amont (cf. fix ~).
+    plan = Plan(tool_calls=[ToolCall("read_file", {"path": "~/notes.txt"})])
+    orch, replies, _, _ = _build(
+        plan=plan, audit=audit, tools={"read_file": _NormalizingReader()}
+    )
+
+    orch.handle({"id": "m1", "content": "lis"}, replies.append)
+
+    tokens = [r for r in replies if r["type"] == "token"]
+    assert "lu /home/test/notes.txt" in tokens[0]["text"]
+    entries = audit.fetch_all()
+    assert entries[0]["args"]["path"] == "/home/test/notes.txt"
 
 
 def test_done_est_toujours_envoye_a_la_fin(audit: AuditLog) -> None:

@@ -232,3 +232,40 @@ def test_tools_avec_path_renvoient_erreur_si_path_manquant(tool: object) -> None
     result = tool.run({})  # type: ignore[attr-defined]
     assert result.success is False
     assert "path" in result.output
+
+
+# ---------- normalize_args : expansion de ~ ----------
+
+
+@pytest.mark.parametrize(
+    "tool", [ReadFile(), ListDir(), WriteFile(), CreateFile(), DeleteFile()]
+)
+def test_normalize_args_expanduser_path(tool: object) -> None:
+    out = tool.normalize_args({"path": "~/demo"})  # type: ignore[attr-defined]
+    assert not out["path"].startswith("~")
+    assert out["path"].endswith("demo")
+
+
+def test_normalize_args_preserve_les_autres_champs() -> None:
+    out = WriteFile().normalize_args({"path": "~/x.txt", "content": "garde-moi"})
+    assert not out["path"].startswith("~")
+    assert out["content"] == "garde-moi"
+
+
+def test_move_normalize_args_expanduser_src_et_dst() -> None:
+    out = MoveFile().normalize_args({"src": "~/a", "dst": "~/b"})
+    assert not out["src"].startswith("~")
+    assert not out["dst"].startswith("~")
+
+
+def test_normalize_args_laisse_les_chemins_absolus_intacts() -> None:
+    out = WriteFile().normalize_args({"path": "/tmp/x", "content": "y"})
+    assert out["path"] == "/tmp/x"
+
+
+def test_regression_securite_tilde_ssh_escalade_en_niveau_2() -> None:
+    # ~/.ssh est sensible : après normalisation, l'escalade DOIT passer à 2.
+    # Sans expansion, "~/.ssh/id_rsa" échapperait à la détection (faille).
+    tool = WriteFile()
+    normalized = tool.normalize_args({"path": "~/.ssh/id_rsa", "content": "x"})
+    assert tool.escalate(normalized) == 2

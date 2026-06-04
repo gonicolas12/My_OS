@@ -81,6 +81,19 @@ class BaseTool:
         """
         return []
 
+    def normalize_args(self, args: dict) -> dict:
+        """Renvoie des arguments normalisés AVANT évaluation des permissions.
+
+        Appelé par l'orchestrator en amont de ``policy_engine.evaluate`` : la
+        forme normalisée est donc celle vue par la blocklist, l'escalade, les
+        grants ET ``run``. Par défaut : identité.
+
+        Les outils fichiers surchargent pour expanser ``~`` afin que la
+        détection de chemin sensible voie le chemin réel (sinon ``~/.ssh``
+        échapperait à l'escalade — cf. docs/SECURITY.md §4).
+        """
+        return args
+
     def run(self, args: dict) -> ToolResult:
         """Exécute l'action. Implémentation obligatoire dans les sous-classes."""
         raise NotImplementedError

@@ -28,6 +28,22 @@ def _err(message: str) -> ToolResult:
     return ToolResult(success=False, output=message, reversible=False)
 
 
+def _expand_path_args(args: dict, *keys: str) -> dict:
+    """Copie de ``args`` où les chemins listés sont expansés (``~`` → home).
+
+    Centralise la normalisation pour que blocklist, escalade, grants et
+    exécution voient tous le même chemin réel.
+    """
+    out = dict(args)
+    for key in keys:
+        value = out.get(key)
+        # On ne touche au chemin que s'il commence par ~ : inutile (et risqué
+        # sous Windows, qui réécrirait les séparateurs) sur un chemin absolu.
+        if isinstance(value, str) and value.startswith("~"):
+            out[key] = str(Path(value).expanduser())
+    return out
+
+
 class ReadFile(BaseTool):
     """Lit le contenu d'un fichier texte."""
 
@@ -35,6 +51,9 @@ class ReadFile(BaseTool):
     description = "Lit le contenu d'un fichier texte."
     risk_level = 0
     parameters = {"path": "str — chemin absolu du fichier à lire"}
+
+    def normalize_args(self, args: dict) -> dict:
+        return _expand_path_args(args, "path")
 
     def affected_paths(self, args: dict) -> list[str]:
         path = args.get("path")
@@ -72,6 +91,9 @@ class ListDir(BaseTool):
     risk_level = 0
     parameters = {"path": "str — chemin absolu du répertoire à lister"}
 
+    def normalize_args(self, args: dict) -> dict:
+        return _expand_path_args(args, "path")
+
     def affected_paths(self, args: dict) -> list[str]:
         path = args.get("path")
         return [str(path)] if isinstance(path, str) else []
@@ -102,6 +124,9 @@ class WriteFile(BaseTool):
         "path": "str — chemin absolu du fichier à écrire",
         "content": "str — contenu textuel UTF-8",
     }
+
+    def normalize_args(self, args: dict) -> dict:
+        return _expand_path_args(args, "path")
 
     def escalate(self, args: dict) -> int:
         path = args.get("path")
@@ -141,6 +166,9 @@ class CreateFile(BaseTool):
     risk_level = 1
     parameters = {"path": "str — chemin absolu du fichier à créer"}
 
+    def normalize_args(self, args: dict) -> dict:
+        return _expand_path_args(args, "path")
+
     def escalate(self, args: dict) -> int:
         path = args.get("path")
         if isinstance(path, str) and is_sensitive_path(path):
@@ -176,6 +204,9 @@ class MoveFile(BaseTool):
         "src": "str — chemin absolu source",
         "dst": "str — chemin absolu destination",
     }
+
+    def normalize_args(self, args: dict) -> dict:
+        return _expand_path_args(args, "src", "dst")
 
     def escalate(self, args: dict) -> int:
         src = args.get("src")
@@ -224,6 +255,9 @@ class DeleteFile(BaseTool):
     description = "Supprime un fichier (refuse les répertoires)."
     risk_level = 2
     parameters = {"path": "str — chemin absolu du fichier à supprimer"}
+
+    def normalize_args(self, args: dict) -> dict:
+        return _expand_path_args(args, "path")
 
     def affected_paths(self, args: dict) -> list[str]:
         path = args.get("path")

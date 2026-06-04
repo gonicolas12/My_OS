@@ -64,6 +64,15 @@ class BaseTool:
     risk_level: int              # 0..3, OBLIGATOIRE — sinon l'outil n'est pas chargé
     parameters: dict             # schéma JSON des arguments attendus
 
+    def normalize_args(self, args: dict) -> dict:
+        """Normalise les arguments AVANT évaluation des permissions.
+        Appelé par l'orchestrator en amont de policy_engine.evaluate : la forme
+        normalisée est donc vue par la blocklist, l'escalade, les grants ET run.
+        Par défaut : identité. Les outils fichiers expansent ~ ici, pour qu'un
+        chemin comme ~/.ssh soit bien détecté sensible (sinon il échapperait à
+        l'escalade)."""
+        return args
+
     def escalate(self, args: dict) -> int:
         """Renvoie le risk_level effectif selon les arguments.
         Ne peut QUE renvoyer >= self.risk_level (jamais en dessous).

@@ -143,12 +143,15 @@ class Orchestrator:
             )
             return
 
-        decision = evaluate(tool, call.args, self._grants)
+        # Normalise les arguments (ex. expansion de ~) AVANT toute évaluation :
+        # blocklist, escalade, grants et run voient ainsi le chemin réel.
+        args = tool.normalize_args(call.args)
+        decision = evaluate(tool, args, self._grants)
 
         if decision.action == "blocked":
             self._audit.log(
                 tool=tool.name,
-                args=call.args,
+                args=args,
                 risk_level=decision.risk_level,
                 decision="blocked",
                 success=False,
@@ -170,14 +173,14 @@ class Orchestrator:
                     request_id=new_request_id(),
                     user_message_id=msg_id,
                     tool=tool,
-                    args=call.args,
+                    args=args,
                     decision=decision,
                 )
             )
             if not response.is_approval:
                 self._audit.log(
                     tool=tool.name,
-                    args=call.args,
+                    args=args,
                     risk_level=decision.risk_level,
                     decision="denied",
                     success=False,
@@ -192,18 +195,18 @@ class Orchestrator:
                 )
                 return
             if response.creates_grant and response.scope is not None:
-                self._record_grant(tool, call.args, response.scope)
+                self._record_grant(tool, args, response.scope)
             audit_decision = "approved"
 
         # auto ou confirmé : exécute.
         row_id = self._audit.log_pending(
             tool=tool.name,
-            args=call.args,
+            args=args,
             risk_level=decision.risk_level,
             decision=audit_decision,
         )
         try:
-            result = tool.run(call.args)
+            result = tool.run(args)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             self._audit.update_result(row_id, success=False, reversible=False)
             reply(
