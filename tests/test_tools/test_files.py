@@ -59,6 +59,16 @@ def test_read_file_inexistant_echoue_proprement(tmp_path: Path) -> None:
     assert "introuvable" in result.output
 
 
+def test_introuvable_suggere_le_contenu_du_parent(tmp_path: Path) -> None:
+    # Le vrai nom (demo) doit apparaître quand on vise un nom proche (demon),
+    # pour que la boucle agentique puisse se corriger.
+    (tmp_path / "demo").mkdir()
+    result = ListDir().run({"path": str(tmp_path / "demon")})
+    assert result.success is False
+    assert "introuvable" in result.output
+    assert "demo" in result.output
+
+
 def test_read_file_refuse_un_repertoire(tmp_path: Path) -> None:
     result = ReadFile().run({"path": str(tmp_path)})
     assert result.success is False

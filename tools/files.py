@@ -23,9 +23,32 @@ from tools.base_tool import BaseTool, ToolResult
 _MAX_READ_BYTES = 1_000_000  # 1 Mio — au-delà l'outil renvoie un message tronqué
 
 
+_MAX_SUGGESTIONS = 40
+
+
 def _err(message: str) -> ToolResult:
     """Construit un ToolResult d'échec lisible."""
     return ToolResult(success=False, output=message, reversible=False)
+
+
+def _not_found(label: str, path: str) -> ToolResult:
+    """Échec « introuvable » enrichi du contenu du dossier parent.
+
+    Aide la boucle agentique à se corriger : si le modèle se trompe d'un
+    caractère (``demon`` au lieu de ``demo``), le vrai nom apparaît dans la
+    suggestion et il peut réessayer. ``list_dir`` du parent étant de toute
+    façon une lecture autorisée, on n'expose rien de plus.
+    """
+    message = f"{label} : introuvable : {path}"
+    parent = Path(path).parent
+    try:
+        if parent.is_dir():
+            entries = sorted(p.name for p in parent.iterdir())[:_MAX_SUGGESTIONS]
+            if entries:
+                message += f". Le dossier {parent} contient : {', '.join(entries)}"
+    except OSError:
+        pass
+    return _err(message)
 
 
 def _expand_path_args(args: dict, *keys: str) -> dict:
@@ -65,7 +88,7 @@ class ReadFile(BaseTool):
             return _err("read_file : argument 'path' manquant ou invalide")
         target = Path(path)
         if not target.exists():
-            return _err(f"read_file : fichier introuvable : {path}")
+            return _not_found("read_file", path)
         if not target.is_file():
             return _err(f"read_file : pas un fichier : {path}")
         try:
@@ -104,7 +127,7 @@ class ListDir(BaseTool):
             return _err("list_dir : argument 'path' manquant ou invalide")
         target = Path(path)
         if not target.exists():
-            return _err(f"list_dir : répertoire introuvable : {path}")
+            return _not_found("list_dir", path)
         if not target.is_dir():
             return _err(f"list_dir : pas un répertoire : {path}")
         try:
@@ -234,7 +257,7 @@ class MoveFile(BaseTool):
             return _err("move_file : argument 'dst' manquant ou invalide")
         source = Path(src)
         if not source.exists():
-            return _err(f"move_file : source introuvable : {src}")
+            return _not_found("move_file (source)", src)
         destination = Path(dst)
         try:
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -269,7 +292,7 @@ class DeleteFile(BaseTool):
             return _err("delete_file : argument 'path' manquant ou invalide")
         target = Path(path)
         if not target.exists():
-            return _err(f"delete_file : introuvable : {path}")
+            return _not_found("delete_file", path)
         if target.is_dir():
             return _err(
                 f"delete_file : refuse de supprimer un répertoire : {path} "
