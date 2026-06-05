@@ -46,8 +46,16 @@ def _build_model(model_config: ModelConfig) -> Model:
     if backend == "ollama":
         from models.local_llm import OllamaClient  # pylint: disable=import-outside-toplevel
 
-        _log.info("Modèle : Ollama (%s)", model_config.name)
-        return OllamaClient(model=model_config.name, host=model_config.host)
+        _log.info(
+            "Modèle : Ollama (%s, raisonnement %s)",
+            model_config.name,
+            "activé" if model_config.think else "désactivé",
+        )
+        return OllamaClient(
+            model=model_config.name,
+            host=model_config.host,
+            think=model_config.think,
+        )
     if backend != "stub":
         _log.warning(
             "Backend modèle inconnu %r, repli sur le stub à base de règles",

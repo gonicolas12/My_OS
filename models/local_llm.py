@@ -10,7 +10,7 @@ Pour l'activer côté VM :
 
 .. code-block:: bash
 
-   ollama pull qwen3.5:2b   # ~2.5 Go
+   ollama pull qwen3.5:4b
    # puis démarrer myosd avec OllamaClient injecté à la place de StubRuleModel
 
 Sécurité (cf. SECURITY §2.2) : le contenu de fichiers lu par le LLM via
@@ -80,7 +80,7 @@ def _to_ollama(messages: list[dict]) -> list[dict]:
     return out
 
 
-DEFAULT_MODEL = "qwen3.5:2b"
+DEFAULT_MODEL = "qwen3.5:4b"
 
 # Le prompt système oriente le modèle mais ne lui confère AUCUNE autorité :
 # toute action passe ensuite par le policy_engine (CLAUDE.md invariant 1).
@@ -242,8 +242,10 @@ class OllamaClient:
         model: str = DEFAULT_MODEL,
         host: str | None = None,
         client: ollama.Client | None = None,
+        think: bool = False,
     ) -> None:
         self._model = model
+        self._think = think
         self._client = client if client is not None else _make_ollama_client(host)
         # System prompt + contexte réel de la machine, calculé une fois.
         self._system_prompt = _SYSTEM_PROMPT + _system_context()
@@ -266,6 +268,7 @@ class OllamaClient:
             ],
             tools=FILE_TOOLS_SCHEMA,
             stream=True,
+            think=self._think,
         )
         narration_parts: list[str] = []
         tool_calls: list[ToolCall] = []

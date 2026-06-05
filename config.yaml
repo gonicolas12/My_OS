@@ -27,7 +27,10 @@ ui:
 #   backend: stub    -> StubRuleModel (regex FR/EN, pas besoin d'Ollama)
 #   backend: ollama  -> client local Ollama avec tool calling (nécessite
 #                       `ollama serve` + `ollama pull <name>` dans la VM)
+#   think: raisonnement natif du modèle. false = réactif (recommandé pour un
+#          assistant au raccourci) ; true = meilleure qualité mais latence ↑↑.
 model:
   backend: stub
-  name: qwen3.5:2b
+  name: qwen3.5:4b
+  think: false
   # host: http://127.0.0.1:11434   # par défaut, laisser commenté

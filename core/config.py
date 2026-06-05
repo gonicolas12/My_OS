@@ -63,8 +63,9 @@ class ModelConfig:
     """Choix du backend modèle utilisé par l'orchestrator."""
 
     backend: str = "stub"  # "stub" | "ollama"
-    name: str = "qwen3.5:2b"  # modèle Ollama si backend="ollama"
+    name: str = "qwen3.5:4b"  # modèle Ollama si backend="ollama"
     host: str | None = None  # URL HTTP Ollama (None = défaut local)
+    think: bool = False  # raisonnement natif du modèle (latence ↑ ; OFF = réactif)
 
 
 def default_audit_db_path() -> Path:
@@ -124,7 +125,7 @@ def load_config(path: Path | None = None) -> Config:
     ui = UIConfig(**{k: v for k, v in ui_raw.items() if k in allowed_ui})
 
     model_raw = data.get("model") or {}
-    allowed_model = {"backend", "name", "host"}
+    allowed_model = {"backend", "name", "host", "think"}
     model = ModelConfig(**{k: v for k, v in model_raw.items() if k in allowed_model})
 
     return Config(

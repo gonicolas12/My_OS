@@ -75,6 +75,18 @@ def test_plan_active_le_streaming() -> None:
     assert fake.last_kwargs["stream"] is True
 
 
+def test_think_desactive_par_defaut() -> None:
+    fake = _FakeClient([_chunk()])
+    OllamaClient(client=fake).respond(_history("ping"))
+    assert fake.last_kwargs["think"] is False
+
+
+def test_think_active_si_demande() -> None:
+    fake = _FakeClient([_chunk()])
+    OllamaClient(client=fake, think=True).respond(_history("ping"))
+    assert fake.last_kwargs["think"] is True
+
+
 def test_plan_passe_le_systeme_et_le_user_au_modele() -> None:
     fake = _FakeClient([_chunk()])
     OllamaClient(client=fake).respond(_history("salut"))
