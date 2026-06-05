@@ -64,6 +64,15 @@ class BaseTool:
     risk_level: int              # 0..3, OBLIGATOIRE — sinon l'outil n'est pas chargé
     parameters: dict             # schéma JSON des arguments attendus
 
+    def normalize_args(self, args: dict) -> dict:
+        """Normalise les arguments AVANT évaluation des permissions.
+        Appelé par l'orchestrator en amont de policy_engine.evaluate : la forme
+        normalisée est donc vue par la blocklist, l'escalade, les grants ET run.
+        Par défaut : identité. Les outils fichiers expansent ~ ici, pour qu'un
+        chemin comme ~/.ssh soit bien détecté sensible (sinon il échapperait à
+        l'escalade)."""
+        return args
+
     def escalate(self, args: dict) -> int:
         """Renvoie le risk_level effectif selon les arguments.
         Ne peut QUE renvoyer >= self.risk_level (jamais en dessous).
@@ -159,22 +168,81 @@ def has_api_key() -> bool: ...
 
 ## 6 · Daemon (`daemon/orchestrator.py`)
 
-Boucle de traitement d'une requête :
+Boucle agentique de traitement d'une requête :
 
 ```
-1. Reçoit user_message (via ipc_server)
-2. Construit le contexte : le contenu lu est étiqueté comme DONNÉE non fiable
-3. Appelle models.cloud_router.generate(...)
-4. Pour chaque tool_request émis par le modèle :
-     a. decision = policy_engine.evaluate(tool, args, grants)
-     b. si "blocked" → refuse, journalise, informe le LLM
-     c. si "confirm" → envoie confirmation_needed au popup, attend la réponse
-     d. si "auto" (ou confirmé) → audit_log.log(...) puis tool.run(args)
-     e. renvoie le ToolResult au modèle pour la suite du raisonnement
-5. Stream les tokens vers le popup, puis "done"
+1. Reçoit user_message (via ipc_server) ; initialise l'historique [user]
+2. BOUCLE (jusqu'à réponse finale sans outil, ou MAX_STEPS) :
+   a. plan = model.respond(historique, on_token)  → narration streamée au popup
+   b. si plan.tool_calls est vide → réponse finale, on sort de la boucle
+   c. pour chaque tool_call :
+        - decision = policy_engine.evaluate(tool, normalize_args(args), grants)
+        - "blocked" → journalise, message ; pas d'exécution
+        - "confirm" → confirmation_needed au popup, attend la réponse
+        - "auto"/confirmé → audit_log puis tool.run(args)
+        - le résultat (succès/échec/blocage/refus) est réinjecté dans
+          l'historique comme message role=tool (DONNÉE non fiable)
+   d. reboucle : le modèle observe les résultats et décide de la suite
+3. Stream les tokens vers le popup, puis "done"
 ```
+
+Garde-fou : `MAX_STEPS` borne le nombre d'itérations (anti-boucle infinie).
+Le contenu réinjecté est une **donnée**, jamais une instruction (SECURITY §2.2).
 
 ---
+
+## 6.5 · Modèle injectable côté orchestrator (jalon 2)
+
+Au jalon 2, l'orchestrator dépend d'un **modèle** par injection (testable
+avec un mock). Le streaming `generate()` du §5 reste prévu pour la suite ;
+le contrat minimal utilisé pour décider quels outils appeler est :
+
+```python
+@dataclass
+class ToolCall:
+    tool: str          # nom déclaré par l'outil (cf. BaseTool.name)
+    args: dict         # arguments à passer à tool.run()
+
+@dataclass
+class Plan:
+    narration: str            # texte du tour (peut être vide)
+    tool_calls: list[ToolCall]  # actions de ce tour ; vide = réponse finale
+
+TokenCallback = Callable[[str], None]
+
+# Historique conversationnel (Message) :
+#   {"role": "user", "content": str}
+#   {"role": "assistant", "content": str, "tool_calls": list[ToolCall]}
+#   {"role": "tool", "tool": str, "content": str}   # résultat réinjecté
+Message = dict
+
+class Model(Protocol):
+    def respond(self, messages: list[Message], on_token: TokenCallback | None = None) -> Plan: ...
+```
+
+**Boucle agentique.** `respond` reçoit l'historique complet et renvoie le
+`Plan` d'**un tour**. Un `Plan` sans `tool_calls` est une réponse finale (fin de
+boucle). Sinon, l'orchestrator exécute les outils, réinjecte leurs résultats
+(messages `role=tool`) et rappelle `respond` — jusqu'à `MAX_STEPS` (§6).
+
+**Streaming.** Si `on_token` est fourni, le modèle l'appelle pour chaque
+fragment de texte au fil de la génération (le popup l'affiche en direct).
+`Plan.narration` reste le texte complet du tour (audit / tests). Un modèle qui
+ignore `on_token` reste valide : repli qui envoie `Plan.narration` en une fois.
+Le daemon stream chaque fragment au popup via un message `token` (cf. §1).
+
+L'orchestrator dépend aussi d'un fournisseur de confirmation injectable
+(pour découpler l'attente bloquante du transport IPC, et permettre les tests) :
+
+```python
+class ConfirmationProvider(Protocol):
+    def ask(self, payload: dict) -> ConfirmationResponse: ...
+```
+
+En production, l'implémentation envoie `payload` (un `confirmation_needed`
+construit par `permissions.confirmation.build_confirmation_needed`) sur la
+socket, attend le `confirmation_response` côté daemon et le parse avec
+`parse_confirmation_response`. En tests, on injecte un stub.
 
 ## 7 · Règle d'or
 

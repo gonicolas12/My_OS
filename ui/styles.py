@@ -30,6 +30,18 @@ QLineEdit {{
 QLineEdit:focus {{
     border: 1px solid {_ACCENT};
 }}
+QWidget#dragbar {{
+    background-color: #2d2d2d;
+}}
+QLabel#dragtitle {{
+    color: {_ACCENT};
+    font-weight: bold;
+}}
+QLabel#status {{
+    color: #9a9a9a;
+    font-style: italic;
+    padding-left: 2px;
+}}
 """
 
 

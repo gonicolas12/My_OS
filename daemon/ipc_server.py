@@ -25,14 +25,22 @@ _log = get_logger("myosd.ipc")
 # Callback appelé à la réception d'un user_message.
 # Reçoit (message, reply) où reply(dict) renvoie un message au popup émetteur.
 UserMessageHandler = Callable[[dict, Callable[[dict], None]], None]
+# Callback pour les confirmation_response (route vers IPCConfirmationProvider).
+ConfirmationResponseHandler = Callable[[dict], None]
 
 
 class IPCServer:
     """Serveur socket Unix pour la communication daemon ↔ popup."""
 
-    def __init__(self, socket_path: Path, on_user_message: UserMessageHandler) -> None:
+    def __init__(
+        self,
+        socket_path: Path,
+        on_user_message: UserMessageHandler,
+        on_confirmation_response: ConfirmationResponseHandler | None = None,
+    ) -> None:
         self._socket_path = socket_path
         self._on_user_message = on_user_message
+        self._on_confirmation_response = on_confirmation_response
         self._server_sock: socket.socket | None = None
         self._client_sock: socket.socket | None = None
         self._client_lock = threading.Lock()
@@ -100,8 +108,7 @@ class IPCServer:
     def _read_loop(self, conn: socket.socket) -> None:
         try:
             for message in iter_messages(conn):
-                if message.get("type") == "user_message":
-                    self._on_user_message(message, lambda m: self._reply(conn, m))
+                self._dispatch(message, conn)
         except OSError:
             pass
         finally:
@@ -110,6 +117,25 @@ class IPCServer:
                     self._client_sock = None
             self._close_quietly(conn)
             _log.info("Popup déconnecté")
+
+    def _dispatch(self, message: dict, conn: socket.socket) -> None:
+        """Route un message reçu selon son ``type``.
+
+        ``user_message`` est traité dans un thread dédié pour ne pas bloquer la
+        boucle de lecture (l'orchestrator peut attendre une confirmation, et
+        celle-ci arrive précisément via cette boucle — sans thread on
+        deadlockerait).
+        """
+        mtype = message.get("type")
+        if mtype == "user_message":
+            threading.Thread(
+                target=self._on_user_message,
+                args=(message, lambda m: self._reply(conn, m)),
+                name="ipc-user-msg",
+                daemon=True,
+            ).start()
+        elif mtype == "confirmation_response" and self._on_confirmation_response:
+            self._on_confirmation_response(message)
 
     def _reply(self, conn: socket.socket, message: dict) -> None:
         try:
