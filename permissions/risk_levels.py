@@ -27,7 +27,35 @@ TOOL_RISK_LEVELS: dict[str, int] = {
     # Processus (jalon 3)
     "list_processes": 0,
     "kill_process": 2,
+    # Paquets / pacman (jalon 3)
+    "search_package": 0,
+    "install_package": 1,  # niveau 1 (install) MAIS requires_elevation (root)
+    "update_system": 2,
+    "remove_package": 2,
 }
+
+# Paquets dont la suppression rendrait le système inutilisable : la blocklist
+# refuse ``remove_package`` sur ces noms (niveau 3, jamais exécuté). Liste
+# volontairement conservatrice — on bloque le socle, pas chaque dépendance.
+CRITICAL_PACKAGES: frozenset[str] = frozenset(
+    {
+        "base",
+        "bash",
+        "coreutils",
+        "filesystem",
+        "gcc-libs",
+        "glibc",
+        "linux",
+        "linux-firmware",
+        "pacman",
+        "pacman-mirrorlist",
+        "polkit",
+        "systemd",
+        "systemd-libs",
+        "sudo",
+        "util-linux",
+    }
+)
 
 # Préfixes système toujours sensibles (liste « standard » choisie au jalon 2).
 SYSTEM_SENSITIVE_ROOTS: tuple[str, ...] = (

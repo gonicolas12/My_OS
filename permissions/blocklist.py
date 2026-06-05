@@ -16,9 +16,10 @@ Au jalon 2 (outils fichiers), on bloque :
 Au jalon 3, on ajoute :
 
 * ``kill_process`` sur PID ≤ 1 (init/systemd, kernel) ou sur le daemon
-  lui-même (``os.getpid()``) — se tuer ou tuer init n'est jamais permis.
-
-Cette liste évoluera encore (pacman ``-R`` sur paquets critiques, etc.).
+  lui-même (``os.getpid()``) — se tuer ou tuer init n'est jamais permis ;
+* ``remove_package`` (pacman ``-R``) sur un paquet **critique** du système
+  (``pacman``, ``glibc``, ``systemd``, ``linux``, ``bash``, …) dont la
+  suppression rendrait la machine inutilisable.
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ import os
 import posixpath
 from collections.abc import Callable
 
-from permissions.risk_levels import SYSTEM_SENSITIVE_ROOTS
+from permissions.risk_levels import CRITICAL_PACKAGES, SYSTEM_SENSITIVE_ROOTS
 
 # Cibles supplémentaires (au-delà de SYSTEM_SENSITIVE_ROOTS) dont la racine
 # ne doit jamais être supprimée ou déplacée.
@@ -110,12 +111,27 @@ def _block_kill(args: dict) -> bool:
     return pid <= 1 or pid == os.getpid()
 
 
+def _block_remove(args: dict) -> bool:
+    """Bloque ``remove_package`` sur un paquet critique du système.
+
+    La comparaison est insensible à la casse et tolère les espaces parasites ;
+    un nom non-chaîne n'est pas bloqué ici (l'outil le rejettera à la
+    validation). Seul le **nom de paquet** compte (on ignore d'éventuels suffixes
+    de version, que pacman n'attend de toute façon pas pour ``-R``).
+    """
+    name = args.get("name")
+    if not isinstance(name, str):
+        return False
+    return name.strip().lower() in CRITICAL_PACKAGES
+
+
 _BLOCKERS: dict[str, tuple[Callable[[dict], bool], ...]] = {
     "delete_file": (_block_delete,),
     "move_file": (_block_move,),
     "write_file": (_block_write,),
     "create_file": (_block_write,),
     "kill_process": (_block_kill,),
+    "remove_package": (_block_remove,),
 }
 
 
