@@ -21,12 +21,36 @@ côté orchestrator quelle que soit la « décision » du modèle.
 
 from __future__ import annotations
 
+import getpass
+import os
 from typing import TYPE_CHECKING, Any
 
 from daemon.orchestrator import Plan, TokenCallback, ToolCall
 
 if TYPE_CHECKING:
     import ollama
+
+
+def _system_context() -> str:
+    """Contexte réel de la machine injecté au modèle (évite les chemins inventés).
+
+    Le modèle ne connaît pas le nom d'utilisateur ni le HOME : sans ça, il
+    hallucine des chemins (ex. ``/home/user/...``). On les lui fournit
+    explicitement. Rien de secret ici (HOME et username sont publics).
+    """
+    home = os.path.expanduser("~")
+    try:
+        user = getpass.getuser()
+    except (OSError, KeyError):
+        user = home.rstrip("/").rsplit("/", 1)[-1] or "?"
+    return (
+        "\n\nContexte de la machine (chemins RÉELS à utiliser) :\n"
+        f"- nom d'utilisateur : {user}\n"
+        f"- dossier personnel (~) : {home}\n"
+        "N'invente JAMAIS de nom d'utilisateur ni de chemin. Pour viser le "
+        "dossier personnel, écris ~ (ex. ~/demo) ou le chemin absolu réel "
+        "ci-dessus — jamais un nom d'utilisateur deviné."
+    )
 
 
 def _make_ollama_client(host: str | None) -> Any:
@@ -208,6 +232,8 @@ class OllamaClient:
     ) -> None:
         self._model = model
         self._client = client if client is not None else _make_ollama_client(host)
+        # System prompt + contexte réel de la machine, calculé une fois.
+        self._system_prompt = _SYSTEM_PROMPT + _system_context()
 
     def respond(
         self, messages: list[dict], on_token: TokenCallback | None = None
@@ -222,7 +248,7 @@ class OllamaClient:
         stream = self._client.chat(
             model=self._model,
             messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "system", "content": self._system_prompt},
                 *_to_ollama(messages),
             ],
             tools=FILE_TOOLS_SCHEMA,

@@ -3,6 +3,7 @@
 # pylint: disable=missing-function-docstring,use-implicit-booleaness-not-comparison
 from __future__ import annotations
 
+import os
 from types import SimpleNamespace
 from typing import Any
 
@@ -83,6 +84,15 @@ def test_plan_passe_le_systeme_et_le_user_au_modele() -> None:
     roles = [m["role"] for m in messages]
     assert roles == ["system", "user"]
     assert messages[1]["content"] == "salut"
+
+
+def test_system_prompt_inclut_le_contexte_machine() -> None:
+    # Le HOME réel est injecté pour éviter que le modèle invente un chemin
+    # (ex. /home/user/... au lieu du vrai dossier personnel).
+    fake = _FakeClient([_chunk()])
+    OllamaClient(client=fake).respond(_history("salut"))
+    system = fake.last_kwargs["messages"][0]["content"]
+    assert os.path.expanduser("~") in system
 
 
 def test_plan_envoie_le_schema_des_outils() -> None:
