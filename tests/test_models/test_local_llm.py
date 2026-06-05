@@ -160,11 +160,18 @@ def test_arguments_none_devient_dict_vide() -> None:
 
 
 def test_historique_est_traduit_au_format_ollama() -> None:
-    # L'historique générique (user/assistant/tool) est passé après le system.
+    # L'historique générique (user/assistant/tool) est passé après le system,
+    # avec les tool_calls reconstruits (cohérence du template de chat Qwen).
+    from daemon.orchestrator import ToolCall
+
     fake = _FakeClient([_chunk(content="ok")])
     history = [
         {"role": "user", "content": "liste /tmp"},
-        {"role": "assistant", "content": "je liste", "tool_calls": []},
+        {
+            "role": "assistant",
+            "content": "je liste",
+            "tool_calls": [ToolCall("list_dir", {"path": "/tmp"})],
+        },
         {"role": "tool", "tool": "list_dir", "content": "a.txt b.txt"},
     ]
     OllamaClient(client=fake).respond(history)
@@ -173,5 +180,13 @@ def test_historique_est_traduit_au_format_ollama() -> None:
     sent = fake.last_kwargs["messages"]
     assert sent[0]["role"] == "system"
     assert [m["role"] for m in sent[1:]] == ["user", "assistant", "tool"]
-    # Le résultat d'outil est transmis comme message role=tool.
-    assert sent[-1] == {"role": "tool", "content": "a.txt b.txt"}
+    # L'assistant porte ses tool_calls au format Ollama.
+    assert sent[2]["tool_calls"] == [
+        {"function": {"name": "list_dir", "arguments": {"path": "/tmp"}}}
+    ]
+    # Le résultat d'outil est transmis avec le nom de l'outil.
+    assert sent[-1] == {
+        "role": "tool",
+        "content": "a.txt b.txt",
+        "tool_name": "list_dir",
+    }

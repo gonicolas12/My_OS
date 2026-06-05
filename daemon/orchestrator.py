@@ -282,8 +282,15 @@ class Orchestrator:
 
     @staticmethod
     def _emit_result(msg_id: str, reply: Reply, text: str) -> str:
-        """Envoie le résultat au popup (token) et le renvoie pour réinjection."""
-        reply({"type": "token", "id": msg_id, "text": text + "\n"})
+        """Envoie le résultat au popup et le renvoie (brut) pour réinjection.
+
+        Côté popup, le résultat est formaté comme un bloc citation markdown
+        (sur ses propres lignes), pour le séparer visuellement de la narration
+        du modèle. La valeur **renvoyée** (réinjectée au modèle) reste le texte
+        brut, sans balisage.
+        """
+        quoted = "\n\n> " + text.replace("\n", "\n> ") + "\n\n"
+        reply({"type": "token", "id": msg_id, "text": quoted})
         return text
 
     def _record_grant(self, tool: BaseTool, args: dict, scope: str) -> None:

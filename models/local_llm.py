@@ -64,19 +64,38 @@ def _make_ollama_client(host: str | None) -> Any:
 def _to_ollama(messages: list[dict]) -> list[dict]:
     """Traduit l'historique générique de l'orchestrator au format chat d'Ollama.
 
-    - ``user`` / ``assistant`` : passés tels quels (contenu seul ; les tool_calls
-      de l'assistant ne sont pas renvoyés, le résultat ``tool`` suffit au contexte).
-    - ``tool`` : ``{"role": "tool", "content": <résultat>}`` (Ollama identifie le
-      résultat par sa position ; le champ ``tool`` interne est informatif).
+    Les ``tool_calls`` de l'assistant **doivent** être reconstruits : sans la
+    correspondance assistant(tool_calls) → tool(result), le template de chat de
+    Qwen devient incohérent et le modèle génère des appels malformés (erreur de
+    parsing côté Ollama). On renvoie donc :
+
+    - ``user`` : ``{"role": "user", "content": ...}`` ;
+    - ``assistant`` : contenu + ``tool_calls`` au format Ollama si présents ;
+    - ``tool`` : ``{"role": "tool", "content": <résultat>, "tool_name": <outil>}``.
     """
     out: list[dict] = []
     for message in messages:
         role = message.get("role")
         content = str(message.get("content", ""))
-        if role == "tool":
-            out.append({"role": "tool", "content": content})
-        elif role in ("user", "assistant"):
-            out.append({"role": role, "content": content})
+        if role == "assistant":
+            entry: dict = {"role": "assistant", "content": content}
+            tool_calls = message.get("tool_calls") or []
+            if tool_calls:
+                entry["tool_calls"] = [
+                    {"function": {"name": call.tool, "arguments": call.args}}
+                    for call in tool_calls
+                ]
+            out.append(entry)
+        elif role == "tool":
+            out.append(
+                {
+                    "role": "tool",
+                    "content": content,
+                    "tool_name": str(message.get("tool", "")),
+                }
+            )
+        elif role == "user":
+            out.append({"role": "user", "content": content})
     return out
 
 
