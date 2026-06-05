@@ -3,6 +3,8 @@
 # pylint: disable=missing-function-docstring
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from permissions.blocklist import is_blocked
@@ -102,3 +104,30 @@ def test_path_non_string_n_est_pas_bloque() -> None:
     # Si le LLM envoie un type bizarre, on refuse de paniquer.
     assert is_blocked("delete_file", {"path": 42}) is False
     assert is_blocked("delete_file", {"path": None}) is False
+
+
+# --- Processus (jalon 3) ---
+
+
+@pytest.mark.parametrize("pid", [1, 0, -1, "1", "0"])
+def test_kill_process_pid_init_ou_kernel_est_bloque(pid: object) -> None:
+    # PID ≤ 1 = init/systemd/kernel : jamais tuable, même via grant.
+    assert is_blocked("kill_process", {"pid": pid}) is True
+
+
+def test_kill_process_du_daemon_lui_meme_est_bloque() -> None:
+    assert is_blocked("kill_process", {"pid": os.getpid()}) is True
+    assert is_blocked("kill_process", {"pid": str(os.getpid())}) is True
+
+
+def test_kill_process_pid_utilisateur_quelconque_n_est_pas_bloque() -> None:
+    # Un PID applicatif normal n'est pas dans la blocklist (niveau 2 ailleurs).
+    autre = os.getpid() + 1
+    assert is_blocked("kill_process", {"pid": autre}) is False
+
+
+def test_kill_process_pid_invalide_ou_absent_n_est_pas_bloque() -> None:
+    # Non parsable → la blocklist ne bloque pas ; l'outil rejette proprement.
+    assert is_blocked("kill_process", {"pid": "abc"}) is False
+    assert is_blocked("kill_process", {}) is False
+    assert is_blocked("kill_process", {"pid": None}) is False

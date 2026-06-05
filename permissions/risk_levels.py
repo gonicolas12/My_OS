@@ -17,12 +17,16 @@ from pathlib import Path
 
 # Niveaux de base par outil (avant escalade par arguments).
 TOOL_RISK_LEVELS: dict[str, int] = {
+    # Fichiers (jalon 2)
     "read_file": 0,
     "list_dir": 0,
     "write_file": 1,
     "move_file": 1,
     "create_file": 1,
     "delete_file": 2,
+    # Processus (jalon 3)
+    "list_processes": 0,
+    "kill_process": 2,
 }
 
 # Préfixes système toujours sensibles (liste « standard » choisie au jalon 2).
