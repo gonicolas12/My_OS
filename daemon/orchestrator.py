@@ -69,7 +69,9 @@ TokenCallback = Callable[[str], None]
 Message = dict
 
 # Plafond d'itérations de la boucle agentique (anti-boucle infinie).
-MAX_STEPS = 6
+# Assez haut pour des tâches multi-fichiers (lister + N actions + vérif + conclusion),
+# assez bas pour borner un modèle qui s'emballerait.
+MAX_STEPS = 12
 
 
 class Model(Protocol):
@@ -161,7 +163,10 @@ class Orchestrator:
                 {
                     "type": "token",
                     "id": user_message_id,
-                    "text": "\n(Limite d'itérations atteinte — tâche interrompue.)\n",
+                    "text": (
+                        f"\n\n_(J'ai atteint la limite de {MAX_STEPS} étapes. "
+                        "Si la tâche n'est pas terminée, relancez-moi pour continuer.)_\n"
+                    ),
                 }
             )
 

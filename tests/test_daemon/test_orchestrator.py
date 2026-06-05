@@ -527,5 +527,5 @@ def test_max_steps_interrompt_la_boucle(audit: AuditLog) -> None:
 
     # La boucle s'arrête : un seul outil exécuté par tour, plafonné à MAX_STEPS.
     assert len(audit.fetch_all()) == MAX_STEPS
-    assert any("Limite d'itérations" in t for t in _tokens(replies))
+    assert any(f"limite de {MAX_STEPS} étapes" in t for t in _tokens(replies))
     assert replies[-1]["type"] == "done"
