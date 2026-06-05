@@ -26,7 +26,7 @@ Communication sur une **socket Unix locale**. Le daemon est le **serveur** (cré
 ```json
 { "type": "token", "id": "uuid", "text": "fragment de réponse" }
 { "type": "tool_request", "id": "uuid", "tool": "move_file", "args": {...}, "risk_level": 1, "summary": "Déplacer 3 fichiers vers Images/" }
-{ "type": "confirmation_needed", "id": "uuid", "request_id": "uuid-action", "tool": "delete_file", "args": {...}, "risk_level": 2, "summary": "..." }
+{ "type": "confirmation_needed", "id": "uuid", "request_id": "uuid-action", "tool": "delete_file", "args": {...}, "risk_level": 2, "summary": "...", "requires_elevation": false }
 { "type": "done", "id": "uuid" }
 { "type": "error", "id": "uuid", "message": "..." }
 ```
@@ -79,6 +79,14 @@ class BaseTool:
         Par défaut : retourne self.risk_level."""
         return self.risk_level
 
+    def requires_elevation(self, args: dict) -> bool:
+        """True si l'action nécessite root (polkit). ORTHOGONAL au risk_level :
+        pacman -S est niveau 1 mais exige root ; delete_file est niveau 2 sans
+        root. Lu par le policy_engine pour Decision.requires_elevation ;
+        l'élévation réelle est faite à l'exécution par core.elevation.run_command.
+        Par défaut : False."""
+        return False
+
     def run(self, args: dict) -> "ToolResult":
         """Exécute l'action. N'est appelé QUE si policy_engine a validé.
         Ne fait AUCUNE vérification de permission lui-même (séparation des responsabilités)."""
@@ -112,13 +120,16 @@ def evaluate(tool: BaseTool, args: dict, grants: "SessionGrants") -> Decision:
     """Décide du sort d'une action.
     Ordre impératif :
       1. blocklist.is_blocked(tool, args) → si oui, action="blocked"
-      2. level = tool.escalate(args)
-      3. si grants couvre déjà cette action → action="auto"
-      4. sinon level 0 → "auto" ; level 1/2 → "confirm" ; level 3 → "blocked"
+      2. level = max(tool.escalate(args), tool.risk_level)
+      3. requires_elevation = (level == 2) or tool.requires_elevation(args)
+      4. si grants couvre déjà cette action → action="auto"
+      5. sinon level 0 → "auto" ; level 1/2 → "confirm" ; level 3 → "blocked"
     """
 ```
 
 Le `policy_engine` est le **point de passage unique**. Aucune action n'atteint `tool.run()` sans une `Decision` avec `action in ("auto",)` ou une confirmation utilisateur explicite.
+
+**Élévation (`requires_elevation`).** Ce drapeau est **orthogonal au niveau de risque** : il vaut vrai si l'action est de niveau 2 (sensible) *ou* si l'outil déclare avoir besoin de root via `tool.requires_elevation(args)`. Exemple : `install_package` (pacman `-S`) est de **niveau 1** (confirmation simple) mais `requires_elevation=True` (root requis). À l'inverse `delete_file` est niveau 2 sans élévation réelle. Le drapeau est purement consultatif (UI + payload `confirmation_needed`) ; **l'élévation effective** est réalisée à l'exécution par l'outil via `core.elevation.run_command(..., elevate=True)` (cf. §8), jamais par le daemon lui-même qui reste utilisateur.
 
 ---
 
@@ -243,6 +254,47 @@ En production, l'implémentation envoie `payload` (un `confirmation_needed`
 construit par `permissions.confirmation.build_confirmation_needed`) sur la
 socket, attend le `confirmation_response` côté daemon et le parse avec
 `parse_confirmation_response`. En tests, on injecte un stub.
+
+## 8 · Exécution système & élévation (`core/elevation.py`) — jalon 3
+
+Point **unique** d'exécution de sous-processus système (pacman, etc.), dans
+l'esprit du choke point du `policy_engine`. Jamais de `shell=True` ; l'argv est
+une `list[str]` déjà découpée et validée par l'outil appelant.
+
+```python
+@dataclass
+class CommandResult:
+    returncode: int
+    stdout: str
+    stderr: str
+    @property
+    def ok(self) -> bool: ...   # returncode == 0
+
+def run_command(
+    argv: list[str], *,
+    elevate: bool = False,         # True → préfixe "pkexec" (root ponctuel via polkit)
+    timeout: float = 120.0,
+    runner: Runner | None = None,  # injectable pour les tests (défaut: subprocess.run)
+) -> CommandResult: ...
+```
+
+**Élévation polkit.** Quand `elevate=True`, la commande est préfixée par
+`pkexec` : l'agent polkit de la session (Xfce/X11) demande le mot de passe et
+accorde root **uniquement à ce processus**, pour **cette action**. Le daemon
+reste utilisateur (cf. SECURITY menace 3). Aucun fichier `.policy` dédié n'est
+requis : `pkexec` utilise la policy par défaut `org.freedesktop.policykit.exec`.
+
+**Robustesse.** En cas de `pkexec`/binaire introuvable (`FileNotFoundError`) ou
+de timeout, `run_command` renvoie un `CommandResult` d'échec lisible (codes 127
+/ 124) au lieu de lever — l'orchestrator réinjecte ce texte comme **donnée**.
+
+**Contrat outils système.** Un outil qui pilote le système :
+- construit son argv en **liste** (jamais de concaténation shell) ;
+- **valide ses entrées** avant (noms de paquets via regex, PID entier, etc.) ;
+- déclare `requires_elevation(args)` cohérent avec son usage de `elevate=True` ;
+- ne vérifie aucune permission lui-même (rôle du `policy_engine`).
+
+---
 
 ## 7 · Règle d'or
 

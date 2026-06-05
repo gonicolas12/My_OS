@@ -172,6 +172,36 @@ def test_outil_sans_chemin_affecte_et_niveau_0_donne_auto() -> None:
     assert decision.action == "auto"
 
 
+class _Level1NeedsRoot(BaseTool):
+    """Outil de niveau 1 qui exige root (modèle pacman -S : install = niveau 1)."""
+
+    name = "install_package"
+    description = "installe un paquet"
+    risk_level = 1
+
+    def requires_elevation(self, args: dict) -> bool:
+        return True
+
+    def run(self, args: dict) -> ToolResult:
+        return ToolResult(success=True, output="")
+
+
+def test_niveau_1_avec_requires_elevation_demande_elevation() -> None:
+    # Élévation orthogonale au niveau : niveau 1 (confirm simple) MAIS root requis.
+    decision = evaluate(_Level1NeedsRoot(), {"name": "vlc"}, _empty_grants())
+    assert decision.action == "confirm"
+    assert decision.risk_level == 1
+    assert decision.requires_elevation is True
+
+
+def test_grant_session_conserve_le_flag_elevation() -> None:
+    grants = SessionGrants()
+    grants.grant("install_package", "session")
+    decision = evaluate(_Level1NeedsRoot(), {"name": "vlc"}, grants)
+    assert decision.action == "auto"
+    assert decision.requires_elevation is True
+
+
 def test_summary_contient_le_niveau_et_le_nom_de_l_outil() -> None:
     decision = evaluate(_Level1(), {"path": "/tmp/x"}, _empty_grants())
     assert "niveau 1" in decision.summary

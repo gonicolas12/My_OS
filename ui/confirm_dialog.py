@@ -51,9 +51,15 @@ class ConfirmDialog(QDialog):
         tool = str(self._payload.get("tool", ""))
         summary = str(self._payload.get("summary", ""))
         args = self._payload.get("args", {})
+        # Élévation : flag explicite du policy_engine (orthogonal au niveau ; un
+        # pacman -S de niveau 1 l'exige). Repli sur risk_level>=2 pour les
+        # anciens payloads sans le champ.
+        requires_elevation = bool(
+            self._payload.get("requires_elevation", risk_level >= 2)
+        )
 
         title = "Confirmation requise"
-        if risk_level >= 2:
+        if requires_elevation:
             title += " — privilèges élevés"
         self.setWindowTitle(title)
         self.setModal(True)
@@ -80,10 +86,10 @@ class ConfirmDialog(QDialog):
         )
         layout.addWidget(details)
 
-        if risk_level >= 2:
+        if requires_elevation:
             warning = QLabel(
-                "⚠ Action sensible : peut nécessiter une élévation de privilèges "
-                "via polkit lors de l'exécution."
+                "⚠ Action sensible : nécessite une élévation de privilèges "
+                "via polkit (mot de passe administrateur) lors de l'exécution."
             )
             warning.setWordWrap(True)
             warning.setStyleSheet("color: #ff8c00;")

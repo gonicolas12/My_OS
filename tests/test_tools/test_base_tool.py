@@ -72,6 +72,10 @@ def test_affected_paths_par_defaut_est_vide() -> None:
     assert _Dummy().affected_paths({"any": "arg"}) == []
 
 
+def test_requires_elevation_par_defaut_est_false() -> None:
+    assert _Dummy().requires_elevation({"any": "arg"}) is False
+
+
 def test_normalize_args_par_defaut_est_identite() -> None:
     args = {"path": "~/x", "content": "y"}
     assert _Dummy().normalize_args(args) == args
