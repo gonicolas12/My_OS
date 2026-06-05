@@ -7,7 +7,9 @@ Au jalon 2, le daemon assemble la chaîne complète :
 * :class:`permissions.session_grants.SessionGrants` — grants en RAM.
 * :class:`models.stub_model.StubRuleModel` — modèle stub (remplacé par
   Ollama au jalon 7-8).
-* :class:`tools.files.FILE_TOOLS` — outils du jalon 2.
+* outils des jalons 2 et 3, fusionnés : ``FILE_TOOLS`` (fichiers) +
+  ``PROCESS_TOOLS`` (psutil) + ``PACKAGE_TOOLS`` (pacman) + ``SETTINGS_TOOLS``
+  (D-Bus / pactl).
 * :class:`daemon.confirmation_provider.IPCConfirmationProvider` — pont IPC
   pour les confirmations modales du popup.
 * :class:`daemon.orchestrator.Orchestrator` — choke point logique.
@@ -31,9 +33,28 @@ from daemon.orchestrator import Model, Orchestrator
 from models.stub_model import StubRuleModel
 from permissions.audit_log import AuditLog
 from permissions.session_grants import SessionGrants
+from tools.base_tool import BaseTool
 from tools.files import FILE_TOOLS
+from tools.packages import PACKAGE_TOOLS
+from tools.processes import PROCESS_TOOLS
+from tools.system_settings import SETTINGS_TOOLS
 
 _log = get_logger("myosd")
+
+
+def _build_tools() -> dict[str, BaseTool]:
+    """Fusionne tous les registres d'outils câblés dans le daemon.
+
+    Les noms d'outils sont uniques entre registres (vérifié par les tests) ;
+    en cas de collision accidentelle, la dernière source l'emporterait, donc on
+    garde des préfixes de noms distincts par domaine.
+    """
+    return {
+        **FILE_TOOLS,
+        **PROCESS_TOOLS,
+        **PACKAGE_TOOLS,
+        **SETTINGS_TOOLS,
+    }
 
 
 def _build_model(model_config: ModelConfig) -> Model:
@@ -83,7 +104,7 @@ class Daemon:  # pylint: disable=too-many-instance-attributes
         )
         self._orchestrator = Orchestrator(
             model=self._model,
-            tools=FILE_TOOLS,
+            tools=_build_tools(),
             grants=self._grants,
             audit=self._audit,
             confirmation_provider=self._confirmation,

@@ -3,6 +3,8 @@
 # pylint: disable=missing-function-docstring
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from permissions.blocklist import is_blocked
@@ -102,3 +104,63 @@ def test_path_non_string_n_est_pas_bloque() -> None:
     # Si le LLM envoie un type bizarre, on refuse de paniquer.
     assert is_blocked("delete_file", {"path": 42}) is False
     assert is_blocked("delete_file", {"path": None}) is False
+
+
+# --- Processus (jalon 3) ---
+
+
+@pytest.mark.parametrize("pid", [1, 0, -1, "1", "0"])
+def test_kill_process_pid_init_ou_kernel_est_bloque(pid: object) -> None:
+    # PID ≤ 1 = init/systemd/kernel : jamais tuable, même via grant.
+    assert is_blocked("kill_process", {"pid": pid}) is True
+
+
+def test_kill_process_du_daemon_lui_meme_est_bloque() -> None:
+    assert is_blocked("kill_process", {"pid": os.getpid()}) is True
+    assert is_blocked("kill_process", {"pid": str(os.getpid())}) is True
+
+
+def test_kill_process_pid_utilisateur_quelconque_n_est_pas_bloque() -> None:
+    # Un PID applicatif normal n'est pas dans la blocklist (niveau 2 ailleurs).
+    autre = os.getpid() + 1
+    assert is_blocked("kill_process", {"pid": autre}) is False
+
+
+def test_kill_process_pid_invalide_ou_absent_n_est_pas_bloque() -> None:
+    # Non parsable → la blocklist ne bloque pas ; l'outil rejette proprement.
+    assert is_blocked("kill_process", {"pid": "abc"}) is False
+    assert is_blocked("kill_process", {}) is False
+    assert is_blocked("kill_process", {"pid": None}) is False
+
+
+# --- Paquets (jalon 3) ---
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["pacman", "glibc", "systemd", "linux", "bash", "coreutils", "filesystem", "sudo"],
+)
+def test_remove_package_d_un_paquet_critique_est_bloque(name: str) -> None:
+    assert is_blocked("remove_package", {"name": name}) is True
+
+
+def test_remove_package_critique_insensible_a_la_casse_et_aux_espaces() -> None:
+    assert is_blocked("remove_package", {"name": " Pacman "}) is True
+    assert is_blocked("remove_package", {"name": "SYSTEMD"}) is True
+
+
+@pytest.mark.parametrize("name", ["vlc", "firefox", "python-pip", "htop"])
+def test_remove_package_d_un_paquet_normal_n_est_pas_bloque(name: str) -> None:
+    # Désinstaller une appli quelconque reste possible (niveau 2, confirmation).
+    assert is_blocked("remove_package", {"name": name}) is False
+
+
+def test_remove_package_nom_absent_ou_non_string_n_est_pas_bloque() -> None:
+    assert is_blocked("remove_package", {}) is False
+    assert is_blocked("remove_package", {"name": None}) is False
+    assert is_blocked("remove_package", {"name": 42}) is False
+
+
+def test_install_package_n_est_jamais_dans_la_blocklist() -> None:
+    # Installer un paquet n'est jamais niveau 3 (au pire confirmation + root).
+    assert is_blocked("install_package", {"name": "pacman"}) is False

@@ -72,6 +72,22 @@ class BaseTool:
         return self.risk_level
 
     # pylint: disable-next=unused-argument
+    def requires_elevation(self, args: dict) -> bool:
+        """``True`` si l'action nécessite une élévation de privilège (polkit).
+
+        **Orthogonal au ``risk_level``** : un outil peut être en niveau 1
+        (confirmation simple) tout en exigeant root — typiquement
+        ``pacman -S`` (installer = niveau 1, mais root requis). À l'inverse,
+        une suppression de fichier utilisateur est niveau 2 sans aucun root.
+
+        Le ``policy_engine`` lit cette déclaration pour renseigner
+        ``Decision.requires_elevation`` (cf. docs/INTERFACES.md §3) ; l'élévation
+        réelle est faite à l'exécution par :func:`core.elevation.run_command`
+        avec ``elevate=True``. Par défaut : ``False``.
+        """
+        return False
+
+    # pylint: disable-next=unused-argument
     def affected_paths(self, args: dict) -> list[str]:
         """Chemins concernés par l'action, utilisés pour matcher les grants.
 

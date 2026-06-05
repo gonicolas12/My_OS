@@ -7,7 +7,7 @@ import os
 from types import SimpleNamespace
 from typing import Any
 
-from models.local_llm import FILE_TOOLS_SCHEMA, OllamaClient
+from models.local_llm import ALL_TOOLS_SCHEMA, FILE_TOOLS_SCHEMA, OllamaClient
 
 
 def _history(user_message: str) -> list[dict]:
@@ -107,7 +107,7 @@ def test_system_prompt_inclut_le_contexte_machine() -> None:
     assert os.path.expanduser("~") in system
 
 
-def test_plan_envoie_le_schema_des_outils() -> None:
+def test_plan_envoie_le_schema_de_tous_les_outils() -> None:
     fake = _FakeClient([_chunk()])
     OllamaClient(client=fake).respond(_history("ping"))
 
@@ -115,12 +115,26 @@ def test_plan_envoie_le_schema_des_outils() -> None:
     tools = fake.last_kwargs["tools"]
     names = {t["function"]["name"] for t in tools}
     assert names == {
+        # fichiers (jalon 2)
         "read_file",
         "list_dir",
         "write_file",
         "create_file",
         "move_file",
         "delete_file",
+        # processus (jalon 3)
+        "list_processes",
+        "kill_process",
+        # paquets (jalon 3)
+        "search_package",
+        "install_package",
+        "remove_package",
+        "update_system",
+        # réglages (jalon 3)
+        "set_brightness",
+        "set_volume",
+        "set_mute",
+        "set_wifi",
     }
 
 
@@ -148,6 +162,25 @@ def test_schema_couvre_tous_les_outils_du_jalon_2() -> None:
         assert fn["description"]
         assert fn["parameters"]["type"] == "object"
         assert fn["parameters"]["required"]
+
+
+def test_all_tools_schema_coherent_avec_registres_et_risk_levels() -> None:
+    # Garde-fou contre la dérive de la triple déclaration connue
+    # (outil Python ↔ schéma JSON ↔ table risk_levels).
+    from daemon.myosd import _build_tools
+    from permissions.risk_levels import TOOL_RISK_LEVELS
+
+    schema_names = {entry["function"]["name"] for entry in ALL_TOOLS_SCHEMA}
+    registry_names = set(_build_tools())
+
+    assert schema_names == registry_names
+    # Tout outil câblé a un niveau de risque statique déclaré.
+    assert registry_names <= set(TOOL_RISK_LEVELS)
+    # Chaque schéma est bien formé.
+    for entry in ALL_TOOLS_SCHEMA:
+        assert entry["type"] == "function"
+        assert entry["function"]["description"]
+        assert entry["function"]["parameters"]["type"] == "object"
 
 
 def test_arguments_none_devient_dict_vide() -> None:

@@ -13,15 +13,22 @@ Au jalon 2 (outils fichiers), on bloque :
 * l'écriture / création directe d'une cible critique du bootloader
   (``/boot/grub/grub.cfg``, ``/boot/vmlinuz*``, ``/boot/initramfs*``, ``/boot/efi*``).
 
-Cette liste évoluera avec les jalons suivants (pacman, D-Bus, processus).
+Au jalon 3, on ajoute :
+
+* ``kill_process`` sur PID ≤ 1 (init/systemd, kernel) ou sur le daemon
+  lui-même (``os.getpid()``) — se tuer ou tuer init n'est jamais permis ;
+* ``remove_package`` (pacman ``-R``) sur un paquet **critique** du système
+  (``pacman``, ``glibc``, ``systemd``, ``linux``, ``bash``, …) dont la
+  suppression rendrait la machine inutilisable.
 """
 
 from __future__ import annotations
 
+import os
 import posixpath
 from collections.abc import Callable
 
-from permissions.risk_levels import SYSTEM_SENSITIVE_ROOTS
+from permissions.risk_levels import CRITICAL_PACKAGES, SYSTEM_SENSITIVE_ROOTS
 
 # Cibles supplémentaires (au-delà de SYSTEM_SENSITIVE_ROOTS) dont la racine
 # ne doit jamais être supprimée ou déplacée.
@@ -80,11 +87,51 @@ def _block_write(args: dict) -> bool:
     return _is_bootloader_target(args.get("path"))
 
 
+def _coerce_pid(value: object) -> int | None:
+    """Convertit un PID (int ou chaîne décimale) en entier ; ``None`` si invalide."""
+    if isinstance(value, bool):  # bool est un int : on l'exclut explicitement
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().lstrip("-").isdigit():
+        return int(value.strip())
+    return None
+
+
+def _block_kill(args: dict) -> bool:
+    """Bloque la terminaison d'init/kernel (PID ≤ 1) ou du daemon lui-même.
+
+    Un PID invalide (non parsable) n'est *pas* bloqué ici : c'est l'outil qui
+    le rejettera proprement. On bloque uniquement les cibles dont on est sûr
+    qu'elles sont interdites.
+    """
+    pid = _coerce_pid(args.get("pid"))
+    if pid is None:
+        return False
+    return pid <= 1 or pid == os.getpid()
+
+
+def _block_remove(args: dict) -> bool:
+    """Bloque ``remove_package`` sur un paquet critique du système.
+
+    La comparaison est insensible à la casse et tolère les espaces parasites ;
+    un nom non-chaîne n'est pas bloqué ici (l'outil le rejettera à la
+    validation). Seul le **nom de paquet** compte (on ignore d'éventuels suffixes
+    de version, que pacman n'attend de toute façon pas pour ``-R``).
+    """
+    name = args.get("name")
+    if not isinstance(name, str):
+        return False
+    return name.strip().lower() in CRITICAL_PACKAGES
+
+
 _BLOCKERS: dict[str, tuple[Callable[[dict], bool], ...]] = {
     "delete_file": (_block_delete,),
     "move_file": (_block_move,),
     "write_file": (_block_write,),
     "create_file": (_block_write,),
+    "kill_process": (_block_kill,),
+    "remove_package": (_block_remove,),
 }
 
 

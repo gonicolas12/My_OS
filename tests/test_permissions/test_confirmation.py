@@ -31,7 +31,12 @@ def test_new_request_id_renvoie_une_chaine_non_vide() -> None:
 
 
 def test_build_confirmation_needed_contient_tous_les_champs() -> None:
-    decision = Decision(action="confirm", risk_level=2, summary="suppr de /tmp/x")
+    decision = Decision(
+        action="confirm",
+        risk_level=2,
+        summary="suppr de /tmp/x",
+        requires_elevation=True,
+    )
     payload = build_confirmation_needed(
         request_id="rid-1",
         user_message_id="uid-1",
@@ -47,6 +52,7 @@ def test_build_confirmation_needed_contient_tous_les_champs() -> None:
         "args": {"path": "/tmp/x"},
         "risk_level": 2,
         "summary": "suppr de /tmp/x",
+        "requires_elevation": True,
     }
 
 

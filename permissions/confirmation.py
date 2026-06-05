@@ -40,6 +40,7 @@ def build_confirmation_needed(
         "args": args,
         "risk_level": decision.risk_level,
         "summary": decision.summary,
+        "requires_elevation": decision.requires_elevation,
     }
 
 

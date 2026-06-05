@@ -111,14 +111,27 @@ Ton rôle : comprendre la demande et agir sur le système via des outils, pas \
 seulement répondre. Tu tournes en local (modèle Qwen via Ollama) ; les données \
 de l'utilisateur restent sur sa machine.
 
-Ce que tu sais faire aujourd'hui (outils fichiers) :
+Ce que tu sais faire aujourd'hui :
+Fichiers :
 - lire un fichier (read_file), lister un dossier (list_dir) ;
 - écrire/créer un fichier (write_file, create_file) ;
 - déplacer un fichier ou dossier (move_file) ;
 - supprimer un fichier (delete_file).
+Processus :
+- lister les processus triés par mémoire ou CPU (list_processes) — pour répondre \
+à « qu'est-ce qui consomme ma RAM / mon CPU ? » ;
+- terminer un processus par son PID (kill_process).
+Paquets (pacman) :
+- rechercher un paquet (search_package), installer (install_package), \
+désinstaller (remove_package), mettre à jour tout le système (update_system).
+Réglages système :
+- luminosité de l'écran (set_brightness, 0–100), volume (set_volume, 0–100), \
+couper/rétablir le son (set_mute), activer/désactiver le Wi-Fi (set_wifi).
 Pour agir, appelle l'outil approprié via le mécanisme de tool calling. Si la \
 demande ne nécessite aucune action (question générale, salutation), réponds \
-simplement en texte, sans outil.
+simplement en texte, sans outil. L'installation d'un paquet ou une action \
+système peut demander un mot de passe administrateur (élévation polkit) : c'est \
+géré automatiquement, propose l'action normalement.
 
 Tâches en plusieurs étapes — va jusqu'au bout :
 - Décompose la demande et ENCHAÎNE les outils. Ne t'arrête pas après une simple \
@@ -251,6 +264,203 @@ FILE_TOOLS_SCHEMA: list[dict[str, Any]] = [
 ]
 
 
+# Schémas des outils processus du jalon 3.
+PROCESS_TOOLS_SCHEMA: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "list_processes",
+            "description": (
+                "Liste les processus en cours, triés par mémoire (défaut) ou CPU. "
+                "Utile pour voir ce qui consomme les ressources."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sort_by": {
+                        "type": "string",
+                        "enum": ["memory", "cpu"],
+                        "description": "Critère de tri (défaut : memory)",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Nombre de processus à afficher (défaut 10)",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "kill_process",
+            "description": "Termine un processus identifié par son PID.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pid": {
+                        "type": "integer",
+                        "description": "Identifiant du processus à terminer",
+                    }
+                },
+                "required": ["pid"],
+            },
+        },
+    },
+]
+
+
+# Schémas des outils paquets (pacman) du jalon 3.
+PACKAGE_TOOLS_SCHEMA: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_package",
+            "description": "Recherche un paquet disponible dans les dépôts officiels.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Terme à rechercher (nom ou motif)",
+                    }
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "install_package",
+            "description": "Installe un paquet depuis les dépôts officiels.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Nom exact du paquet à installer",
+                    }
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "remove_package",
+            "description": (
+                "Désinstalle un paquet (et ses dépendances devenues orphelines)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Nom exact du paquet à désinstaller",
+                    }
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_system",
+            "description": "Met à jour la liste des paquets et tout le système installé.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+]
+
+
+# Schémas des outils de réglages système (D-Bus / pactl) du jalon 3.
+SETTINGS_TOOLS_SCHEMA: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "set_brightness",
+            "description": "Règle la luminosité de l'écran en pourcentage (0 à 100).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "percent": {
+                        "type": "integer",
+                        "description": "Niveau de luminosité voulu, 0 à 100",
+                    }
+                },
+                "required": ["percent"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_volume",
+            "description": "Règle le volume du son en pourcentage (0 à 100).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "percent": {
+                        "type": "integer",
+                        "description": "Niveau de volume voulu, 0 à 100",
+                    }
+                },
+                "required": ["percent"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_mute",
+            "description": "Coupe (true) ou rétablit (false) le son.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "muted": {
+                        "type": "boolean",
+                        "description": "true pour couper le son, false pour le rétablir",
+                    }
+                },
+                "required": ["muted"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_wifi",
+            "description": "Active (true) ou désactive (false) le Wi-Fi.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "enabled": {
+                        "type": "boolean",
+                        "description": "true pour activer, false pour désactiver",
+                    }
+                },
+                "required": ["enabled"],
+            },
+        },
+    },
+]
+
+
+# Schéma complet envoyé au modèle : tous les outils câblés dans le daemon.
+# (La duplication outil Python ↔ schéma JSON ↔ table risk_levels est connue ;
+# centraliser est un chantier à part — cf. plan jalon 3.)
+ALL_TOOLS_SCHEMA: list[dict[str, Any]] = [
+    *FILE_TOOLS_SCHEMA,
+    *PROCESS_TOOLS_SCHEMA,
+    *PACKAGE_TOOLS_SCHEMA,
+    *SETTINGS_TOOLS_SCHEMA,
+]
+
+
 class OllamaClient:
     """Implémentation :class:`daemon.orchestrator.Model` via Ollama HTTP local."""
 
@@ -285,7 +495,7 @@ class OllamaClient:
                 {"role": "system", "content": self._system_prompt},
                 *_to_ollama(messages),
             ],
-            tools=FILE_TOOLS_SCHEMA,
+            tools=ALL_TOOLS_SCHEMA,
             stream=True,
             think=self._think,
         )

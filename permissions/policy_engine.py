@@ -14,8 +14,13 @@ Ordre impératif (cf. docs/INTERFACES.md §3) :
    comportement des sous-classes (défense en profondeur).
 3. Si les grants déjà accordés couvrent les chemins affectés → ``auto``
    au niveau effectif courant.
-4. Décision par niveau : 0 → auto ; 1 → confirm ; 2 → confirm avec élévation
-   (polkit attendu) ; 3 → bloqué.
+4. Décision par niveau : 0 → auto ; 1 → confirm ; 2 → confirm ; 3 → bloqué.
+
+``requires_elevation`` (polkit) est **orthogonal au niveau** : il est vrai si
+l'action est de niveau 2 (sensible) **ou** si l'outil déclare explicitement
+avoir besoin de root via ``tool.requires_elevation(args)`` — typiquement un
+``pacman -S`` de niveau 1 (cf. docs/INTERFACES.md §3). L'élévation réelle se
+fait à l'exécution dans :func:`core.elevation.run_command`, pas ici.
 """
 
 from __future__ import annotations
@@ -65,26 +70,29 @@ def evaluate(tool: BaseTool, args: dict, grants: SessionGrants) -> Decision:
     # 2. Risque effectif (l'escalade ne peut qu'augmenter).
     level = _effective_risk(tool, args)
 
+    # Élévation : orthogonale au niveau. Vrai si action sensible (niveau 2) OU si
+    # l'outil déclare avoir besoin de root (ex. pacman -S, niveau 1 mais root).
+    elevation = level == 2 or tool.requires_elevation(args)
+
     # 3. Grant existant → auto, quel que soit le niveau (sauf blocklist déjà éliminée).
     if grants.is_granted(tool.name, tool.affected_paths(args)):
         return Decision(
             action="auto",
             risk_level=level,
             summary=_summary(tool, args, level),
+            requires_elevation=elevation,
         )
 
     # 4. Décision par niveau.
     summary = _summary(tool, args, level)
     if level == 0:
         return Decision(action="auto", risk_level=0, summary=summary)
-    if level == 1:
-        return Decision(action="confirm", risk_level=1, summary=summary)
-    if level == 2:
+    if level in (1, 2):
         return Decision(
             action="confirm",
-            risk_level=2,
+            risk_level=level,
             summary=summary,
-            requires_elevation=True,
+            requires_elevation=elevation,
         )
     # Niveau 3 hors blocklist : ne devrait pas survenir mais on bloque par sécurité.
     return Decision(action="blocked", risk_level=3, summary=summary)
