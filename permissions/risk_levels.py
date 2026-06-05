@@ -32,6 +32,11 @@ TOOL_RISK_LEVELS: dict[str, int] = {
     "install_package": 1,  # niveau 1 (install) MAIS requires_elevation (root)
     "update_system": 2,
     "remove_package": 2,
+    # Réglages système / D-Bus (jalon 3)
+    "set_brightness": 1,
+    "set_volume": 1,
+    "set_mute": 1,
+    "set_wifi": 1,
 }
 
 # Paquets dont la suppression rendrait le système inutilisable : la blocklist
