@@ -75,8 +75,12 @@ def _format_result(success_prefix: str, result: object) -> ToolResult:
     return _err(f"{success_prefix} : échec\n{detail}")
 
 
-class _PacmanTool(BaseTool):
-    """Base commune : porte un ``runner`` injectable vers ``run_command``."""
+class _PacmanTool(BaseTool):  # pylint: disable=abstract-method
+    """Base commune (abstraite) : porte un ``runner`` injectable vers ``run_command``.
+
+    ``run`` est volontairement non surchargée ici — chaque sous-classe concrète
+    l'implémente ; cette classe n'est jamais instanciée directement.
+    """
 
     risk_level = 0  # surchargé par chaque sous-classe ; présent pour BaseTool
 

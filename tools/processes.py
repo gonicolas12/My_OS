@@ -65,6 +65,7 @@ class _PsutilProvider:
     """Provider de production basé sur ``psutil`` (import paresseux)."""
 
     def list_processes(self) -> list[ProcessInfo]:
+        """Collecte les processus visibles via ``psutil`` (inaccessibles ignorés)."""
         import psutil  # pylint: disable=import-outside-toplevel
 
         infos: list[ProcessInfo] = []
@@ -87,11 +88,13 @@ class _PsutilProvider:
         return infos
 
     def pid_exists(self, pid: int) -> bool:
+        """``True`` si un processus de ce PID existe (délégué à ``psutil``)."""
         import psutil  # pylint: disable=import-outside-toplevel
 
         return psutil.pid_exists(pid)
 
     def kill(self, pid: int) -> None:
+        """Envoie SIGTERM ; mappe les erreurs psutil vers les exceptions stdlib."""
         import psutil  # pylint: disable=import-outside-toplevel
 
         try:
@@ -116,6 +119,19 @@ def _coerce_pid(value: object) -> int | None:
     if isinstance(value, str) and value.strip().lstrip("-").isdigit():
         return int(value.strip())
     return None
+
+
+def _kill_error_message(pid: int, exc: OSError) -> str:
+    """Message lisible selon le type d'erreur rencontré en tuant ``pid``."""
+    if isinstance(exc, PermissionError):
+        return (
+            f"kill_process : permission refusée pour le PID {pid} "
+            "(processus d'un autre utilisateur ou root — nécessiterait des "
+            "privilèges administrateur)"
+        )
+    if isinstance(exc, ProcessLookupError):
+        return f"kill_process : le PID {pid} a disparu avant l'envoi du signal"
+    return f"kill_process : {exc}"
 
 
 class ListProcesses(BaseTool):
@@ -191,18 +207,10 @@ class KillProcess(BaseTool):
             return _err(f"kill_process : aucun processus avec le PID {pid}")
         try:
             self._provider.kill(pid)
-        except PermissionError:
-            return _err(
-                f"kill_process : permission refusée pour le PID {pid} "
-                "(processus d'un autre utilisateur ou root — nécessiterait des "
-                "privilèges administrateur)"
-            )
-        except ProcessLookupError:
-            return _err(
-                f"kill_process : le PID {pid} a disparu avant l'envoi du signal"
-            )
         except OSError as exc:
-            return _err(f"kill_process : {exc}")
+            # PermissionError et ProcessLookupError sont des sous-classes d'OSError :
+            # un seul except, message adapté au type (limite les points de sortie).
+            return _err(_kill_error_message(pid, exc))
         return ToolResult(
             success=True, output=f"Signal d'arrêt envoyé au PID {pid}", reversible=False
         )

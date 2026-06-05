@@ -91,6 +91,7 @@ class _SystemBackend:
     n'appelle pas une méthode (le module reste importable sous Windows/tests)."""
 
     def set_brightness(self, percent: int) -> None:
+        """Règle la luminosité via D-Bus logind (``Session.SetBrightness``)."""
         import os  # pylint: disable=import-outside-toplevel
 
         import dbus  # pylint: disable=import-outside-toplevel
@@ -115,6 +116,7 @@ class _SystemBackend:
         iface.SetBrightness("backlight", device, dbus.UInt32(value))
 
     def set_volume(self, percent: int) -> None:
+        """Règle le volume via ``pactl`` (sans shell, argv liste)."""
         from core.elevation import run_command  # pylint: disable=import-outside-toplevel
 
         result = run_command(
@@ -126,6 +128,7 @@ class _SystemBackend:
             )
 
     def set_mute(self, muted: bool) -> None:
+        """Coupe/rétablit le son via ``pactl`` (sans shell, argv liste)."""
         from core.elevation import run_command  # pylint: disable=import-outside-toplevel
 
         result = run_command(
@@ -135,6 +138,7 @@ class _SystemBackend:
             raise RuntimeError(result.stderr.strip() or "échec de pactl set-sink-mute")
 
     def set_wifi(self, enabled: bool) -> None:
+        """Active/désactive le Wi-Fi via D-Bus NetworkManager (``WirelessEnabled``)."""
         import dbus  # pylint: disable=import-outside-toplevel
 
         bus = dbus.SystemBus()
@@ -149,8 +153,12 @@ class _SystemBackend:
         )
 
 
-class _SettingTool(BaseTool):
-    """Base commune : porte un ``backend`` injectable (défaut : système réel)."""
+class _SettingTool(BaseTool):  # pylint: disable=abstract-method
+    """Base commune (abstraite) : porte un ``backend`` injectable.
+
+    ``run`` est volontairement non surchargée ici — chaque sous-classe concrète
+    l'implémente ; cette classe n'est jamais instanciée directement.
+    """
 
     risk_level = 1  # surchargé par chaque sous-classe ; présent pour BaseTool
 

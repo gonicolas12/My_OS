@@ -126,3 +126,17 @@ Rien de conséquent n'est silencieux.
 - [ ] Le daemon ne nécessite pas root pour démarrer
 - [ ] Les contenus lus sont traités comme données, pas instructions
 - [ ] Les actions destructrices sont journalisées avant exécution
+
+### Pilotage système (jalon 3)
+
+- Toute commande système passe par `core/elevation.py` (`run_command`), qui
+  **interdit `shell=True`** et exige une `list[str]` ; les noms de paquets et
+  requêtes sont **validés par regex** avant construction de l'argv (anti-injection
+  d'arguments / shell).
+- **Élévation** : ponctuelle, par action, via `pkexec` (polkit). Le daemon ne
+  passe jamais root ; `requires_elevation` est orthogonal au `risk_level`
+  (ex. `install_package` = niveau 1 **+** root).
+- **Blocklist (niveau 3)** étendue : `kill_process` sur PID ≤ 1 ou le daemon
+  lui-même ; `remove_package` sur un paquet critique du système.
+- La sortie des commandes (pacman, etc.) est une **donnée** non fiable, jamais
+  une instruction.

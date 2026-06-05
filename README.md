@@ -173,10 +173,11 @@ Construire **dans cet ordre**. Chaque jalon produit quelque chose de démontrabl
 - **Démo** : « range mon dossier Téléchargements par type » → plan → confirmation → exécution.
 
 ### Jalon 3 — Pilotage système *(~3-4 semaines, démo « wow »)*
-- [ ] Outil paquets (`pacman` wrappé)
-- [ ] Outils paramètres via D-Bus (luminosité, audio, réseau)
-- [ ] Outils processus (`psutil` : lister, tuer)
-- [ ] Chaque outil déclaré avec son `risk_level`
+- [x] Outil paquets (`pacman` wrappé) — `search`/`install`/`remove`/`update`
+- [x] Outils paramètres via D-Bus (luminosité, audio, réseau) — `set_brightness`/`set_volume`/`set_mute`/`set_wifi`
+- [x] Outils processus (`psutil` : lister, tuer) — `list_processes`/`kill_process`
+- [x] Chaque outil déclaré avec son `risk_level`
+- [x] Élévation `polkit` ponctuelle par action (`pkexec` via `core/elevation.py`), daemon jamais root
 - **Démo** : « installe VLC », « baisse la luminosité », « qu'est-ce qui mange ma RAM ? ».
 
 ### Jalon 4 — Routeur cloud *(~1-2 semaines)*
