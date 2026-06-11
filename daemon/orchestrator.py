@@ -1,8 +1,16 @@
 """Orchestrator : pilote une requête utilisateur via une boucle agentique.
 
+L'orchestrator **conserve la conversation entre les requêtes** : l'historique
+(user / assistant / tool) est gardé en mémoire côté daemon — le cœur de
+confiance — d'une requête à l'autre, et non reconstruit par le popup à chaque
+envoi (cf. docs/INTERFACES.md §6, §1 message ``reset``). Ainsi le modèle « se
+souvient » du tour précédent. L'historique est **borné** (``MAX_HISTORY_MESSAGES``)
+pour ne pas croître sans fin — et, au jalon 4, pour limiter ce qui part au cloud.
+Un message ``reset`` (raccourci du popup) le vide pour repartir à zéro.
+
 Cycle de vie (cf. docs/INTERFACES.md §6 + §6.5) :
 
-1. Reçoit ``user_message`` du popup ; initialise l'historique conversationnel.
+1. Reçoit ``user_message`` ; **ajoute** le message à l'historique persistant.
 2. **Boucle** (jusqu'à une réponse finale ou ``MAX_STEPS``) :
    a. appelle le modèle (:meth:`Model.respond`) avec l'historique, streame sa
       narration vers le popup (``token``) ;
@@ -28,6 +36,7 @@ sans Ollama (cf. CLAUDE.md « mock-first »).
 from __future__ import annotations
 
 import posixpath
+import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -72,6 +81,12 @@ Message = dict
 # Assez haut pour des tâches multi-fichiers (lister + N actions + vérif + conclusion),
 # assez bas pour borner un modèle qui s'emballerait.
 MAX_STEPS = 12
+
+# Plafond de messages conservés dans l'historique persistant. Borne la mémoire,
+# le contexte envoyé au modèle, et (jalon 4) le volume de données partant au
+# cloud. L'élagage ne coupe qu'à une frontière de tour (message ``user``) pour
+# ne jamais laisser un résultat d'outil orphelin de son appel (cf. _to_ollama).
+MAX_HISTORY_MESSAGES = 40
 
 
 class Model(Protocol):
@@ -118,13 +133,47 @@ class Orchestrator:
         self._grants = grants
         self._audit = audit
         self._confirmation = confirmation_provider
+        # Historique conversationnel persistant entre les requêtes (cf. en-tête
+        # du module). Protégé par un verrou car chaque user_message est traité
+        # dans un thread dédié (cf. daemon.ipc_server._dispatch).
+        self._history: list[Message] = []
+        self._history_lock = threading.Lock()
+
+    def reset_history(self) -> None:
+        """Oublie la conversation courante : repart d'un historique vide.
+
+        Déclenché par le message IPC ``reset`` (raccourci du popup, cf.
+        docs/INTERFACES.md §1). On **remplace** la liste plutôt que la vider en
+        place : un tour éventuellement en cours garde sa propre référence et se
+        termine sans corrompre la nouvelle conversation.
+        """
+        with self._history_lock:
+            self._history = []
+
+    def _trim_history_locked(self, history: list[Message]) -> None:
+        """Borne ``history`` à ``MAX_HISTORY_MESSAGES``, à appeler **sous verrou**.
+
+        N'élague que l'historique actif (si un ``reset`` l'a détaché entre-temps,
+        ne touche à rien). Coupe par l'avant puis retire les messages de tête qui
+        ne sont pas ``user`` : l'historique commence donc toujours par un tour
+        utilisateur complet — jamais un ``assistant``/``tool`` orphelin.
+        """
+        if history is not self._history:
+            return
+        while len(history) > MAX_HISTORY_MESSAGES:
+            history.pop(0)
+        while history and history[0].get("role") != "user":
+            history.pop(0)
 
     def handle(self, message: dict, reply: Reply) -> None:
         """Traite un ``user_message`` via la boucle agentique, jusqu'au ``done``.
 
-        Tant que le modèle demande des outils, on les exécute (via le choke
-        point) et on réinjecte les résultats dans l'historique, puis on rappelle
-        le modèle — jusqu'à une réponse finale sans outil ou ``MAX_STEPS``.
+        Le message est **ajouté à l'historique persistant** (mémoire entre
+        requêtes). Tant que le modèle demande des outils, on les exécute (via le
+        choke point) et on réinjecte les résultats dans ce même historique, puis
+        on rappelle le modèle — jusqu'à une réponse finale sans outil ou
+        ``MAX_STEPS``. Le modèle reçoit une **copie** de l'historique à chaque
+        tour (snapshot), pour ne pas être affecté par une mutation concurrente.
         """
         user_message_id = str(message.get("id") or "")
         content = message.get("content")
@@ -138,26 +187,33 @@ class Orchestrator:
             )
             return
 
-        messages: list[Message] = [{"role": "user", "content": content}]
+        # Ajoute le tour utilisateur à l'historique persistant et capture la
+        # référence de la conversation courante (un reset concurrent la
+        # remplacerait sans affecter ce tour en cours).
+        with self._history_lock:
+            self._history.append({"role": "user", "content": content})
+            history = self._history
 
         for _step in range(MAX_STEPS):
-            plan = self._run_model(messages, user_message_id, reply)
+            plan = self._run_model(list(history), user_message_id, reply)
             if plan is None:
                 return  # erreur déjà signalée au popup
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": plan.narration,
-                    "tool_calls": plan.tool_calls,
-                }
-            )
+            with self._history_lock:
+                history.append(
+                    {
+                        "role": "assistant",
+                        "content": plan.narration,
+                        "tool_calls": plan.tool_calls,
+                    }
+                )
             if not plan.tool_calls:
                 break  # réponse finale : fin de la boucle
             for tool_call in plan.tool_calls:
                 output = self._handle_tool_call(user_message_id, tool_call, reply)
-                messages.append(
-                    {"role": "tool", "tool": tool_call.tool, "content": output}
-                )
+                with self._history_lock:
+                    history.append(
+                        {"role": "tool", "tool": tool_call.tool, "content": output}
+                    )
         else:
             reply(
                 {
@@ -169,6 +225,11 @@ class Orchestrator:
                     ),
                 }
             )
+
+        # Borne l'historique persistant après ce tour (sans casser les paires
+        # assistant↔tool ; cf. _trim_history_locked).
+        with self._history_lock:
+            self._trim_history_locked(history)
 
         reply({"type": "done", "id": user_message_id})
 

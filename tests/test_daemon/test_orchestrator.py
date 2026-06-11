@@ -13,7 +13,13 @@ from pathlib import Path
 
 import pytest
 
-from daemon.orchestrator import MAX_STEPS, Orchestrator, Plan, ToolCall
+from daemon.orchestrator import (
+    MAX_HISTORY_MESSAGES,
+    MAX_STEPS,
+    Orchestrator,
+    Plan,
+    ToolCall,
+)
 from permissions.audit_log import AuditLog
 from permissions.confirmation import ConfirmationResponse
 from permissions.session_grants import SessionGrants
@@ -529,3 +535,78 @@ def test_max_steps_interrompt_la_boucle(audit: AuditLog) -> None:
     assert len(audit.fetch_all()) == MAX_STEPS
     assert any(f"limite de {MAX_STEPS} étapes" in t for t in _tokens(replies))
     assert replies[-1]["type"] == "done"
+
+
+# ---------- mémoire conversationnelle (persistance entre requêtes) ----------
+
+
+class _RecordingModel:
+    """Enregistre l'historique reçu à chaque appel ; conclut sans outil."""
+
+    def __init__(self) -> None:
+        self.seen: list[list[dict]] = []
+
+    def respond(self, messages, on_token=None) -> Plan:
+        self.seen.append([dict(m) for m in messages])
+        return Plan()  # réponse finale (aucun outil)
+
+
+def _orch_with(model: object, audit: AuditLog) -> Orchestrator:
+    return Orchestrator(
+        model=model,
+        tools={},
+        grants=SessionGrants(),
+        audit=audit,
+        confirmation_provider=_FakeConfirmation([]),
+    )
+
+
+def test_memoire_conservee_entre_deux_requetes(audit: AuditLog) -> None:
+    model = _RecordingModel()
+    orch = _orch_with(model, audit)
+
+    orch.handle({"id": "m1", "content": "je m'appelle Nicolas"}, [].append)
+    orch.handle({"id": "m2", "content": "comment je m'appelle ?"}, [].append)
+
+    # Au 2e appel, le modèle revoit le 1er échange (mémoire persistante).
+    second = model.seen[1]
+    user_contents = [m["content"] for m in second if m["role"] == "user"]
+    assert user_contents == ["je m'appelle Nicolas", "comment je m'appelle ?"]
+    assert second[0]["role"] == "user"  # commence toujours par un tour utilisateur
+
+
+def test_reset_history_repart_de_zero(audit: AuditLog) -> None:
+    model = _RecordingModel()
+    orch = _orch_with(model, audit)
+
+    orch.handle({"id": "m1", "content": "souviens-toi du chiffre 42"}, [].append)
+    orch.reset_history()
+    orch.handle({"id": "m2", "content": "quel chiffre ?"}, [].append)
+
+    # Après reset, le 2e appel ne voit QUE son propre message.
+    assert model.seen[1] == [{"role": "user", "content": "quel chiffre ?"}]
+
+
+def test_message_vide_ne_pollue_pas_l_historique(audit: AuditLog) -> None:
+    model = _RecordingModel()
+    orch = _orch_with(model, audit)
+
+    orch.handle({"id": "m1", "content": "   "}, [].append)  # rejeté
+    orch.handle({"id": "m2", "content": "vraie question"}, [].append)
+
+    # Le message vide n'a rien ajouté : le modèle ne voit que la vraie question.
+    assert model.seen == [[{"role": "user", "content": "vraie question"}]]
+
+
+def test_historique_est_borne_et_commence_par_user(audit: AuditLog) -> None:
+    model = _RecordingModel()
+    orch = _orch_with(model, audit)
+
+    for i in range(MAX_HISTORY_MESSAGES):  # bien plus que le plafond en messages
+        orch.handle({"id": f"m{i}", "content": f"message {i}"}, [].append)
+
+    last = model.seen[-1]
+    # Borné : jamais plus que le plafond (+ le tour utilisateur courant).
+    assert len(last) <= MAX_HISTORY_MESSAGES + 1
+    # L'élagage ne laisse jamais un assistant/tool orphelin en tête.
+    assert last[0]["role"] == "user"

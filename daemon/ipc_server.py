@@ -27,9 +27,11 @@ _log = get_logger("myosd.ipc")
 UserMessageHandler = Callable[[dict, Callable[[dict], None]], None]
 # Callback pour les confirmation_response (route vers IPCConfirmationProvider).
 ConfirmationResponseHandler = Callable[[dict], None]
+# Callback pour le message de contrôle reset (vide l'historique conversationnel).
+ResetHandler = Callable[[], None]
 
 
-class IPCServer:
+class IPCServer:  # pylint: disable=too-many-instance-attributes
     """Serveur socket Unix pour la communication daemon ↔ popup."""
 
     def __init__(
@@ -37,10 +39,12 @@ class IPCServer:
         socket_path: Path,
         on_user_message: UserMessageHandler,
         on_confirmation_response: ConfirmationResponseHandler | None = None,
+        on_reset: ResetHandler | None = None,
     ) -> None:
         self._socket_path = socket_path
         self._on_user_message = on_user_message
         self._on_confirmation_response = on_confirmation_response
+        self._on_reset = on_reset
         self._server_sock: socket.socket | None = None
         self._client_sock: socket.socket | None = None
         self._client_lock = threading.Lock()
@@ -136,6 +140,8 @@ class IPCServer:
             ).start()
         elif mtype == "confirmation_response" and self._on_confirmation_response:
             self._on_confirmation_response(message)
+        elif mtype == "reset" and self._on_reset:
+            self._on_reset()
 
     def _reply(self, conn: socket.socket, message: dict) -> None:
         try:

@@ -221,6 +221,11 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         escape = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
         escape.activated.connect(self.hide)
 
+        # Ctrl+L : nouvelle conversation (efface l'affichage ET demande au daemon
+        # d'oublier l'historique, pour rester cohérents — cf. INTERFACES §1 reset).
+        new_chat = QShortcut(QKeySequence("Ctrl+L"), self)
+        new_chat.activated.connect(self._new_conversation)
+
     def _set_status(self, text: str) -> None:
         """Affiche l'indicateur d'activité avec une animation de points."""
         self._status_base = text
@@ -262,6 +267,13 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         if not self._messages or self._messages[-1]["role"] != "assistant":
             self._messages.append({"role": "assistant", "text": ""})
         self._messages[-1]["text"] += text
+
+    def _new_conversation(self) -> None:
+        """Démarre une nouvelle conversation : vide l'affichage et l'historique daemon."""
+        self._messages.clear()
+        self._render()
+        self._clear_status()
+        self._client.send({"type": "reset"})
 
     def _send_current_input(self) -> None:
         text = self._input.text().strip()

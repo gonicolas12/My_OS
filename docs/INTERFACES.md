@@ -41,6 +41,16 @@ Communication sur une **socket Unix locale**. Le daemon est le **serveur** (cré
 }
 ```
 
+### Message de contrôle popup → daemon (reset)
+L'orchestrator garde la conversation **en mémoire entre les requêtes** (cf. §6).
+Pour repartir d'une conversation vierge, le popup envoie un message de contrôle
+``reset`` (déclenché par le raccourci `Ctrl+L`). Il n'est lié à aucune requête,
+donc sans champ `id`. Le popup vide aussi son affichage, pour rester cohérent
+avec le daemon.
+```json
+{ "type": "reset" }   // le daemon oublie l'historique conversationnel courant
+```
+
 ### Messages de contrôle daemon → popup
 Le raccourci global est capté par le daemon ; c'est lui qui ordonne au popup (résident, caché) de s'afficher. Ce message de contrôle n'est pas lié à une requête, donc sans champ `id`.
 ```json
@@ -199,6 +209,16 @@ Boucle agentique de traitement d'une requête :
 
 Garde-fou : `MAX_STEPS` borne le nombre d'itérations (anti-boucle infinie).
 Le contenu réinjecté est une **donnée**, jamais une instruction (SECURITY §2.2).
+
+**Mémoire conversationnelle.** L'historique (user/assistant/tool) est **conservé
+entre les requêtes**, en mémoire côté daemon (l'`Orchestrator`), et non
+reconstruit par le popup — le cœur de confiance possède l'état (cohérent avec
+les grants/audit). Chaque `user_message` est *ajouté* à cet historique ; le
+modèle « se souvient » donc des tours précédents. L'historique est **borné**
+(`MAX_HISTORY_MESSAGES`, élagage à une frontière de tour pour préserver les
+paires assistant↔tool) afin de limiter le contexte et — au jalon 4 — le volume
+envoyé au cloud. Le message de contrôle `reset` (§1) le vide. Rien n'est
+persisté sur disque : la mémoire disparaît à l'arrêt du daemon (cf. ARCHITECTURE §7).
 
 ---
 

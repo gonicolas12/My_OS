@@ -98,6 +98,7 @@ class Daemon:  # pylint: disable=too-many-instance-attributes
             config.socket_path,
             on_user_message=self._on_user_message,
             on_confirmation_response=self._on_confirmation_response,
+            on_reset=self._on_reset,
         )
         self._confirmation = IPCConfirmationProvider(
             send_to_client=self._server.send_to_client
@@ -132,6 +133,10 @@ class Daemon:  # pylint: disable=too-many-instance-attributes
 
     def _on_confirmation_response(self, message: dict) -> None:
         self._confirmation.deliver_response(message)
+
+    def _on_reset(self) -> None:
+        _log.info("Reset de la conversation demandé par le popup")
+        self._orchestrator.reset_history()
 
     def _on_hotkey(self) -> None:
         _log.info("Raccourci activé → demande d'affichage du popup")
