@@ -26,6 +26,8 @@ config.local.yaml      # config locale éventuelle
 *.pem
 .env
 secrets.*
+# Exception : models/secrets.py est du CODE (wrapper keyring), sans aucun secret.
+!models/secrets.py
 
 # --- Claude Code : mémoire locale (privée, non versionnée) ---
 CLAUDE.local.md
