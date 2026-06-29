@@ -397,6 +397,112 @@ de timeout, `run_command` renvoie un `CommandResult` d'échec lisible (codes 127
 
 ---
 
+## 9 · Sélection de backend X11 / Wayland (jalon 5)
+
+Le raccourci global et la présentation du popup dépendent du serveur d'affichage.
+**X11 reste le chemin nominal, pleinement supporté.** Wayland est ajouté au jalon 5
+en *best-effort* et reste **expérimental** (support variable selon le compositeur).
+Le backend est choisi **au démarrage** selon le type de session ; aucune signature
+publique existante n'est cassée.
+
+### 9.1 · Détection de session (`core/session.py`)
+
+```python
+SESSION_X11 = "x11"
+SESSION_WAYLAND = "wayland"
+
+def detect_session_type(environ: Mapping[str, str] | None = None) -> str:
+    """Renvoie "wayland" ou "x11" (défaut). Ordre :
+      1. XDG_SESSION_TYPE explicite ("wayland"/"x11") ;
+      2. sinon heuristique : WAYLAND_DISPLAY → wayland ; DISPLAY → x11 ;
+      3. défaut "x11" (chemin nominal, jamais d'échec)."""
+```
+
+`environ` est injectable (défaut `os.environ`) pour des tests déterministes, sans
+session graphique réelle. La fonction est **pure** et ne dépend d'aucune lib.
+
+### 9.2 · Raccourci global (`daemon/hotkey_listener.py`)
+
+Le **contrat public est inchangé** : `HotkeyListener(hotkey, on_activate)` avec
+`start()` / `stop()`. `daemon/myosd.py` n'est pas modifié. La façade choisit un
+**backend interne** selon la session :
+
+| Session | Backend interne | Transport |
+|---------|-----------------|-----------|
+| `x11` (défaut) | `_X11Backend` | `pynput.keyboard.GlobalHotKeys` (inchangé) |
+| `wayland` | `_PortalBackend` | portal XDG `org.freedesktop.portal.GlobalShortcuts` (D-Bus) |
+
+Deux kwargs **optionnels** (défauts → comportement de production) rendent la
+sélection testable sans X ni Wayland réels :
+
+```python
+class HotkeyListener:
+    def __init__(self, hotkey: str, on_activate: Callable[[], None], *,
+                 session_type: str | None = None,   # None → detect_session_type()
+                 backend: "_HotkeyBackend | None" = None): ...  # None → sélection auto
+    def start(self) -> None: ...   # résout puis démarre le backend
+    def stop(self) -> None: ...
+```
+
+Les backends partagent le contrat interne `_HotkeyBackend` (`start()` / `stop()`).
+L'instanciation d'un backend **n'importe rien de lourd** (pynput, dbus, GLib sont
+importés paresseusement dans `start()`), donc la *sélection* se teste sans dépendance.
+
+**Transport du portal (injectable).** Le portal `GlobalShortcuts` est asynchrone et
+exige une boucle d'événements ; toute la mécanique D-Bus est isolée derrière un
+Protocol injectable (même esprit que `SettingsBackend` du jalon 3) :
+
+```python
+class PortalTransport(Protocol):
+    def listen(self, hotkey: str, shortcut_id: str,
+               on_activate: Callable[[], None]) -> None:
+        """Crée la session portal, lie le raccourci, puis BLOQUE sur la boucle
+        d'événements en appelant on_activate à chaque activation. Rend la main
+        quand stop() est invoqué."""
+    def stop(self) -> None: ...
+```
+
+Le transport de production (`_DBusPortalTransport`) utilise `dbus-python` +
+boucle GLib (`PyGObject`), importés **paresseusement**. `_PortalBackend.start()`
+lance `transport.listen(...)` dans un thread ; `stop()` appelle `transport.stop()`.
+En tests, on injecte un faux transport et on simule une activation.
+
+**Limites assumées (documentées honnêtement).** Le support du portal varie selon le
+compositeur (bon sous GNOME/KDE, inégal sous wlroots) ; certains compositeurs
+demandent à l'utilisateur de **lier lui-même** la combinaison via leur UI. En cas
+d'indisponibilité (pas de portal, `BindShortcuts` refusé, GLib/dbus absents), le
+backend journalise un diagnostic clair et reste inactif — il ne *simule* jamais un
+raccourci.
+
+### 9.3 · Présentation du popup (`ui/wayland_layer.py`)
+
+Sous X11, le popup garde son comportement actuel : `FramelessWindowHint |
+WindowStaysOnTopHint | Tool`, centrage par `move()`, `raise_()`, focus. Ces
+mécanismes **n'ont pas d'effet sous Wayland** (pas de positionnement global ni
+d'always-on-top côté client). Un helper isole la logique testable :
+
+```python
+def prepare_layer_shell(session_type: str,
+                        environ: MutableMapping[str, str] | None = None) -> bool:
+    """Sous Wayland : pose QT_WAYLAND_SHELL_INTEGRATION=layer-shell (sauf si déjà
+    défini) AVANT la QApplication, pour que le popup soit une surface overlay
+    centrée au-dessus de tout (via le plugin système layer-shell-qt). Retourne
+    True si layer-shell a été (tenté d')activé. Sous X11 : no-op, renvoie False."""
+
+def is_wayland(session_type: str) -> bool: ...
+```
+
+`main()` du popup appelle `prepare_layer_shell(detect_session_type())` **avant**
+de créer la `QApplication`. Le `Popup` reçoit un `session_type` (optionnel, détecté
+par défaut) : `_show_centered` n'applique le `move()` de centrage que sous X11 ;
+sous Wayland il se contente de `show()`/`raise_()`/focus et laisse le compositeur
+(layer-shell) placer la surface. **Repli/diagnostic** : si le plugin layer-shell
+est absent, Qt retombe sur `xdg-shell` (fenêtre normale, centrage approximatif par
+le compositeur) ; un avertissement est journalisé. On n'annonce pas un centrage
+overlay garanti sous Wayland.
+
+---
+
 ## 7 · Règle d'or
 
 Quand un contrat ci-dessus est insuffisant pour coder, **étendre ce document d'abord**, puis implémenter. Ne jamais laisser deux modules diverger sur un format de message ou une signature.
