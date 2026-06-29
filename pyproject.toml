@@ -16,6 +16,10 @@ ignored-modules = [
     "PySide6.QtGui",
     "PySide6.QtWidgets",
     "dbus",  # dbus-python : Linux-only, pas de wheel Windows (jalon 3)
+    "dbus.mainloop",  # boucle GLib pour le portal Wayland (jalon 5)
+    "dbus.mainloop.glib",
+    "gi",  # PyGObject/GLib : portal GlobalShortcuts Wayland (jalon 5, expérimental)
+    "gi.repository",
     "anthropic",  # client cloud (jalon 4) : import paresseux, pas toujours installé
     "keyring",  # trousseau OS (jalon 4) : import paresseux, pas toujours installé
 ]
