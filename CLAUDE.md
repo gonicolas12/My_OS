@@ -16,14 +16,16 @@ Lire `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `docs/INTERFACES.m
 ## Niveaux de risque
 0 auto (lecture) · 1 confirmation (écriture, install) · 2 renforcée (suppression, sudo, modif système) · 3 bloqué (jamais exécuté : rm -rf /, formatage, zones critiques). L'escalade par arguments ne peut qu'augmenter le risque. La blocklist (niveau 3) est vérifiée en premier.
 
-## Ordre de construction (jalons — voir README §7)
-1. Socle : daemon systemd utilisateur + raccourci global (pynput/X11) + IPC socket Unix + popup Qt vide.
-2. Fichiers + moteur de permissions complet + audit SQLite + confirmations.
-3. Pilotage système : pacman, D-Bus (luminosité/audio/réseau), psutil.
-4. Routeur cloud : keyring + toggle local/cloud + indicateur + journalisation.
-5. (plus tard) Port Wayland + ISO archiso.
+## Statut des jalons (v1 complète — voir docs/ROADMAP.md)
+1. ✅ Socle : daemon systemd utilisateur + raccourci global (pynput/X11) + IPC socket Unix + popup Qt.
+2. ✅ Fichiers + moteur de permissions complet + audit SQLite + confirmations.
+3. ✅ Pilotage système : pacman, D-Bus (luminosité/audio/réseau), psutil + élévation polkit.
+4. ✅ Routeur cloud : keyring + toggle local/cloud par requête + indicateur + journalisation.
+5. ✅ Port Wayland (**expérimental**, X11 nominal) + ISO archiso + finalisation de la doc.
 
-Construire dans l'ordre. Ne pas commencer un jalon avant que le précédent soit stable et testé.
+**Tous les jalons sont terminés, testés et mergés sur `main`.** Pour toute évolution
+post-v1, garder cette discipline : un jalon stable et testé avant le suivant, sur une
+branche de feature. Vision long terme : docs/ROADMAP.md.
 
 ## Commandes
 - Lancer en dev : `./launch_dev.sh`

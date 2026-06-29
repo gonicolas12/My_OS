@@ -100,10 +100,8 @@ Interface invoquée au raccourci. Nouvelle vue en PySide6, mais la **logique** d
 
 | Fichier | Rôle |
 |---------|------|
-| `ui/popup.py` | fenêtre PySide6 : centrée, sans bordure, au-dessus de tout |
-| `ui/chat_view.py` | affichage de la conversation |
-| `ui/markdown_render.py` | rendu markdown via `QTextBrowser` (léger) |
-| `ui/streaming.py` | affichage progressif des réponses |
+| `ui/popup.py` | fenêtre PySide6 : conversation + saisie, affichage en streaming (token par token), centrée/au-dessus sous X11 |
+| `ui/markdown_render.py` | rendu markdown de la conversation via `QTextBrowser` (léger) |
 | `ui/confirm_dialog.py` | dialogue de confirmation d'action |
 | `ui/styles.py` | thème sombre/orange (esprit My_AI) |
 | `ui/wayland_layer.py` | présentation Wayland du popup (surface `layer-shell`), repli X11 — jalon 5 (cf. `INTERFACES.md §9`) |
