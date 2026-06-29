@@ -40,10 +40,12 @@ from PySide6.QtWidgets import (
 from core.config import Config, load_config
 from core.ipc import iter_messages, send_message
 from core.logger import get_logger
+from core.session import detect_session_type
 from models import secrets
 from ui.confirm_dialog import ConfirmDialog
 from ui.markdown_render import conversation_to_markdown
 from ui.styles import build_stylesheet
+from ui.wayland_layer import is_wayland, prepare_layer_shell
 
 _log = get_logger("popup")
 
@@ -156,9 +158,13 @@ class _DragBar(QWidget):
 class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
     """Fenêtre popup : champ de saisie + zone d'affichage de la conversation."""
 
-    def __init__(self, config: Config) -> None:
+    def __init__(self, config: Config, session_type: str | None = None) -> None:
         super().__init__()
         self._config = config
+        # Type de session (x11/wayland) : conditionne la présentation (centrage X11
+        # vs surface layer-shell sous Wayland). Détecté par défaut, injectable pour
+        # les tests (cf. docs/INTERFACES.md §9).
+        self._session_type = session_type or detect_session_type()
         self._status_base = ""
         self._status_dots = 0
         self._messages: list[dict[str, str]] = []
@@ -282,11 +288,16 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         self._status.setText(self._status_base + "." * self._status_dots)
 
     def _show_centered(self) -> None:
-        screen = QApplication.primaryScreen()
-        if screen is not None:
-            frame = self.frameGeometry()
-            frame.moveCenter(screen.availableGeometry().center())
-            self.move(frame.topLeft())
+        # Sous X11 : on centre nous-mêmes via move() (le compositeur le permet).
+        # Sous Wayland : pas de positionnement global côté client ; la surface
+        # layer-shell est centrée par le compositeur (cf. ui/wayland_layer.py).
+        # On évite move() qui n'aurait aucun effet (et provoquerait un warning Qt).
+        if not is_wayland(self._session_type):
+            screen = QApplication.primaryScreen()
+            if screen is not None:
+                frame = self.frameGeometry()
+                frame.moveCenter(screen.availableGeometry().center())
+                self.move(frame.topLeft())
         self.show()
         self.raise_()
         self.activateWindow()
@@ -416,10 +427,17 @@ def main() -> None:
     # par défaut pour que Ctrl+C dans le terminal de dev arrête le processus.
     signal.signal(signal.SIGINT, signal.SIG_DFL)
 
+    # Sélection de présentation AVANT la QApplication (cf. docs/INTERFACES.md §9) :
+    # sous Wayland, demande l'intégration shell layer-shell (overlay centré) ; sous
+    # X11, no-op (centrage par move()). Doit précéder QApplication pour être pris en
+    # compte par l'intégration Qt Wayland.
+    session_type = detect_session_type()
+    prepare_layer_shell(session_type)
+
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)  # rester résident quand le popup se cache
     config = load_config()
-    popup = Popup(config)
+    popup = Popup(config, session_type=session_type)
     _ = popup  # garde une référence vivante
     sys.exit(app.exec())
 
