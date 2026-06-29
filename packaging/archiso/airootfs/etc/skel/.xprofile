@@ -1,0 +1,9 @@
+# shellcheck shell=sh
+# My_OS — initialisation de la session X (Xfce/X11), sourcée au démarrage de session.
+# 1) Première exécution : venv + dépendances + modèle (idempotent, cf. myos-user-firstrun).
+/usr/local/bin/myos-user-firstrun
+# 2) Le daemon (service utilisateur) a besoin de DISPLAY/XAUTHORITY : on les importe
+#    dans le gestionnaire systemd utilisateur, puis on (re)démarre myosd.
+systemctl --user import-environment DISPLAY XAUTHORITY
+systemctl --user start myosd.service
+# Le popup résident est lancé par l'autostart XDG (~/.config/autostart/myos-popup.desktop).

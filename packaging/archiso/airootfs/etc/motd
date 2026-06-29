@@ -1,0 +1,11 @@
+
+  My_OS — assistant IA local, privé et sécurisé
+  ------------------------------------------------
+  Appuyez sur Ctrl+Alt+Espace pour ouvrir l'assistant.
+
+  • Modèle LOCAL par défaut (Qwen via Ollama) — vos données restent chez vous.
+  • Le cloud (Claude) est opt-in, par requête, et visible.
+  • Toute action sensible demande confirmation ; rien de destructeur n'est silencieux.
+
+  1er démarrage : installation des dépendances et téléchargement du modèle
+  (réseau requis, quelques minutes). Voir /opt/my_os/docs/INSTALLATION.md.

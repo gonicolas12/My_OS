@@ -1,0 +1,5 @@
+## My_OS — l'utilisateur live (groupe wheel) peut administrer le système.
+## NB : l'élévation des actions de l'assistant passe par polkit/pkexec
+## (cf. core/elevation.py, docs/SECURITY.md menace 3), PAS par sudo. Cette règle
+## ne sert que l'administration générale du système live.
+%wheel ALL=(ALL:ALL) ALL

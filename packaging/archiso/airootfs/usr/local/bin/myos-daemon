@@ -1,0 +1,6 @@
+#!/bin/sh
+# Lanceur du daemon myosd pour l'ISO : exécute le module via le venv utilisateur
+# (créé au 1er boot par myos-user-firstrun). Le code vit dans /opt/my_os (lecture
+# seule) ; le daemon tourne en UTILISATEUR, jamais root (cf. docs/SECURITY.md).
+export PYTHONPATH=/opt/my_os
+exec "$HOME/.local/share/my_os/venv/bin/python" -m daemon.myosd
