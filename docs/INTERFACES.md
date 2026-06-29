@@ -167,23 +167,87 @@ def log(tool: str, args: dict, risk_level: int, decision: str,
 
 ---
 
-## 5 · Routeur de modèles (`models/cloud_router.py`)
+## 5 · Routeur de modèles (`models/cloud_router.py`) — jalon 4
+
+### 5.1 · Secrets (`models/secrets.py`)
 
 ```python
-def generate(messages: list[dict], use_cloud: bool, stream: bool = True):
-    """Aiguille vers le backend local (Qwen/Ollama) ou cloud (Claude).
-    - use_cloud=False (défaut) → local_llm
-    - use_cloud=True → vérifie qu'une clé existe (secrets.get_api_key()),
-      sinon lève une erreur claire. Journalise l'envoi cloud.
-    Renvoie un itérateur de fragments si stream=True."""
-```
+# models/secrets.py — clé API cloud via le trousseau OS (keyring), JAMAIS un fichier.
+SERVICE_NAME = "my_os"
+API_KEY_NAME = "anthropic_api_key"
 
-```python
-# models/secrets.py
-def get_api_key() -> str | None: ...   # via keyring, jamais depuis un fichier
-def set_api_key(key: str) -> None: ...
+def get_api_key() -> str | None: ...   # None si absente OU si le trousseau échoue
+def set_api_key(key: str) -> None: ...  # ValueError si clé vide
 def has_api_key() -> bool: ...
+def delete_api_key() -> None: ...        # idempotent
 ```
+
+La clé n'apparaît **jamais** dans `config.yaml`, les logs, ni l'audit
+(cf. SECURITY menace 4). Le **popup** écrit la clé directement dans le trousseau
+via `set_api_key` ; le **daemon** la lit via `get_api_key`. Le secret ne transite
+donc **pas** par l'IPC (pas de message IPC pour la clé). Toute erreur de trousseau
+(backend absent/verrouillé) est traitée comme « pas de clé » → repli local, jamais
+de crash.
+
+### 5.2 · Backend cloud = un `Model` (tool use Anthropic)
+
+**Décision (résolution de la divergence de contrat).** Le backend Claude
+implémente le **même protocole `Model`** que le local (cf. §6.5 :
+`respond(messages, on_token) -> Plan`), avec le **tool use Anthropic**. L'IA cloud
+pilote donc les outils par la *même* boucle agentique et le *même*
+`policy_engine` — un seul chemin de code, un seul choke point de sécurité. Le LLM
+cloud n'a **aucun droit supplémentaire** par rapport au local.
+
+> L'ancienne signature `generate(messages, use_cloud, stream) -> itérateur` est
+> **remplacée** par ce contrat (un `Model` + un sélecteur), pour ne pas dupliquer
+> la boucle agentique ni contourner les permissions.
+
+```python
+class ClaudeClient:                       # implémente le protocole Model (§6.5)
+    name = "claude"
+    def __init__(self, *, api_key: str | None = None,
+                 model: str = "claude-sonnet-4-6",
+                 max_tokens: int = 4096,
+                 client=None): ...         # `anthropic` importé paresseusement
+    def respond(self, messages, on_token=None) -> Plan: ...  # streaming via on_token
+
+class CloudUnavailable(RuntimeError): ...  # cloud demandé mais pas de clé
+
+class CloudRouter:                         # sélecteur de backend cloud (lazy)
+    def __init__(self, *, model: str = "claude-sonnet-4-6",
+                 client_factory=None): ...  # client_factory injectable (tests)
+    def is_available(self) -> bool: ...     # = secrets.has_api_key()
+    def get_cloud_model(self) -> Model: ... # construit/cache le ClaudeClient ;
+                                            # CloudUnavailable si pas de clé
+```
+
+### 5.3 · Routage **par requête** (côté orchestrator)
+
+Le cloud est **opt-in, par requête** : le message IPC `user_message` porte
+`use_cloud` (§1). L'`Orchestrator` reçoit un `cloud_router: ModelRouter | None`
+injecté (optionnel ; absent → toujours local). À chaque `user_message` :
+
+```
+1. use_cloud=False (défaut)                 → modèle local.
+2. use_cloud=True et clé présente           → modèle cloud + indicateur + log.
+3. use_cloud=True mais pas de clé / pas de
+   routeur                                  → REPLI LOCAL + notice claire au popup
+                                              (jamais de cloud silencieux).
+```
+
+Le backend est **résolu une seule fois par `user_message`** (jamais changé en
+plein milieu de la boucle agentique). L'historique conversationnel **partagé**
+(§6) est envoyé tel quel au backend choisi — le même historique peut donc partir
+tantôt au local, tantôt au cloud (c'est voulu).
+
+### 5.4 · Journalisation des envois cloud
+
+Chaque envoi cloud est journalisé via un **logger dédié `myosd.cloud`**
+(horodatage, nom du modèle, **nombre de messages et de caractères** transmis) —
+**jamais** la clé, **jamais** le contenu. Le canal est le logger (journald sous
+systemd), distinct du **journal d'audit** (`data/audit.db`), réservé aux actions
+d'outils et décisions de permission (§4). La minimisation des données envoyées au
+cloud est traitée en §6 et SECURITY menace 2.
 
 ---
 
@@ -219,6 +283,16 @@ modèle « se souvient » donc des tours précédents. L'historique est **borné
 paires assistant↔tool) afin de limiter le contexte et — au jalon 4 — le volume
 envoyé au cloud. Le message de contrôle `reset` (§1) le vide. Rien n'est
 persisté sur disque : la mémoire disparaît à l'arrêt du daemon (cf. ARCHITECTURE §7).
+
+**Mémoire et cloud (jalon 4).** Quand `use_cloud=True`, c'est **tout l'historique
+persistant courant** (borné par `MAX_HISTORY_MESSAGES`) qui part au backend cloud,
+pas seulement le dernier message — conséquence directe de la mémoire partagée. Choix
+de minimisation retenu (cf. SECURITY menace 2) : on **conserve** l'historique partagé
+(cohérence local/cloud voulue), mais l'envoi est **visible** (indicateur popup +
+notice in-transcript) et **journalisé** (taille transmise, §5.4), et l'on **conseille
+un `reset` (Ctrl+L) avant de passer au cloud** pour repartir d'un contexte minimal.
+Aucun cap distinct n'est appliqué en mode cloud (il casserait la cohérence de
+l'historique partagé) ; la borne `MAX_HISTORY_MESSAGES` s'applique aux deux backends.
 
 ---
 
@@ -261,6 +335,13 @@ fragment de texte au fil de la génération (le popup l'affiche en direct).
 `Plan.narration` reste le texte complet du tour (audit / tests). Un modèle qui
 ignore `on_token` reste valide : repli qui envoie `Plan.narration` en une fois.
 Le daemon stream chaque fragment au popup via un message `token` (cf. §1).
+
+**Backends implémentant `Model`.** Le protocole `Model` est implémenté par le
+local (`models.local_llm.OllamaClient`, Ollama) **et** par le cloud
+(`models.cloud_router.ClaudeClient`, tool use Anthropic). L'orchestrator dépend de
+`Model` (pas d'un backend concret) ; il sélectionne le backend **par requête**
+selon `use_cloud` (cf. §5.3), sans rien changer à la boucle agentique ni à la
+mémoire conversationnelle.
 
 L'orchestrator dépend aussi d'un fournisseur de confirmation injectable
 (pour découpler l'attente bloquante du transport IPC, et permettre les tests) :
