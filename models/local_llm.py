@@ -31,12 +31,15 @@ if TYPE_CHECKING:
     import ollama
 
 
-def _system_context() -> str:
+def machine_context() -> str:
     """Contexte réel de la machine injecté au modèle (évite les chemins inventés).
 
     Le modèle ne connaît pas le nom d'utilisateur ni le HOME : sans ça, il
     hallucine des chemins (ex. ``/home/user/...``). On les lui fournit
     explicitement. Rien de secret ici (HOME et username sont publics).
+
+    Public et **partagé** : le backend cloud (``models.cloud_router``) le réutilise
+    pour bâtir son propre system prompt à partir de :data:`BASE_SYSTEM_PROMPT`.
     """
     home = os.path.expanduser("~")
     try:
@@ -101,15 +104,17 @@ def _to_ollama(messages: list[dict]) -> list[dict]:
 
 DEFAULT_MODEL = "qwen3.5:4b"
 
-# Le prompt système oriente le modèle mais ne lui confère AUCUNE autorité :
-# toute action passe ensuite par le policy_engine (CLAUDE.md invariant 1).
-_SYSTEM_PROMPT = """Tu es My_OS, un assistant IA intégré au cœur d'un système \
+# Prompt système de BASE, neutre vis-à-vis du backend (local ou cloud) : il
+# oriente le modèle mais ne lui confère AUCUNE autorité — toute action passe
+# ensuite par le policy_engine (CLAUDE.md invariant 1). Public et partagé : le
+# backend cloud (models.cloud_router) le réutilise et y ajoute sa propre note de
+# backend, pour ne pas dupliquer la liste d'outils ni les consignes de sécurité.
+BASE_SYSTEM_PROMPT = """Tu es My_OS, un assistant IA intégré au cœur d'un système \
 d'exploitation Linux (base Arch). L'utilisateur t'ouvre via un raccourci clavier \
 global et te parle en langage naturel pour piloter sa machine.
 
 Ton rôle : comprendre la demande et agir sur le système via des outils, pas \
-seulement répondre. Tu tournes en local (modèle Qwen via Ollama) ; les données \
-de l'utilisateur restent sur sa machine.
+seulement répondre.
 
 Ce que tu sais faire aujourd'hui :
 Fichiers :
@@ -158,6 +163,14 @@ frappe éventuelle) et RÉESSAIE avec le chemin exact.
 
 Style : réponds en français, de façon concise et claire. Tu peux utiliser le \
 markdown (gras, italique, listes, `code`) pour structurer tes réponses."""
+
+
+# Note de backend « local » ajoutée au prompt de base pour Ollama : rappelle que
+# rien ne sort de la machine (le pendant cloud vit dans models.cloud_router).
+_LOCAL_NOTE = (
+    "\n\nTu tournes en LOCAL (modèle Qwen via Ollama) : les données de "
+    "l'utilisateur restent sur sa machine, rien n'est envoyé à l'extérieur."
+)
 
 
 # Schémas JSON Schema des outils fichiers du jalon 2. Conformes au format
@@ -476,8 +489,8 @@ class OllamaClient:
         self._model = model
         self._think = think
         self._client = client if client is not None else _make_ollama_client(host)
-        # System prompt + contexte réel de la machine, calculé une fois.
-        self._system_prompt = _SYSTEM_PROMPT + _system_context()
+        # Prompt de base + note « local » + contexte réel de la machine, une fois.
+        self._system_prompt = BASE_SYSTEM_PROMPT + _LOCAL_NOTE + machine_context()
 
     def respond(
         self, messages: list[dict], on_token: TokenCallback | None = None
