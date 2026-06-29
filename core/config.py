@@ -60,12 +60,19 @@ class UIConfig:
 
 @dataclass
 class ModelConfig:
-    """Choix du backend modèle utilisé par l'orchestrator."""
+    """Choix du backend modèle utilisé par l'orchestrator.
+
+    ``backend``/``name``/``host``/``think`` concernent le backend **local** (défaut).
+    ``cloud_model`` est le modèle Claude utilisé quand une requête est routée vers le
+    cloud (opt-in par requête, cf. docs/INTERFACES.md §5). La **clé API** n'est jamais
+    ici : elle vit dans le trousseau (``models.secrets``), cf. SECURITY menace 4.
+    """
 
     backend: str = "stub"  # "stub" | "ollama"
     name: str = "qwen3.5:4b"  # modèle Ollama si backend="ollama"
     host: str | None = None  # URL HTTP Ollama (None = défaut local)
     think: bool = False  # raisonnement natif du modèle (latence ↑ ; OFF = réactif)
+    cloud_model: str = "claude-sonnet-4-6"  # modèle Claude si requête routée cloud
 
 
 def default_audit_db_path() -> Path:
@@ -125,7 +132,7 @@ def load_config(path: Path | None = None) -> Config:
     ui = UIConfig(**{k: v for k, v in ui_raw.items() if k in allowed_ui})
 
     model_raw = data.get("model") or {}
-    allowed_model = {"backend", "name", "host", "think"}
+    allowed_model = {"backend", "name", "host", "think", "cloud_model"}
     model = ModelConfig(**{k: v for k, v in model_raw.items() if k in allowed_model})
 
     return Config(

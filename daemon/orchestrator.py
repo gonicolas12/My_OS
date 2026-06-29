@@ -41,6 +41,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from core.logger import get_logger
 from permissions.audit_log import AuditLog
 from permissions.confirmation import (
     ConfirmationResponse,
@@ -88,6 +89,19 @@ MAX_STEPS = 12
 # ne jamais laisser un résultat d'outil orphelin de son appel (cf. _to_ollama).
 MAX_HISTORY_MESSAGES = 40
 
+# Logger dédié aux envois cloud (cf. docs/INTERFACES.md §5.4 + SECURITY menace 2).
+# Trace QUOI part et QUAND (modèle, nombre de messages/caractères) — JAMAIS la clé,
+# JAMAIS le contenu. Canal distinct du journal d'audit (réservé aux outils).
+_cloud_log = get_logger("myosd.cloud")
+
+# Notices in-transcript (envoyées comme tokens au popup) pour rendre le routage
+# cloud VISIBLE dans la conversation, en plus de l'indicateur du popup.
+_CLOUD_ACTIVE_NOTICE = "\n☁ _Requête envoyée au cloud (Claude)…_\n\n"
+_CLOUD_FALLBACK_NOTICE = (
+    "\n⚠ _Mode cloud demandé mais aucune clé API n'est configurée — "
+    "réponse générée en local._\n\n"
+)
+
 
 class Model(Protocol):
     """Contrat minimal d'un modèle côté orchestrator (cf. INTERFACES §6.5)."""
@@ -106,6 +120,21 @@ class Model(Protocol):
         """
 
 
+class ModelRouter(Protocol):
+    """Sélecteur d'un :class:`Model` cloud, par requête (cf. INTERFACES §5.3).
+
+    Implémenté par :class:`models.cloud_router.CloudRouter` ; injecté dans
+    l'orchestrator pour qu'il choisisse le backend selon ``use_cloud`` SANS importer
+    de backend concret (évite tout couplage/import circulaire).
+    """
+
+    def is_available(self) -> bool:
+        """``True`` si le cloud est utilisable (une clé API est configurée)."""
+
+    def get_cloud_model(self) -> Model:
+        """Renvoie le :class:`Model` cloud (le construit/cache au besoin)."""
+
+
 class ConfirmationProvider(Protocol):
     """Fournisseur de confirmation injectable (transport-agnostique)."""
 
@@ -116,7 +145,7 @@ class ConfirmationProvider(Protocol):
 Reply = Callable[[dict], None]
 
 
-class Orchestrator:
+class Orchestrator:  # pylint: disable=too-many-instance-attributes
     """Pilote une requête depuis le ``user_message`` jusqu'au ``done`` final."""
 
     # pylint: disable-next=too-many-arguments,too-many-positional-arguments
@@ -127,12 +156,16 @@ class Orchestrator:
         grants: SessionGrants,
         audit: AuditLog,
         confirmation_provider: ConfirmationProvider,
+        cloud_router: ModelRouter | None = None,
     ) -> None:
         self._model = model
         self._tools = tools
         self._grants = grants
         self._audit = audit
         self._confirmation = confirmation_provider
+        # Routeur cloud optionnel (jalon 4). None → toujours local (rétro-compatible).
+        # Le local reste le défaut ; le cloud est choisi PAR REQUÊTE selon use_cloud.
+        self._cloud_router = cloud_router
         # Historique conversationnel persistant entre les requêtes (cf. en-tête
         # du module). Protégé par un verrou car chaque user_message est traité
         # dans un thread dédié (cf. daemon.ipc_server._dispatch).
@@ -194,8 +227,16 @@ class Orchestrator:
             self._history.append({"role": "user", "content": content})
             history = self._history
 
+        # Sélection du backend pour CETTE requête (une seule fois — jamais changé en
+        # plein milieu de la boucle agentique). Le local est le défaut ; le cloud est
+        # opt-in via use_cloud (cf. INTERFACES §5.3). En mode cloud, on journalise
+        # l'envoi (tout l'historique part — cf. SECURITY menace 2).
+        model, cloud_active = self._select_model(message, user_message_id, reply)
+        if cloud_active:
+            self._log_cloud_send(list(history), model)
+
         for _step in range(MAX_STEPS):
-            plan = self._run_model(list(history), user_message_id, reply)
+            plan = self._run_model(model, list(history), user_message_id, reply)
             if plan is None:
                 return  # erreur déjà signalée au popup
             with self._history_lock:
@@ -234,12 +275,13 @@ class Orchestrator:
         reply({"type": "done", "id": user_message_id})
 
     def _run_model(
-        self, messages: list[Message], msg_id: str, reply: Reply
+        self, model: Model, messages: list[Message], msg_id: str, reply: Reply
     ) -> Plan | None:
-        """Appelle le modèle pour un tour, streame sa narration, renvoie le Plan.
+        """Appelle ``model`` pour un tour, streame sa narration, renvoie le Plan.
 
-        Renvoie ``None`` si le modèle a échoué (l'erreur est déjà envoyée au
-        popup), pour que :meth:`handle` interrompe la boucle.
+        ``model`` est le backend résolu pour la requête courante (local ou cloud,
+        cf. :meth:`_select_model`). Renvoie ``None`` si le modèle a échoué (l'erreur
+        est déjà envoyée au popup), pour que :meth:`handle` interrompe la boucle.
         """
         emitted = False
 
@@ -250,7 +292,7 @@ class Orchestrator:
                 reply({"type": "token", "id": msg_id, "text": fragment})
 
         try:
-            plan = self._model.respond(messages, emit_token)
+            plan = model.respond(messages, emit_token)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             reply(
                 {
@@ -265,6 +307,50 @@ class Orchestrator:
         if not emitted and plan.narration:
             reply({"type": "token", "id": msg_id, "text": plan.narration})
         return plan
+
+    def _select_model(
+        self, message: dict, msg_id: str, reply: Reply
+    ) -> tuple[Model, bool]:
+        """Choisit le backend pour cette requête. Renvoie ``(modèle, cloud_actif)``.
+
+        Le cloud est **opt-in** (``use_cloud``) et ne s'active QUE si une clé est
+        configurée ; sinon **repli local + notice claire** au popup (jamais de cloud
+        silencieux, cf. SECURITY menace 2). Le LLM ne choisit jamais : c'est
+        l'utilisateur, via le toggle du popup, qui porte ``use_cloud`` dans le
+        message IPC. Le routeur étant absent (None) → toujours local.
+        """
+        if not message.get("use_cloud"):
+            return self._model, False
+        router = self._cloud_router
+        if router is None or not router.is_available():
+            reply({"type": "token", "id": msg_id, "text": _CLOUD_FALLBACK_NOTICE})
+            return self._model, False
+        try:
+            cloud_model = router.get_cloud_model()
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # Repli défensif (ex. clé retirée entre le check et la construction).
+            _cloud_log.warning("Cloud indisponible (%s) ; repli local", exc)
+            reply({"type": "token", "id": msg_id, "text": _CLOUD_FALLBACK_NOTICE})
+            return self._model, False
+        reply({"type": "token", "id": msg_id, "text": _CLOUD_ACTIVE_NOTICE})
+        return cloud_model, True
+
+    @staticmethod
+    def _log_cloud_send(history: list[Message], model: Model) -> None:
+        """Journalise un envoi cloud : QUOI part (volume) et QUAND.
+
+        Jamais de secret ni de contenu (cf. INTERFACES §5.4) : on ne trace que le
+        modèle, le nombre de messages et le nombre de caractères transmis — pas le
+        texte lui-même. Canal = logger ``myosd.cloud`` (distinct du journal d'audit).
+        """
+        chars = sum(len(str(m.get("content", "") or "")) for m in history)
+        _cloud_log.info(
+            "Envoi CLOUD (%s) : %d message(s), ~%d caractère(s) transmis à "
+            "l'API Anthropic",
+            getattr(model, "name", "cloud"),
+            len(history),
+            chars,
+        )
 
     def _handle_tool_call(self, msg_id: str, call: ToolCall, reply: Reply) -> str:
         """Évalue + exécute un appel d'outil. Renvoie le texte à réinjecter au modèle.

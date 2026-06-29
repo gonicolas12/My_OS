@@ -24,9 +24,13 @@ from PySide6.QtCore import QPoint, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QCloseEvent, QKeySequence, QMouseEvent, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
+    QMessageBox,
+    QPushButton,
     QSizeGrip,
     QTextBrowser,
     QVBoxLayout,
@@ -36,6 +40,7 @@ from PySide6.QtWidgets import (
 from core.config import Config, load_config
 from core.ipc import iter_messages, send_message
 from core.logger import get_logger
+from models import secrets
 from ui.confirm_dialog import ConfirmDialog
 from ui.markdown_render import conversation_to_markdown
 from ui.styles import build_stylesheet
@@ -194,6 +199,37 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         self._view.setOpenExternalLinks(False)
         body.addWidget(self._view)
 
+        # Contrôles cloud (jalon 4) : toggle opt-in PAR REQUÊTE + bouton clé.
+        cloud_row = QHBoxLayout()
+        cloud_row.setContentsMargins(2, 0, 2, 0)
+        self._cloud_checkbox = QCheckBox("☁ Cloud (Claude)")
+        self._cloud_checkbox.setObjectName("cloudtoggle")
+        self._cloud_checkbox.setToolTip(
+            "Envoyer CETTE requête au cloud (Claude) au lieu du modèle local.\n"
+            "Opt-in, par requête. Nécessite une clé API (bouton 🔑)."
+        )
+        self._cloud_checkbox.toggled.connect(self._on_cloud_toggled)
+        self._key_button = QPushButton("🔑")
+        self._key_button.setObjectName("keybutton")
+        self._key_button.setToolTip(
+            "Configurer la clé API Anthropic\n(stockée dans le trousseau du système)"
+        )
+        self._key_button.clicked.connect(self._prompt_api_key)
+        cloud_row.addWidget(self._cloud_checkbox)
+        cloud_row.addWidget(self._key_button)
+        cloud_row.addStretch()
+        body.addLayout(cloud_row)
+
+        # Indicateur « mode cloud actif » : très visible, caché tant que le toggle
+        # est OFF. Rend l'envoi cloud VISIBLE (cf. SECURITY menace 2).
+        self._cloud_banner = QLabel(
+            "☁ Mode cloud actif — cette requête sera envoyée à Anthropic (Claude)."
+        )
+        self._cloud_banner.setObjectName("cloudbanner")
+        self._cloud_banner.setWordWrap(True)
+        self._cloud_banner.hide()
+        body.addWidget(self._cloud_banner)
+
         # Indicateur d'activité (caché au repos), animé par un QTimer.
         self._status = QLabel()
         self._status.setObjectName("status")
@@ -290,9 +326,50 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
                 "type": "user_message",
                 "id": str(uuid4()),
                 "content": text,
-                "use_cloud": False,
+                # Opt-in cloud PAR REQUÊTE : porte l'état du toggle. Le daemon reste
+                # libre de replier en local si aucune clé n'est configurée.
+                "use_cloud": self._cloud_checkbox.isChecked(),
             }
         )
+
+    def _on_cloud_toggled(self, checked: bool) -> None:
+        """Active/désactive le mode cloud pour les prochaines requêtes.
+
+        À la première activation sans clé enregistrée, demande la clé (saisie
+        masquée) et la stocke dans le trousseau. Si l'utilisateur annule, on
+        rebascule le toggle sur OFF (jamais de cloud sans clé). L'indicateur visible
+        suit l'état réel du toggle.
+        """
+        if checked and not secrets.has_api_key():
+            if not self._prompt_api_key():
+                # Annulation : repasse OFF (ré-entre ici avec checked=False).
+                self._cloud_checkbox.setChecked(False)
+                return
+        self._cloud_banner.setVisible(self._cloud_checkbox.isChecked())
+
+    def _prompt_api_key(self) -> bool:
+        """Demande la clé API (saisie masquée) et la stocke dans le trousseau.
+
+        Renvoie ``True`` si une clé a été enregistrée. La clé n'est jamais affichée
+        ni envoyée par l'IPC : le popup l'écrit directement dans le trousseau du
+        système (``models.secrets`` → keyring), cf. docs/SECURITY.md menace 4.
+        """
+        key, ok = QInputDialog.getText(
+            self,
+            "Clé API Anthropic",
+            "Clé API Anthropic (stockée dans le trousseau, jamais en clair) :",
+            QLineEdit.EchoMode.Password,
+        )
+        if not ok or not key.strip():
+            return False
+        try:
+            secrets.set_api_key(key)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            QMessageBox.warning(
+                self, "Clé API", f"Impossible d'enregistrer la clé : {exc}"
+            )
+            return False
+        return True
 
     def _on_message(self, message: dict) -> None:
         mtype = message.get("type")

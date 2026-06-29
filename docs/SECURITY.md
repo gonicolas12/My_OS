@@ -61,8 +61,33 @@ Rien de conséquent n'est silencieux.
 **Contre-mesures.**
 - Le mode cloud est **opt-in**, activé explicitement par l'utilisateur (pas par défaut, pas par le modèle).
 - Activation visible : un indicateur clair signale quand une requête part vers le cloud.
-- Chaque envoi cloud est journalisé (menace + contenu résumé).
+- Chaque envoi cloud est journalisé (quoi/quand, sans secret ni contenu).
 - À terme : confirmation explicite avant envoi de données sensibles identifiées.
+
+**Mise en œuvre (jalon 4).**
+- **Opt-in par requête.** Le toggle « ☁ Cloud » du popup porte `use_cloud` dans le
+  message IPC `user_message`. C'est **l'utilisateur** qui décide, jamais le modèle ;
+  le local est le défaut. La décision est résolue **une fois par requête** par
+  `Orchestrator._select_model` (cf. INTERFACES §5.3).
+- **Repli explicite.** Si `use_cloud=True` mais qu'aucune clé n'est configurée (ou
+  pas de routeur), la requête est traitée **en local** avec une **notice claire** au
+  popup — jamais de bascule cloud silencieuse.
+- **Visible.** Un indicateur « mode cloud actif » s'affiche dans le popup quand le
+  toggle est ON, et une notice in-transcript marque chaque requête partie au cloud.
+- **Journalisé sans fuite.** Chaque envoi cloud est tracé par le logger dédié
+  `myosd.cloud` (modèle, nombre de messages et de caractères transmis) — **jamais**
+  la clé, **jamais** le contenu. Canal distinct du journal d'audit `data/audit.db`
+  (réservé aux actions d'outils et décisions de permission).
+- **Minimisation des données.** En mode cloud, c'est **tout l'historique persistant
+  courant** (borné par `MAX_HISTORY_MESSAGES`) qui part, pas seulement le dernier
+  message — conséquence de la mémoire conversationnelle partagée. On conserve cet
+  historique partagé (cohérence voulue) mais on **conseille un `reset` (Ctrl+L) avant
+  de passer au cloud** pour un contexte minimal ; l'envoi reste visible et journalisé.
+- **Pas de privilège supplémentaire.** Le LLM cloud passe par la **même** boucle
+  agentique et le **même** `policy_engine` que le local : il n'a aucun droit de plus,
+  toute action sensible reste soumise à confirmation. Le daemon n'écoute toujours que
+  sur la socket Unix locale ; seules des connexions **sortantes** TLS vers l'API
+  Anthropic s'ajoutent, en mode opt-in.
 
 ### Menace 3 — Daemon trop privilégié
 
@@ -81,6 +106,21 @@ Rien de conséquent n'est silencieux.
 - Secrets stockés via `keyring` (Secret Service D-Bus, chiffré par le trousseau de l'OS).
 - Jamais de secret en clair dans `config.yaml`, les logs, ou le journal d'audit.
 - Les logs et le journal d'audit ne doivent jamais enregistrer le contenu d'un secret.
+
+**Mise en œuvre (jalon 4) — clé API cloud.**
+- La clé API Anthropic vit **uniquement** dans le trousseau (`models.secrets`,
+  service `my_os`, entrée `anthropic_api_key`). Jamais dans `config.yaml` /
+  `config.local.yaml`, jamais en argument de ligne de commande.
+- **La clé ne transite pas par l'IPC.** Le popup et le daemon tournent sous le même
+  utilisateur : le **popup écrit** la clé directement au trousseau (`set_api_key`,
+  saisie masquée) et le **daemon la lit** (`get_api_key`). Aucun message IPC ne
+  transporte la clé.
+- La clé n'apparaît jamais dans ce qui part au modèle (system prompt, messages,
+  schémas d'outils) ni dans le logger `myosd.cloud`. Le `_redact` du journal d'audit
+  masque par ailleurs toute valeur dont la clé contient `key`/`token`/`secret`/… ;
+  comme la clé API ne transite jamais par les `args` d'un outil, rien ne peut fuiter.
+- Une erreur de trousseau (backend absent/verrouillé) est traitée comme « pas de
+  clé » → repli local, jamais de crash ni de secret par défaut.
 
 ---
 
@@ -140,3 +180,20 @@ Rien de conséquent n'est silencieux.
   lui-même ; `remove_package` sur un paquet critique du système.
 - La sortie des commandes (pacman, etc.) est une **donnée** non fiable, jamais
   une instruction.
+
+### Routeur cloud (jalon 4)
+
+- Le mode cloud est **opt-in par requête** (toggle du popup → `use_cloud`), jamais
+  par défaut ni décidé par le modèle. Repli local **explicite** si pas de clé.
+- La **clé API** vit uniquement dans le trousseau (`keyring`) ; elle ne transite pas
+  par l'IPC (le popup l'écrit, le daemon la lit), ni par `config.yaml`, ni par les
+  logs, ni par l'audit (cf. menace 4).
+- Les envois cloud sont **visibles** (indicateur popup + notice in-transcript) et
+  **journalisés sans fuite** (`myosd.cloud` : modèle + volume, jamais la clé ni le
+  contenu).
+- Le LLM cloud passe par le **même** `policy_engine` et la **même** boucle agentique
+  que le local : aucun droit supplémentaire. Le daemon reste utilisateur et n'écoute
+  que la socket Unix locale ; seules s'ajoutent des connexions **sortantes** TLS vers
+  l'API Anthropic.
+- En mode cloud, **tout l'historique persistant** (borné) part : un `reset` (Ctrl+L)
+  avant de passer au cloud est conseillé pour minimiser les données envoyées.

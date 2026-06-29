@@ -34,3 +34,7 @@ model:
   name: qwen3.5:4b
   think: false
   # host: http://127.0.0.1:11434   # par défaut, laisser commenté
+  # Modèle Claude utilisé quand une requête est routée vers le cloud (opt-in PAR
+  # requête via le toggle du popup, cf. docs/INTERFACES.md §5). La CLÉ API n'est
+  # JAMAIS ici : elle se saisit dans le popup et vit dans le trousseau (keyring).
+  cloud_model: claude-sonnet-4-6

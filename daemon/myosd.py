@@ -30,6 +30,8 @@ from daemon.confirmation_provider import IPCConfirmationProvider
 from daemon.hotkey_listener import HotkeyListener
 from daemon.ipc_server import IPCServer
 from daemon.orchestrator import Model, Orchestrator
+from models import secrets
+from models.cloud_router import CloudRouter
 from models.stub_model import StubRuleModel
 from permissions.audit_log import AuditLog
 from permissions.session_grants import SessionGrants
@@ -94,6 +96,11 @@ class Daemon:  # pylint: disable=too-many-instance-attributes
         self._audit = AuditLog(config.audit_db_path)
         self._grants = SessionGrants()
         self._model = _build_model(config.model)
+        # Routeur cloud (jalon 4) : sélection du backend Claude PAR REQUÊTE selon
+        # use_cloud. Le local reste le défaut ; le cloud n'est utilisable qu'une fois
+        # une clé saisie dans le popup (trousseau OS). Construit même sans clé : son
+        # is_available() reflète dynamiquement la présence de la clé.
+        self._cloud_router = CloudRouter(model=config.model.cloud_model)
         self._server = IPCServer(
             config.socket_path,
             on_user_message=self._on_user_message,
@@ -109,6 +116,7 @@ class Daemon:  # pylint: disable=too-many-instance-attributes
             grants=self._grants,
             audit=self._audit,
             confirmation_provider=self._confirmation,
+            cloud_router=self._cloud_router,
         )
         self._hotkey = HotkeyListener(config.hotkey, self._on_hotkey)
         self._stop_event = threading.Event()
@@ -118,6 +126,15 @@ class Daemon:  # pylint: disable=too-many-instance-attributes
         _log.info(
             "Démarrage de myosd (utilisateur, sans privilège root) — modèle=%s",
             getattr(self._model, "name", type(self._model).__name__),
+        )
+        _log.info(
+            "Routeur cloud : %s (modèle %s, opt-in par requête)",
+            (
+                "clé configurée"
+                if secrets.has_api_key()
+                else "aucune clé (cloud indisponible jusqu'à saisie via le popup)"
+            ),
+            self._config.model.cloud_model,
         )
         self._server.start()
         self._hotkey.start()

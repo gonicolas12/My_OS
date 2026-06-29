@@ -18,9 +18,10 @@ def _noop_user_message(message: dict, reply: object) -> None:
 
 
 def _server(**handlers: object) -> IPCServer:
+    on_user_message = handlers.get("on_user_message", _noop_user_message)
     return IPCServer(
         Path("/tmp/myos-test-unused.sock"),
-        on_user_message=handlers.get("on_user_message", _noop_user_message),  # type: ignore[arg-type]
+        on_user_message=on_user_message,  # type: ignore[arg-type]
         on_confirmation_response=handlers.get("on_confirmation_response"),  # type: ignore[arg-type]
         on_reset=handlers.get("on_reset"),  # type: ignore[arg-type]
     )

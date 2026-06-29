@@ -8,6 +8,7 @@ sans dépendre d'un LLM réel (cf. CLAUDE.md « mock-first »).
 # pylint: disable=missing-function-docstring,redefined-outer-name,use-implicit-booleaness-not-comparison,unused-argument
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -610,3 +611,118 @@ def test_historique_est_borne_et_commence_par_user(audit: AuditLog) -> None:
     assert len(last) <= MAX_HISTORY_MESSAGES + 1
     # L'élagage ne laisse jamais un assistant/tool orphelin en tête.
     assert last[0]["role"] == "user"
+
+
+# ---------- routage cloud par requête (jalon 4) ----------
+
+
+class _FakeRouter:
+    """Double de ModelRouter : renvoie un modèle cloud, disponible ou non."""
+
+    def __init__(self, cloud_model: object, *, available: bool = True) -> None:
+        self._cloud_model = cloud_model
+        self._available = available
+        self.gets = 0
+
+    def is_available(self) -> bool:
+        return self._available
+
+    def get_cloud_model(self) -> object:
+        self.gets += 1
+        return self._cloud_model
+
+
+def _cloud_orch(local: object, router: object | None, audit: AuditLog) -> Orchestrator:
+    return Orchestrator(
+        model=local,
+        tools={},
+        grants=SessionGrants(),
+        audit=audit,
+        confirmation_provider=_FakeConfirmation([]),
+        cloud_router=router,
+    )
+
+
+def test_use_cloud_route_vers_le_backend_cloud(audit: AuditLog) -> None:
+    local = _ScriptedModel([Plan(narration="REPONSE-LOCALE")])
+    cloud = _ScriptedModel([Plan(narration="REPONSE-CLOUD")])
+    router = _FakeRouter(cloud, available=True)
+    orch = _cloud_orch(local, router, audit)
+
+    replies: list[dict] = []
+    orch.handle(
+        {"id": "m1", "content": "q complexe", "use_cloud": True}, replies.append
+    )
+
+    assert router.gets == 1  # backend cloud résolu une seule fois pour la requête
+    assert any("REPONSE-CLOUD" in t for t in _tokens(replies))
+    assert all("REPONSE-LOCALE" not in t for t in _tokens(replies))
+    assert any("cloud" in t.lower() for t in _tokens(replies))  # notice in-transcript
+    assert replies[-1]["type"] == "done"
+
+
+def test_use_cloud_false_reste_local_meme_si_routeur_disponible(
+    audit: AuditLog,
+) -> None:
+    local = _ScriptedModel([Plan(narration="REPONSE-LOCALE")])
+    cloud = _ScriptedModel([Plan(narration="REPONSE-CLOUD")])
+    router = _FakeRouter(cloud, available=True)
+    orch = _cloud_orch(local, router, audit)
+
+    replies: list[dict] = []
+    orch.handle({"id": "m1", "content": "q", "use_cloud": False}, replies.append)
+
+    assert router.gets == 0  # use_cloud=False : le cloud n'est jamais sollicité
+    assert any("REPONSE-LOCALE" in t for t in _tokens(replies))
+
+
+def test_use_cloud_sans_cle_replie_local_avec_notice(audit: AuditLog) -> None:
+    local = _ScriptedModel([Plan(narration="REPONSE-LOCALE")])
+    cloud = _ScriptedModel([Plan(narration="REPONSE-CLOUD")])
+    router = _FakeRouter(cloud, available=False)  # aucune clé configurée
+    orch = _cloud_orch(local, router, audit)
+
+    replies: list[dict] = []
+    orch.handle({"id": "m1", "content": "q", "use_cloud": True}, replies.append)
+
+    assert router.gets == 0  # le cloud n'est jamais construit sans clé
+    assert any("REPONSE-LOCALE" in t for t in _tokens(replies))  # repli local
+    joined = " ".join(_tokens(replies)).lower()
+    assert "cloud" in joined and ("clé" in joined or "local" in joined)
+
+
+def test_use_cloud_sans_routeur_replie_local(audit: AuditLog) -> None:
+    local = _ScriptedModel([Plan(narration="REPONSE-LOCALE")])
+    orch = _cloud_orch(local, None, audit)  # cloud_router=None
+
+    replies: list[dict] = []
+    orch.handle({"id": "m1", "content": "q", "use_cloud": True}, replies.append)
+
+    assert any("REPONSE-LOCALE" in t for t in _tokens(replies))
+    assert any("cloud" in t.lower() for t in _tokens(replies))  # notice de repli
+
+
+def test_envoi_cloud_journalise_le_volume_sans_le_contenu(
+    audit: AuditLog, caplog: pytest.LogCaptureFixture
+) -> None:
+    cloud = _ScriptedModel([Plan(narration="REPONSE-CLOUD")])
+    router = _FakeRouter(cloud, available=True)
+    orch = _cloud_orch(_ScriptedModel([Plan()]), router, audit)
+
+    replies: list[dict] = []
+    with caplog.at_level(logging.INFO, logger="myosd.cloud"):
+        orch.handle(
+            {
+                "id": "m1",
+                "content": "donnée privée à ne pas journaliser",
+                "use_cloud": True,
+            },
+            replies.append,
+        )
+
+    cloud_logs = [r.getMessage() for r in caplog.records if r.name == "myosd.cloud"]
+    assert cloud_logs  # l'envoi cloud est journalisé (quoi/quand)
+    joined = " ".join(cloud_logs)
+    assert "Envoi CLOUD" in joined
+    # Le contenu utilisateur n'est JAMAIS journalisé (seul le volume l'est).
+    assert "donnée privée à ne pas journaliser" not in joined
