@@ -42,6 +42,30 @@ QLabel#status {{
     font-style: italic;
     padding-left: 2px;
 }}
+QCheckBox#cloudtoggle {{
+    color: #cfcfcf;
+    spacing: 6px;
+}}
+QCheckBox#cloudtoggle:checked {{
+    color: {_ACCENT};
+    font-weight: bold;
+}}
+QPushButton#keybutton {{
+    background-color: #2d2d2d;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    padding: 2px 6px;
+}}
+QPushButton#keybutton:hover {{
+    border: 1px solid {_ACCENT};
+}}
+QLabel#cloudbanner {{
+    color: #1e1e1e;
+    background-color: {_ACCENT};
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-weight: bold;
+}}
 """
 
 
