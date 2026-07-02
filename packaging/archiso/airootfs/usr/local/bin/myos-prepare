@@ -1,0 +1,15 @@
+#!/bin/sh
+# Crée l'utilisateur live "myos" (non-root) au 1er boot, AVANT l'autologin.
+# Le daemon myosd tourne sous cet utilisateur ; il n'est JAMAIS root
+# (cf. docs/SECURITY.md menace 3). Mot de passe par défaut documenté : "myos"
+# (à changer pour un usage réel). useradd -m peuple le home depuis /etc/skel.
+set -eu
+
+if ! id myos >/dev/null 2>&1; then
+    useradd -m -u 1000 -s /bin/bash \
+        -G wheel,video,audio,storage,power,input myos
+    echo 'myos:myos' | chpasswd
+fi
+
+mkdir -p /var/lib/myos
+touch /var/lib/myos/.prepared

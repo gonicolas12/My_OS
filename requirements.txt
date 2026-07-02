@@ -11,6 +11,14 @@ psutil               # processus et ressources système
 dbus-python ; sys_platform == "linux"   # D-Bus (luminosité, audio, réseau) — Linux uniquement (jalon 3)
                      # pas de wheel Windows (compilation native) ; alternative cross-platform : QtDBus de PySide6
 
+# --- Port Wayland (jalon 5, EXPÉRIMENTAL — Linux uniquement) ---
+# Raccourci global Wayland via le portal org.freedesktop.portal.GlobalShortcuts :
+# nécessite une boucle GLib pour les signaux D-Bus. X11 (pynput) reste le chemin
+# nominal ; ces paquets ne sont requis que sous une session Wayland.
+PyGObject ; sys_platform == "linux"      # GLib MainLoop pour le portal (import paresseux)
+                     # Popup Wayland en surface overlay : plugin SYSTÈME `layer-shell-qt`
+                     # (paquet pacman, PAS un paquet pip) + Qt Wayland. Voir docs/INSTALLATION.md.
+
 # --- IPC (daemon <-> popup) ---
 pyzmq                # messagerie robuste sur socket (optionnel : module socket standard suffit au départ)
 

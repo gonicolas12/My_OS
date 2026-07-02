@@ -1,0 +1,16 @@
+# My_OS — création de l'utilisateur live "myos" au 1er boot (jamais root).
+# Doit s'exécuter AVANT l'autologin du gestionnaire d'affichage. Pas de réseau
+# requis (rapide) : l'installation des dépendances et le modèle se font ensuite
+# dans la session utilisateur (cf. myos-user-firstrun).
+[Unit]
+Description=My_OS — préparation de l'utilisateur live (1er boot)
+Before=display-manager.service
+ConditionPathExists=!/var/lib/myos/.prepared
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/myos-prepare
+
+[Install]
+WantedBy=multi-user.target

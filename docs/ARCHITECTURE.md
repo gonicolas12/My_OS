@@ -37,7 +37,7 @@ Le cœur résident du système. Un service `systemd` **utilisateur** qui démarr
 | Fichier | Rôle |
 |---------|------|
 | `daemon/myosd.py` | point d'entrée, boucle de vie du service |
-| `daemon/hotkey_listener.py` | capture du raccourci global (X11 via `pynput`) |
+| `daemon/hotkey_listener.py` | capture du raccourci global — X11 via `pynput` (nominal), Wayland via le portal `GlobalShortcuts` (jalon 5, expérimental) ; backend choisi selon la session (cf. `INTERFACES.md §9`) |
 | `daemon/ipc_server.py` | serveur socket Unix, protocole de messages |
 | `daemon/orchestrator.py` | logique requête → modèle → outils → réponse |
 
@@ -100,16 +100,23 @@ Interface invoquée au raccourci. Nouvelle vue en PySide6, mais la **logique** d
 
 | Fichier | Rôle |
 |---------|------|
-| `ui/popup.py` | fenêtre PySide6 : centrée, sans bordure, au-dessus de tout |
-| `ui/chat_view.py` | affichage de la conversation |
-| `ui/markdown_render.py` | rendu markdown via `QTextBrowser` (léger) |
-| `ui/streaming.py` | affichage progressif des réponses |
+| `ui/popup.py` | fenêtre PySide6 : conversation + saisie, affichage en streaming (token par token), centrée/au-dessus sous X11 |
+| `ui/markdown_render.py` | rendu markdown de la conversation via `QTextBrowser` (léger) |
 | `ui/confirm_dialog.py` | dialogue de confirmation d'action |
 | `ui/styles.py` | thème sombre/orange (esprit My_AI) |
+| `ui/wayland_layer.py` | présentation Wayland du popup (surface `layer-shell`), repli X11 — jalon 5 (cf. `INTERFACES.md §9`) |
 
 **Choix technique.** `QTextBrowser` plutôt que `QWebEngineView` : le popup doit s'ouvrir **instantanément** au raccourci ; un moteur Chromium embarqué serait trop lourd à charger.
 
-**Note Wayland (plus tard).** Sous Wayland, le centrage et l'always-on-top passent par `layer-shell` ; le raccourci global par le portal `GlobalShortcuts`. Géré au jalon 5 (port Wayland).
+**Port Wayland (jalon 5 — expérimental).** X11 reste le chemin **nominal**,
+pleinement supporté. Sous Wayland, le centrage et l'always-on-top côté client Qt
+n'ont pas d'effet : le popup est posé en **surface overlay `layer-shell`** (plugin
+système `layer-shell-qt`, activé via `QT_WAYLAND_SHELL_INTEGRATION`) et le raccourci
+global passe par le **portal `org.freedesktop.portal.GlobalShortcuts`**. Le backend
+(X11 vs Wayland) est sélectionné au démarrage selon le type de session
+(`core/session.py`) — contrats et limites (support dépendant du compositeur) détaillés
+dans `INTERFACES.md §9`. Repli propre + diagnostic si le compositeur n'a pas
+`layer-shell` / le portal.
 
 ---
 

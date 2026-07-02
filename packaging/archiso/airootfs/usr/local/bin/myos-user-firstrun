@@ -1,0 +1,29 @@
+#!/bin/sh
+# Initialisation au 1er lancement de session (idempotent) :
+#   - crée un venv Python réutilisant les paquets système (--system-site-packages) ;
+#   - installe les dépendances absentes des dépôts officiels (PyPI) ;
+#   - récupère le modèle local Ollama EN ARRIÈRE-PLAN (réseau requis, non bloquant).
+# Cohérent avec « local par défaut » : le modèle tourne ensuite sur la machine.
+set -eu
+
+base="$HOME/.local/share/my_os"
+venv="$base/venv"
+mark="$base/.firstrun-done"
+
+[ -f "$mark" ] && exit 0
+mkdir -p "$base"
+
+if [ ! -x "$venv/bin/python" ]; then
+    python -m venv --system-site-packages "$venv"
+fi
+
+# Dépendances PyPI-only (les autres viennent des paquets système via le venv).
+"$venv/bin/pip" install --quiet --upgrade pip || true
+"$venv/bin/pip" install --quiet pynput anthropic ollama || true
+
+# Récupération du modèle local (peut être longue ; ne bloque pas la session).
+# Sans réseau, l'assistant signalera l'absence de modèle jusqu'au prochain
+# `ollama pull qwen3.5:4b`.
+( ollama pull qwen3.5:4b >"$base/model-pull.log" 2>&1 || true ) &
+
+touch "$mark"

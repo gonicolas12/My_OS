@@ -1,0 +1,57 @@
+# Paquets AJOUTÉS par My_OS au profil de base `releng`.
+#
+# build_iso.sh fusionne ce fichier avec le packages.x86_64 de releng
+# (union triée), de sorte que la base Arch (linux, mkinitcpio, bootloaders…)
+# reste celle, à jour, de l'hôte de build. On ne liste donc ICI que nos ajouts.
+#
+# NB paquets PyPI-only (pynput, anthropic, ollama-python) : ils ne sont PAS dans
+# les dépôts officiels et sont installés via pip dans un venv au 1er boot
+# (cf. myos-user-firstrun + docs/INSTALLATION.md). Le venv réutilise les paquets
+# système ci-dessous via --system-site-packages.
+#
+# NB noms de paquets : valables sur Arch fin 2026 ; à vérifier contre les dépôts
+# courants au moment du build (cf. packaging/README.md).
+
+# --- Compositeur de l'ISO : Xfce / X11 (robuste, chemin nominal) ---
+xorg-server
+xorg-xinit
+xfce4
+xfce4-goodies
+lightdm
+lightdm-gtk-greeter
+
+# --- Sécurité : agent polkit (élévation pkexec) + Secret Service (keyring) ---
+polkit
+polkit-gnome
+gnome-keyring
+libsecret
+
+# --- Réseau ---
+networkmanager
+network-manager-applet
+
+# --- Audio : pactl via PipeWire (cf. tools/system_settings.py) ---
+pipewire
+pipewire-pulse
+wireplumber
+libpulse
+
+# --- IA locale : démon/CLI Ollama (le modèle est récupéré au 1er boot) ---
+ollama
+
+# --- Python + bindings système (réutilisés par le venv au 1er boot) ---
+python
+python-pip
+pyside6
+python-psutil
+python-dbus
+python-gobject
+python-keyring
+python-yaml
+
+# --- Port Wayland (EXPÉRIMENTAL ; X11 reste nominal sur l'ISO) ---
+qt6-wayland
+layer-shell-qt
+
+# --- Outils ---
+git

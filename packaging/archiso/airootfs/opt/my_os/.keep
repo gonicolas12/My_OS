@@ -1,0 +1,3 @@
+# Emplacement d'installation de My_OS sur l'ISO (/opt/my_os).
+# build_iso.sh copie ici l'arbre des sources (hors .git, .venv, data, tests…).
+# Ce fichier garde le répertoire présent dans le dépôt.

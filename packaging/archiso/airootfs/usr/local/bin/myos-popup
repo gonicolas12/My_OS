@@ -1,0 +1,5 @@
+#!/bin/sh
+# Lanceur du popup pour l'ISO (processus séparé du daemon, cf. docs/ARCHITECTURE.md).
+export PYTHONPATH=/opt/my_os
+cd /opt/my_os || exit 1
+exec "$HOME/.local/share/my_os/venv/bin/python" -m ui.popup

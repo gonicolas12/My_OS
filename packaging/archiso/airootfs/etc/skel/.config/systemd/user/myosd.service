@@ -1,0 +1,18 @@
+# Service systemd UTILISATEUR du daemon myosd (version ISO).
+# Jamais root (cf. docs/SECURITY.md menace 3). Démarré par ~/.xprofile une fois
+# DISPLAY/XAUTHORITY importés ; redémarré tant que le venv du 1er boot n'est pas prêt.
+[Unit]
+Description=My_OS daemon (myosd) — assistant IA résident, sans privilège root
+Documentation=https://github.com/gonicolas12/My_OS
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/my_os
+ExecStart=/usr/local/bin/myos-daemon
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target

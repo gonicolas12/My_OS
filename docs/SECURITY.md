@@ -147,6 +147,26 @@ Rien de conséquent n'est silencieux.
 - **Cloud** : connexions sortantes TLS vers l'API Anthropic, uniquement en mode opt-in.
 - **Pas de serveur entrant** dans la v1 (contrairement au Relay de My_AI). Si un accès distant est ajouté plus tard, il devra être chiffré de bout en bout et authentifié, et fait l'objet d'une révision de sécurité dédiée.
 
+### 5.1 · Confinement du serveur d'affichage (Wayland comme couche de sécurité)
+
+Le **confinement Wayland est un *plus* de sécurité**, jamais une régression. C'est une
+défense en profondeur qui s'ajoute aux trois invariants, elle ne les remplace pas.
+
+- **Sous X11 (chemin nominal).** X11 n'isole pas les clients : n'importe quel programme
+  peut lire le clavier global, capturer l'écran ou injecter des événements. Le raccourci
+  global y fonctionne précisément grâce à cette absence d'isolation (`pynput`). C'est une
+  limite **connue et assumée** de X11 (cf. §6) ; My_OS n'aggrave rien, mais ne peut pas
+  compenser la faiblesse du serveur d'affichage.
+- **Sous Wayland (expérimental).** Le compositeur isole les applications : pas de
+  *keylogging* ni de capture d'écran arbitraires. My_OS s'y conforme via des canaux
+  **explicites et médiés par l'utilisateur** : le raccourci passe par le **portal
+  `GlobalShortcuts`** (l'utilisateur autorise/lie la combinaison) et le popup par une
+  **surface `layer-shell`** confinée. Le résultat est plus sûr (intention explicite) au
+  prix d'une portabilité moindre selon le compositeur.
+- **Invariant inchangé.** Quel que soit le serveur d'affichage, le daemon reste
+  **utilisateur** et l'IPC reste une **socket Unix locale** ; le port Wayland n'ouvre
+  aucune surface réseau supplémentaire.
+
 ---
 
 ## 6 · Ce que My_OS ne protège pas (limites honnêtes)
@@ -197,3 +217,20 @@ Rien de conséquent n'est silencieux.
   l'API Anthropic.
 - En mode cloud, **tout l'historique persistant** (borné) part : un `reset` (Ctrl+L)
   avant de passer au cloud est conseillé pour minimiser les données envoyées.
+
+### Port Wayland & packaging (jalon 5)
+
+- Le **port Wayland est un *plus* de sécurité** (confinement du serveur d'affichage,
+  cf. §5.1), pas une régression. **X11 reste le chemin nominal** pleinement supporté ; le
+  backend (raccourci, popup) est choisi selon la session (`core/session.py`).
+- Le raccourci Wayland passe par le **portal `GlobalShortcuts`** (médié par
+  l'utilisateur/compositeur) ; le popup par une **surface `layer-shell`** confinée. Aucun
+  accès global au clavier ni à l'écran n'est tenté hors de ces canaux explicites.
+- En cas d'indisponibilité (compositeur sans portal/`layer-shell`), le raccourci Wayland
+  reste **inactif avec un diagnostic clair** — il n'est jamais *simulé*, et rien ne
+  bascule en contournant le compositeur.
+- **ISO live.** Le daemon `myosd` y est un service **utilisateur** (jamais root) ;
+  l'utilisateur live `myos` est non privilégié ; l'élévation reste polkit/`pkexec`. La
+  **clé API cloud n'est jamais dans l'image** (toujours via le trousseau, saisie au
+  runtime). Mot de passe live par défaut documenté (`myos`) — à changer pour un usage réel.
+- Le port Wayland n'ouvre **aucune surface réseau** : l'IPC reste une socket Unix locale.
