@@ -9,7 +9,10 @@
 # PRÉREQUIS : hôte Arch Linux, paquet `archiso` installé, exécution en root
 # (mkarchiso l'exige). NE se construit PAS sous Windows ni en CI.
 #
-# Usage :  sudo ./packaging/build_iso.sh [-o REP_SORTIE]
+# ESPACE DISQUE : le répertoire de travail a besoin de ~15 Gio et NE doit PAS être
+# sur un tmpfs (RAM). Défaut : /var/tmp (sur disque). Adaptez avec -w au besoin.
+#
+# Usage :  sudo ./packaging/build_iso.sh [-o REP_SORTIE] [-w REP_TRAVAIL]
 set -euo pipefail
 
 RELENG="/usr/share/archiso/configs/releng"
@@ -17,15 +20,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OVERLAY="$SCRIPT_DIR/archiso"
 OUTDIR="$SCRIPT_DIR/out"
+# Parent du répertoire de travail temporaire. /var/tmp est sur disque (contrairement
+# à /tmp, souvent un tmpfs en RAM trop petit pour une ISO desktop → 'No space left').
+WORKPARENT="/var/tmp"
 
 usage() {
-    echo "Usage : sudo $0 [-o REP_SORTIE]" >&2
+    echo "Usage : sudo $0 [-o REP_SORTIE] [-w REP_TRAVAIL]" >&2
     echo "  -o REP_SORTIE   répertoire de sortie de l'ISO (défaut : $OUTDIR)" >&2
+    echo "  -w REP_TRAVAIL  parent du répertoire de travail, ~15 Gio requis," >&2
+    echo "                  JAMAIS un tmpfs (défaut : $WORKPARENT)" >&2
 }
 
-while getopts ":o:h" opt; do
+while getopts ":o:w:h" opt; do
     case "$opt" in
         o) OUTDIR="$OPTARG" ;;
+        w) WORKPARENT="$OPTARG" ;;
         h) usage; exit 0 ;;
         *) usage; exit 2 ;;
     esac
@@ -42,7 +51,17 @@ command -v mkarchiso >/dev/null 2>&1 || die "mkarchiso introuvable — installez
 [ -d "$RELENG" ] || die "profil releng introuvable dans $RELENG — installez 'archiso'"
 [ -f "$OVERLAY/profiledef.sh" ] || die "overlay introuvable : $OVERLAY/profiledef.sh"
 
-WORK="$(mktemp -d)"
+# Répertoire de travail sur disque (cf. WORKPARENT). Avertit si l'espace semble
+# insuffisant (une ISO desktop demande ~15 Gio d'espace de travail).
+mkdir -p "$WORKPARENT"
+avail_gib="$(df -Pk "$WORKPARENT" | awk 'NR==2 {printf "%d", $4 / 1024 / 1024}')"
+if [ "${avail_gib:-0}" -lt 15 ]; then
+    echo "Attention : ~${avail_gib:-0} Gio libres sur $WORKPARENT ; une ISO desktop" >&2
+    echo "  demande ~15 Gio. En cas d'echec 'No space left on device', pointez -w" >&2
+    echo "  vers un disque plus grand (ex. -w /mnt/build)." >&2
+fi
+
+WORK="$(mktemp -d -p "$WORKPARENT" myos-iso.XXXXXX)"
 PROFILE="$WORK/profile"
 cleanup() { rm -rf "$WORK"; }
 trap cleanup EXIT

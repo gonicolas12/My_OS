@@ -70,14 +70,25 @@ paquets ne sont pas installés) : ils sont posés au build, sur l'hôte Arch.
 
 ## 3 · Construire l'ISO (hôte Arch)
 
+> **Prérequis d'espace disque.** Le répertoire de travail a besoin de **~15 Gio** et
+> **ne doit pas être sur un tmpfs** (le `/tmp` d'Arch est souvent en RAM → erreur
+> `No space left on device` à l'étape ESP/FAT). `build_iso.sh` place donc son travail
+> sous **`/var/tmp`** (sur disque) par défaut ; utilisez `-w REP` pour cibler un autre
+> disque. Prévoyez aussi ~2 Gio pour l'ISO de sortie.
+
 ```bash
-# Sur un hôte Arch Linux à jour :
+# 1) Système à jour AVANT d'installer des paquets (sinon 404 sur des versions
+#    périmées de la base pacman) :
+sudo pacman -Syu
+
+# 2) Installer archiso (shellcheck est OPTIONNEL — juste pour linter les scripts,
+#    il tire toute la chaîne Haskell ; les scripts passent déjà bash -n / sh -n) :
 sudo pacman -S archiso
 
-# Depuis la racine du dépôt My_OS :
-sudo ./packaging/build_iso.sh            # ISO dans packaging/out/
-# ou un répertoire de sortie explicite :
-sudo ./packaging/build_iso.sh -o /tmp/myos-iso
+# 3) Depuis la racine du dépôt My_OS :
+sudo ./packaging/build_iso.sh                 # ISO dans packaging/out/
+sudo ./packaging/build_iso.sh -o /mnt/iso     # répertoire de sortie explicite
+sudo ./packaging/build_iso.sh -w /mnt/build   # répertoire de travail sur un gros disque
 ```
 
 `build_iso.sh` exporte le code suivi par git (`git archive HEAD`) : **buildez
