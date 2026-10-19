@@ -30,7 +30,6 @@ from daemon.confirmation_provider import IPCConfirmationProvider
 from daemon.hotkey_listener import HotkeyListener
 from daemon.ipc_server import IPCServer
 from daemon.orchestrator import Model, Orchestrator
-from models import secrets
 from models.cloud_router import CloudRouter
 from models.stub_model import StubRuleModel
 from permissions.audit_log import AuditLog
@@ -127,13 +126,11 @@ class Daemon:  # pylint: disable=too-many-instance-attributes
             "Démarrage de myosd (utilisateur, sans privilège root) — modèle=%s",
             getattr(self._model, "name", type(self._model).__name__),
         )
+        # Pas de lecture du trousseau ici : sans session déverrouillée (autologin
+        # de l'ISO), la sonder ouvrirait une invite gnome-keyring à chaque démarrage,
+        # qui capture le clavier. La clé n'est lue qu'à la 1re requête cloud.
         _log.info(
-            "Routeur cloud : %s (modèle %s, opt-in par requête)",
-            (
-                "clé configurée"
-                if secrets.has_api_key()
-                else "aucune clé (cloud indisponible jusqu'à saisie via le popup)"
-            ),
+            "Routeur cloud : modèle %s, opt-in par requête (clé lue à la demande)",
             self._config.model.cloud_model,
         )
         self._server.start()
