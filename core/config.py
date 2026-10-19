@@ -76,8 +76,14 @@ class ModelConfig:
 
 
 def default_audit_db_path() -> Path:
-    """Chemin par défaut du journal d'audit (cf. docs/ARCHITECTURE.md §7)."""
-    return _PROJECT_ROOT / "data" / "audit.db"
+    """Chemin par défaut du journal d'audit (cf. docs/ARCHITECTURE.md §7).
+
+    ``$XDG_DATA_HOME/my_os/audit.db`` (défaut ``~/.local/share/my_os/audit.db``) :
+    toujours inscriptible par l'utilisateur du daemon, contrairement au dossier du
+    code, en lecture seule une fois installé (ex. ``/opt/my_os`` sur l'ISO).
+    """
+    data_home = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    return Path(data_home) / "my_os" / "audit.db"
 
 
 @dataclass

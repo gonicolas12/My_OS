@@ -145,7 +145,7 @@ Le `policy_engine` est le **point de passage unique**. Aucune action n'atteint `
 
 ## 4 · Journal d'audit (`permissions/audit_log.py`)
 
-Table SQLite `audit` dans `data/audit.db` :
+Table SQLite `audit` dans `~/.local/share/my_os/audit.db` :
 
 | Colonne | Type | Description |
 |---------|------|-------------|
@@ -245,7 +245,7 @@ tantôt au local, tantôt au cloud (c'est voulu).
 Chaque envoi cloud est journalisé via un **logger dédié `myosd.cloud`**
 (horodatage, nom du modèle, **nombre de messages et de caractères** transmis) —
 **jamais** la clé, **jamais** le contenu. Le canal est le logger (journald sous
-systemd), distinct du **journal d'audit** (`data/audit.db`), réservé aux actions
+systemd), distinct du **journal d'audit** (`~/.local/share/my_os/audit.db`), réservé aux actions
 d'outils et décisions de permission (§4). La minimisation des données envoyées au
 cloud est traitée en §6 et SECURITY menace 2.
 

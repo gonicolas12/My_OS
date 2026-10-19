@@ -33,7 +33,7 @@ Tout contenu que l'IA **lit** est une **donnée non fiable**, jamais une instruc
 ### 2.3 · Traçabilité
 Rien de conséquent n'est silencieux.
 
-- Chaque action (et chaque décision de permission) est journalisée dans `data/audit.db`.
+- Chaque action (et chaque décision de permission) est journalisée dans `~/.local/share/my_os/audit.db`.
 - Les opérations réversibles devraient pouvoir être annulées.
 - L'utilisateur peut consulter l'historique de ce que l'IA a fait.
 
@@ -76,7 +76,7 @@ Rien de conséquent n'est silencieux.
   toggle est ON, et une notice in-transcript marque chaque requête partie au cloud.
 - **Journalisé sans fuite.** Chaque envoi cloud est tracé par le logger dédié
   `myosd.cloud` (modèle, nombre de messages et de caractères transmis) — **jamais**
-  la clé, **jamais** le contenu. Canal distinct du journal d'audit `data/audit.db`
+  la clé, **jamais** le contenu. Canal distinct du journal d'audit `~/.local/share/my_os/audit.db`
   (réservé aux actions d'outils et décisions de permission).
 - **Minimisation des données.** En mode cloud, c'est **tout l'historique persistant
   courant** (borné par `MAX_HISTORY_MESSAGES`) qui part, pas seulement le dernier

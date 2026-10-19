@@ -197,7 +197,7 @@ pas de la fiabilité du modèle**.
 - **Escalade par arguments** : ne peut qu'**augmenter** le risque (ex. écrire dans `~/.ssh`).
 - **Blocklist en premier** : le niveau 3 est vérifié avant tout et ne peut être contourné.
 - **Mémorisation** : *une fois* / *ce dossier* / *cette session*.
-- **Audit** : chaque action et décision est journalisée dans `data/audit.db` (SQLite).
+- **Audit** : chaque action et décision est journalisée dans `~/.local/share/my_os/audit.db` (SQLite).
 
 ---
 
@@ -304,8 +304,6 @@ My_OS/
 │   ├── elevation.py          # exécution système + polkit (pkexec)
 │   ├── session.py            # détection X11/Wayland
 │   └── logger.py
-├── data/
-│   └── audit.db              # journal d'audit (généré)
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── SECURITY.md           # modèle de menaces

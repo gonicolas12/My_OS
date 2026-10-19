@@ -72,7 +72,7 @@ Voir `SECURITY.md §4` pour les règles. Modules :
 | `blocklist.py` | niveau 3, vérifié en premier |
 | `session_grants.py` | mémorise « une fois / ce dossier / cette session » |
 | `confirmation.py` | construit la demande de confirmation pour l'UI |
-| `audit_log.py` | écrit chaque action dans `data/audit.db` (SQLite) |
+| `audit_log.py` | écrit chaque action dans `~/.local/share/my_os/audit.db` (SQLite) |
 
 **Invariant.** Aucune action système ne s'exécute sans passer par `policy_engine.py`. C'est le point de passage unique — un « choke point » de sécurité.
 
@@ -151,7 +151,7 @@ dans `INTERFACES.md §9`. Repli propre + diagnostic si le compositeur n'a pas
 
 | Donnée | Stockage |
 |--------|----------|
-| Journal d'audit | `data/audit.db` (SQLite) |
+| Journal d'audit | `~/.local/share/my_os/audit.db` (SQLite) |
 | Configuration | `config.yaml` |
 | Clé API / secrets | trousseau OS (`keyring`) — **pas** sur disque en clair |
 | Grants de session | en mémoire (réinitialisés à chaque session) |

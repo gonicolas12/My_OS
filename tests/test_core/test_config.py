@@ -5,7 +5,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from core.config import DEFAULT_HOTKEY, _deep_merge, load_config
+from core import config as config_module
+from core.config import (
+    DEFAULT_HOTKEY,
+    _deep_merge,
+    default_audit_db_path,
+    load_config,
+)
 
 
 def test_deep_merge_surcharge_les_cles_simples() -> None:
@@ -58,3 +64,18 @@ def test_socket_path_jamais_pris_du_fichier(tmp_path: Path) -> None:
     path.write_text("socket_path: /tmp/pirate.sock\n", encoding="utf-8")
     cfg = load_config(path)
     assert "pirate" not in str(cfg.socket_path)
+
+
+def test_audit_db_dans_xdg_data_home(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+    assert default_audit_db_path() == tmp_path / "data" / "my_os" / "audit.db"
+
+
+def test_audit_db_hors_du_dossier_du_code(monkeypatch) -> None:
+    # Installé (ex. /opt/my_os), le dossier du code n'est pas inscriptible par
+    # l'utilisateur du daemon : l'audit ne doit jamais y être écrit.
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    project_root = Path(config_module.__file__).resolve().parent.parent
+    path = default_audit_db_path()
+    assert path == Path.home() / ".local" / "share" / "my_os" / "audit.db"
+    assert project_root not in path.parents
