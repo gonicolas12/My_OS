@@ -115,7 +115,8 @@ qemu-system-x86_64 -enable-kvm -m 4096 -smp 2 \
 qemu-system-x86_64 -enable-kvm -m 4096 -smp 2 -cdrom packaging/out/my_os-*.iso
 ```
 
-Donnez à la VM **assez de RAM** (≥ 4 Go) et un **accès réseau** (1er boot). À
+Donnez à la VM **assez de RAM** (≥ 4 Go ; ≥ 12 Go pour le modèle local, cf. §5) et
+un **accès réseau** (1er boot). À
 vérifier au boot :
 1. Autologin vers Xfce, utilisateur `myos` (non-root : `whoami` → `myos`).
 2. Fin du 1er run (venv + `ollama pull` ; voir `~/.local/share/my_os/model-pull.log`).
@@ -139,7 +140,12 @@ vérifier au boot :
   sur l'hôte Arch. La validation réelle est l'étape VM ci-dessus.
 - **1er boot en ligne** : sans réseau, les dépendances `pip` et le modèle ne sont
   pas récupérés ; l'assistant signalera l'absence de modèle jusqu'au prochain
-  `ollama pull qwen3.5:4b`.
+  `ollama pull qwen3.5:4b`. Un échec de `pip` est journalisé dans
+  `~/.local/share/my_os/firstrun.log` et retenté à la session suivante.
+- **RAM en live** : tout ce qui est écrit vit en RAM (cowspace, fixé à **50 % de la
+  RAM** par `build_iso.sh`). Le modèle (~3,3 Go) n'est tiré que s'il reste ≥ 4 Gio
+  libres, soit **≥ 12 Go de RAM** pour le modèle local en live ; en dessous, le pull
+  est ignoré et la raison est écrite dans `model-pull.log`.
 - **Mot de passe live connu** (`myos`) : acceptable pour une démo live, à changer
   pour un usage réel.
 

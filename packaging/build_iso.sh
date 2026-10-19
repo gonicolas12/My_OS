@@ -81,6 +81,13 @@ grep -vhE '^[[:space:]]*(#|$)' \
     "$PROFILE/packages.x86_64" "$OVERLAY/packages.x86_64" | sort -u > "$merged"
 mv "$merged" "$PROFILE/packages.x86_64"
 
+echo ">> Espace d'écriture live (cowspace) : 50 % de la RAM"
+# Défaut archiso : 256 Mio, saturés par le venv puis le `ollama pull` (~3,3 Go) du
+# 1er run. tmpfs n'occupe que ce qui est écrit ; 50 % laisse la RAM nécessaire au
+# chargement du modèle. Paramètre ajouté à toutes les entrées de boot de releng.
+grep -rlZ 'archisobasedir=' "$PROFILE/syslinux" "$PROFILE/efiboot" "$PROFILE/grub" 2>/dev/null \
+    | xargs -0 -r sed -i '/archisobasedir=/ s/$/ cow_spacesize=50%/'
+
 echo ">> Copie des sources de My_OS → airootfs/opt/my_os"
 dest="$PROFILE/airootfs/opt/my_os"
 mkdir -p "$dest"
@@ -91,6 +98,9 @@ else
     cp -a "$REPO_ROOT/." "$dest/"
     rm -rf "$dest/.git" "$dest/.venv" "$dest/packaging/out"
 fi
+# Backend local Ollama sur l'ISO (le modèle est tiré au 1er run) ; config.yaml
+# versionné garde le stub, pratique en dev. config.local.yaml le surcharge.
+printf 'model:\n  backend: ollama\n' > "$dest/config.local.yaml"
 
 echo ">> Activation des services (symlinks systemd dans l'image)"
 sysdir="$PROFILE/airootfs/etc/systemd/system"
@@ -102,6 +112,20 @@ ln -sf /usr/lib/systemd/system/lightdm.service "$sysdir/display-manager.service"
 # n'existent qu'une fois les paquets installés par mkarchiso — c'est attendu).
 for unit in NetworkManager.service ollama.service; do
     ln -sf "/usr/lib/systemd/system/$unit" "$sysdir/multi-user.target.wants/$unit"
+done
+# Réseau géré par NetworkManager SEUL : releng active systemd-networkd et iwd, qui
+# configureraient les mêmes interfaces en parallèle (double DHCP, conflit Wi-Fi
+# avec le wpa_supplicant de NetworkManager). networkd est MASQUÉ (et non juste
+# désactivé) : les presets systemd le réactivent à l'installation des paquets.
+rm -f "$sysdir/multi-user.target.wants/iwd.service" \
+    "$sysdir/multi-user.target.wants/systemd-networkd.service" \
+    "$sysdir/sockets.target.wants/systemd-networkd.socket" \
+    "$sysdir/network-online.target.wants/systemd-networkd-wait-online.service" \
+    "$sysdir/dbus-org.freedesktop.network1.service"
+for unit in systemd-networkd.service systemd-networkd.socket \
+    systemd-networkd-varlink.socket systemd-networkd-varlink-metrics.socket \
+    systemd-networkd-resolve-hook.socket systemd-networkd-wait-online.service; do
+    ln -sf /dev/null "$sysdir/$unit"
 done
 # Service My_OS (fichier régulier déjà présent dans l'image).
 ln -sf /etc/systemd/system/myos-prepare.service \

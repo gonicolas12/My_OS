@@ -5,9 +5,13 @@
 # (à changer pour un usage réel). useradd -m peuple le home depuis /etc/skel.
 set -eu
 
+# Sous Arch, le PAM `lightdm-autologin` exige que l'utilisateur soit membre du
+# groupe `autologin` (pam_succeed_if) : sans lui, LightDM retombe sur le greeter.
+groupadd -rf autologin
+
 if ! id myos >/dev/null 2>&1; then
     useradd -m -u 1000 -s /bin/bash \
-        -G wheel,video,audio,storage,power,input myos
+        -G wheel,video,audio,storage,power,input,autologin myos
     echo 'myos:myos' | chpasswd
 fi
 

@@ -44,6 +44,9 @@ python
 python-pip
 pyside6
 python-psutil
+# Dépendance native de pynput : la compiler via pip exigerait gcc (absent de
+# l'ISO) et ferait échouer tout le `pip install` du 1er run.
+python-evdev
 python-dbus
 python-gobject
 python-keyring
@@ -52,6 +55,11 @@ python-yaml
 # --- Port Wayland (EXPÉRIMENTAL ; X11 reste nominal sur l'ISO) ---
 qt6-wayland
 layer-shell-qt
+
+# --- Polices : texte + symboles/emoji du popup (☁, 🔑), sinon rendus en carrés ---
+ttf-dejavu
+noto-fonts
+noto-fonts-emoji
 
 # --- Outils ---
 git
