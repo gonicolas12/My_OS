@@ -65,6 +65,20 @@ chacun stable et testé avant le suivant.
 - [x] Menus de démarrage aux couleurs de My_OS ; démarrage validé en VM sur CD et sur clé
   USB (Ventoy et image brute), en BIOS et en UEFI.
 
+### Interface du popup repensée (octobre 2026, après la v1.0)
+- [x] Fenêtre libre : redimensionnable par les bords et les coins, déplaçable, agrandie
+  (double-clic sur la barre de titre), plein écran (`F11`) ; taille, position et état
+  mémorisés. Validé en VM sous xfwm4, confirmation comprise au-dessus du plein écran.
+- [x] Rappel « Échap pour fermer » en haut à droite.
+- [x] Conversation sur le gabarit de l'interface de My_AI, en noir et orange : bulle
+  de l'utilisateur, réponse sous un en-tête (heure, durée), séparation nette entre les
+  échanges, blocs de code avec « Copier », écran d'accueil avec suggestions, mise en
+  page qui s'adapte à la largeur.
+- [x] Sorties d'outils lisibles : message IPC `tool_result`, carte avec le statut
+  (terminé, échec, refusé, bloqué), texte brut où les retours à la ligne sont gardés.
+- [x] État du service visible (local, cloud, hors ligne) : une demande envoyée sans
+  daemon le signale au lieu d'attendre indéfiniment.
+
 ### Encore à éprouver
 - [ ] Un vrai PC (pilotes Wi-Fi, rétroéclairage, cartes graphiques ; son et Wi-Fi ont été
   validés en VM avec du matériel simulé).
@@ -98,8 +112,6 @@ Plus modestes, et directement issues de l'usage réel :
 - **Annuler une action** : le contrat des outils prévoit `reversible`/`undo_data`, pas
   encore exploités.
 - **Consulter l'historique** depuis le popup (aujourd'hui : fichier SQLite d'audit).
-- **Sorties d'outils plus lisibles** : les retours à la ligne (liste de fichiers, sortie
-  de pacman) sont perdus dans le rendu du popup.
 - **Messages polkit traduits** (« Request dismissed » s'affiche tel quel).
 - **Confirmations en double** : le modèle demande parfois « Voulez-vous vraiment… ? »
   en texte avant d'appeler l'outil, puis la fenêtre de confirmation redemande ; après
