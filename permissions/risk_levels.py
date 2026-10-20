@@ -12,6 +12,7 @@ rester déterministes quel que soit l'OS de développement.
 
 from __future__ import annotations
 
+import os
 import posixpath
 from pathlib import Path
 
@@ -90,9 +91,17 @@ def sensitive_roots(home: str | Path | None = None) -> list[str]:
     """Renvoie la liste résolue des préfixes sensibles.
 
     ``home`` permet d'injecter un répertoire utilisateur (utile pour les
-    tests) ; par défaut, ``~`` est expansé depuis l'environnement.
+    tests) ; par défaut, ``~`` est expansé depuis l'environnement puis, sous
+    Linux, résolu en chemin réel : les outils fichiers comparent des chemins
+    réels, un HOME derrière un lien (``/home`` → ``/var/home``) ne doit pas
+    faire échapper ``~/.ssh`` à l'escalade.
     """
-    home_path = _posix(home) if home is not None else _posix(posixpath.expanduser("~"))
+    if home is not None:
+        home_path = _posix(home)
+    else:
+        home_path = _posix(posixpath.expanduser("~"))
+        if os.name == "posix":
+            home_path = os.path.realpath(home_path)
     home_path = home_path.rstrip("/")
     return [
         *SYSTEM_SENSITIVE_ROOTS,
