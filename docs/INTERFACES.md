@@ -25,11 +25,14 @@ Communication sur une **socket Unix locale**. Le daemon est le **serveur** (cré
 ### Messages daemon → popup (streaming)
 ```json
 { "type": "token", "id": "uuid", "text": "fragment de réponse" }
-{ "type": "tool_request", "id": "uuid", "tool": "move_file", "args": {...}, "risk_level": 1, "summary": "Déplacer 3 fichiers vers Images/" }
 { "type": "confirmation_needed", "id": "uuid", "request_id": "uuid-action", "tool": "delete_file", "args": {...}, "risk_level": 2, "summary": "...", "requires_elevation": false, "allowed_scopes": [] }
 { "type": "done", "id": "uuid" }
 { "type": "error", "id": "uuid", "message": "..." }
 ```
+
+Le résultat de chaque outil (succès, refus, blocage, erreur) arrive dans le flux de
+`token`, sous forme de bloc citation markdown : il n'y a pas de message dédié aux appels
+d'outils (l'ancien `tool_request`, prévu au jalon 1, n'a jamais été émis).
 
 `allowed_scopes` liste les portées de grant que le popup peut proposer, calculées
 par le daemon (`policy_engine.grantable_scopes`) : `[]` au **niveau 2** (confirmation

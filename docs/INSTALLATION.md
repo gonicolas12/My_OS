@@ -27,16 +27,20 @@ Linux** (ou dérivés : EndeavourOS, etc.).
 sudo pacman -S --needed \
     python python-pip \
     pyside6 \
-    python-psutil python-dbus python-yaml python-keyring \
+    python-psutil python-dbus python-gobject python-yaml python-keyring python-evdev \
     polkit gnome-keyring libsecret \
     ollama \
     pipewire pipewire-pulse wireplumber libpulse \
-    networkmanager
+    networkmanager \
+    noto-fonts noto-fonts-emoji
 ```
 
 > `pactl` (réglage du volume) vient de `libpulse`. `polkit` fournit `pkexec` (élévation
 > ponctuelle). `gnome-keyring`/`libsecret` fournissent le trousseau (Secret Service) pour
-> la clé API cloud. Les noms de paquets peuvent évoluer : vérifiez avec `pacman -Si <pkg>`.
+> la clé API cloud. **`python-evdev`** est la dépendance native de `pynput` : sans lui,
+> `pip install pynput` doit la compiler (gcc requis) et échoue souvent. Les polices
+> `noto-fonts*` affichent les symboles du popup (☁, 🔑). Les noms de paquets peuvent
+> évoluer : vérifiez avec `pacman -Si <pkg>`.
 
 ### 2.2 · Récupérer le projet et les dépendances Python
 
@@ -52,10 +56,14 @@ pip install -r requirements.txt        # ou un venv : python -m venv .venv && . 
 ### 2.3 · Modèle local
 
 ```bash
-# Installez Ollama (cf. lien ci-dessus), démarrez le service puis tirez le modèle :
-systemctl --user start ollama       # ou `ollama serve` dans un terminal
-ollama pull qwen3.5:4b              # recommandé (≈ 8 Go RAM)
+# Ollama est un service SYSTÈME sous Arch (paquet `ollama`) :
+sudo systemctl enable --now ollama  # ou `ollama serve` dans un terminal
+ollama pull qwen3.5:4b              # ~3,3 Go ; recommandé ≥ 8 Go de RAM
 ```
+
+> Sans GPU, une réponse du modèle 4B prend de quelques secondes à plus d'une minute
+> selon la machine (mesuré en VM, 8 cœurs, sans GPU : 20 s à 1 min 50 ; la première
+> requête charge le modèle en mémoire).
 
 Activez le backend Ollama dans `config.local.yaml` (non versionné) :
 
@@ -95,6 +103,9 @@ systemctl --user import-environment DISPLAY XAUTHORITY
 Le **popup** est un processus résident séparé : lancez-le au démarrage de session via un
 autostart XDG (`~/.config/autostart/`) pointant sur `python -m ui.popup`, ou démarrez-le
 manuellement. Il reste caché jusqu'au raccourci.
+
+Le journal d'audit est écrit dans `~/.local/share/my_os/audit.db` (le dossier du code
+peut donc rester en lecture seule).
 
 ---
 
@@ -136,16 +147,25 @@ utilisez une session **X11** (pleinement supportée).
 
 ## 5 · Installation via l'ISO live
 
-Une ISO bootable (base Arch + Xfce/X11) embarque My_OS prêt à l'emploi.
+Une ISO bootable (base Arch + Xfce/X11) embarque My_OS prêt à l'emploi, avec le modèle
+local activé par défaut. Elle a été validée en VM (QEMU/KVM, BIOS et UEFI) en
+octobre 2026.
 
 - **Construire l'ISO** (sur un hôte Arch avec `archiso`) :
   ```bash
   sudo pacman -S archiso
-  sudo ./packaging/build_iso.sh        # ISO dans packaging/out/
+  sudo ./packaging/build_iso.sh                # ISO dans packaging/out/
+  sudo ./packaging/build_iso.sh -s 2026/10/19  # instantané de paquets explicite
   ```
-- **Tester en VM** (QEMU/VirtualBox). Donnez ≥ 4 Go de RAM et un accès réseau.
-- **1er boot** : autologin vers Xfce (utilisateur non-root `myos`), puis récupération des
-  dépendances et du modèle Ollama (réseau requis, quelques minutes).
+  Les paquets viennent d'un **instantané daté de l'Arch Linux Archive** (la veille par
+  défaut) ; le système live garde ce même instantané comme miroir, ce qui permet
+  d'installer des paquets en live sans mise à jour partielle.
+- **RAM** : ≥ 4 Go pour démarrer ; **≥ 12 Go pour le modèle local en live** (tout ce qui
+  est écrit vit en RAM, modèle compris). En dessous, le modèle n'est pas téléchargé et
+  le popup signale son absence.
+- **1er boot** (réseau requis) : autologin vers Xfce (utilisateur non-root `myos`, mot
+  de passe `myos`), synchronisation des bases pacman en arrière-plan, installation des
+  dépendances Python puis téléchargement du modèle (~3,3 Go, quelques minutes).
 
 Procédure détaillée, décisions et limites : **[packaging/README.md](../packaging/README.md)**.
 
@@ -162,3 +182,14 @@ Procédure détaillée, décisions et limites : **[packaging/README.md](../packa
   `qwen3.5:4b` doit être présent).
 - **Élévation refusée** : un agent polkit doit tourner dans la session (Xfce lance
   `polkit-gnome`). Sinon, installez/lancez un agent d'authentification polkit.
+  Un « Request dismissed » signifie simplement que la fenêtre polkit a été annulée.
+- **Rechercher/installer un paquet échoue en live** (`database file for 'core' does not
+  exist`) : les bases n'ont pas encore été synchronisées (réseau absent au démarrage).
+  Vérifiez `journalctl -u myos-pacman-sync`, ou lancez `sudo pacman -Sy` (sans risque :
+  le miroir est l'instantané de l'ISO).
+- **Le modèle n'est pas là en live** : lisez `~/.local/share/my_os/model-pull.log`
+  (RAM insuffisante ou pas de réseau), puis `ollama pull qwen3.5:4b` une fois la cause
+  réglée.
+- **Dépendances Python manquantes en live** : `~/.local/share/my_os/firstrun.log` ;
+  l'installation est retentée à la session suivante.
+- **Session verrouillée après inactivité (live)** : mot de passe `myos`.

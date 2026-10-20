@@ -14,7 +14,7 @@ My_OS s'organise en cinq couches, construites de bas en haut. Chaque couche ne d
 ├─────────────────────────────────────────────────┤
 │ Couche 3a — Modèle local │ 3b — Routeur cloud   │  Qwen/Ollama (défaut) · Claude (opt-in)
 ├─────────────────────────────────────────────────┤
-│ Couche 2 — Pont MCP + moteur de permissions     │  outils système + garde + audit
+│ Couche 2 — Outils + moteur de permissions       │  outils système + garde + audit
 ├─────────────────────────────────────────────────┤
 │ Couche 1 — Daemon myosd                         │  service résident, raccourci, IPC
 ├─────────────────────────────────────────────────┤
@@ -45,9 +45,9 @@ Le cœur résident du système. Un service `systemd` **utilisateur** qui démarr
 
 ---
 
-## 3 · Couche 2 — Pont MCP + moteur de permissions
+## 3 · Couche 2 — Outils + moteur de permissions
 
-La couche qui fait de My_OS un *système* et non un chatbot. Elle expose des **outils** au modèle et **filtre chaque action** par le moteur de permissions.
+La couche qui fait de My_OS un *système* et non un chatbot. Elle expose des **outils** au modèle — par le *tool calling* natif d'Ollama et de l'API Anthropic, sans serveur MCP — et **filtre chaque action** par le moteur de permissions.
 
 ### 3.1 · Les outils (`tools/`)
 Chaque outil est une capacité concrète et déterministe (≠ « le modèle clique »). Tous héritent de `tools/base_tool.py` et déclarent un `risk_level`.
@@ -56,11 +56,15 @@ Chaque outil est une capacité concrète et déterministe (≠ « le modèle cli
 |---------|--------|----------------|
 | `tools/files.py` | lire, lister | 0 |
 |  | écrire, déplacer, créer | 1 (→2 si chemin sensible) |
-|  | supprimer | 2 |
-| `tools/packages.py` | installer, mettre à jour (`pacman`) | 1-2 |
-| `tools/system_settings.py` | luminosité, audio, réseau (D-Bus) | 1 |
+|  | supprimer (fichiers seulement, jamais un dossier) | 2 |
+| `tools/packages.py` | rechercher (`pacman -Ss`, mots-clés) | 0 |
+|  | installer (`pacman -S`, élévation polkit) | 1 |
+|  | désinstaller, mettre à jour (`pacman -Rns` / `-Syu`, élévation polkit) | 2 |
+| `tools/system_settings.py` | luminosité, Wi-Fi (D-Bus) ; volume, sourdine (`pactl`) | 1 |
 | `tools/processes.py` | lister | 0 |
-|  | tuer un processus | 2 |
+|  | tuer un processus (droits de l'utilisateur) | 2 |
+
+Les outils fichiers résolvent le **chemin réel** dans `normalize_args` (`~`, chemin relatif, `..`, `//`, liens symboliques) **avant** toute décision : blocklist, escalade, grants et audit voient tous le fichier réellement visé (cf. `SECURITY.md §4`, règle 5).
 
 ### 3.2 · Le moteur de permissions (`permissions/`)
 Voir `SECURITY.md §4` pour les règles. Modules :
@@ -68,10 +72,10 @@ Voir `SECURITY.md §4` pour les règles. Modules :
 | Fichier | Rôle |
 |---------|------|
 | `risk_levels.py` | table statique outil → niveau (source de vérité) |
-| `policy_engine.py` | décide auto / confirm / bloqué ; applique l'escalade |
+| `policy_engine.py` | décide auto / confirm / bloqué ; applique l'escalade ; les grants ne couvrent que le niveau 1 |
 | `blocklist.py` | niveau 3, vérifié en premier |
-| `session_grants.py` | mémorise « une fois / ce dossier / cette session » |
-| `confirmation.py` | construit la demande de confirmation pour l'UI |
+| `session_grants.py` | mémorise « ce dossier / cette session » (jamais pour le niveau 2) |
+| `confirmation.py` | construit la demande de confirmation pour l'UI, avec les portées autorisées (`allowed_scopes`) |
 | `audit_log.py` | écrit chaque action dans `~/.local/share/my_os/audit.db` (SQLite) |
 
 **Invariant.** Aucune action système ne s'exécute sans passer par `policy_engine.py`. C'est le point de passage unique — un « choke point » de sécurité.
@@ -133,16 +137,18 @@ dans `INTERFACES.md §9`. Repli propre + diagnostic si le compositeur n'a pas
    └─▶ models/ (local ou cloud) génère une réponse + appels d'outils
 
 4. Pour chaque appel d'outil :
+   └─▶ l'outil normalise ses arguments (chemin réel : ~, relatif, liens)
    └─▶ permissions/policy_engine évalue le risque
         ├─ niveau 0 → exécute
         ├─ niveau 1/2 → ui/confirm_dialog demande confirmation
+        │               (au-dessus du popup, « Refuser » par défaut)
         └─ niveau 3 → refuse
    └─▶ permissions/audit_log journalise la décision + le résultat
 
 5. tools/ exécute l'action validée (déplacer les fichiers)
 
 6. daemon renvoie la réponse en streaming
-   └─▶ ui/streaming affiche progressivement
+   └─▶ ui/popup affiche progressivement
 ```
 
 ---
@@ -152,9 +158,12 @@ dans `INTERFACES.md §9`. Repli propre + diagnostic si le compositeur n'a pas
 | Donnée | Stockage |
 |--------|----------|
 | Journal d'audit | `~/.local/share/my_os/audit.db` (SQLite) |
-| Configuration | `config.yaml` |
+| Configuration | `config.yaml` (versionné) + `config.local.yaml` (surcharges locales, non versionné) |
 | Clé API / secrets | trousseau OS (`keyring`) — **pas** sur disque en clair |
 | Grants de session | en mémoire (réinitialisés à chaque session) |
+| Dépendances PyPI (ISO) | venv `~/.local/share/my_os/venv` (créé au 1er run, journal `firstrun.log`) |
+| Modèle local | stockage d'Ollama (`/var/lib/ollama`) |
+| Bases pacman (ISO live) | resynchronisées au boot depuis l'instantané figé du build |
 
 ---
 
@@ -163,7 +172,7 @@ dans `INTERFACES.md §9`. Repli propre + diagnostic si le compositeur n'a pas
 | Composant My_AI | Réutilisation dans My_OS |
 |-----------------|--------------------------|
 | `local_llm.py` (Ollama/Qwen) | quasi tel quel |
-| `mcp_client.py` (pont outils) | base du pont de la couche 2 |
+| `mcp_client.py` (pont outils) | inspiration de la couche outils (en v1 : appel direct par *tool calling*, sans MCP) |
 | logique confirmation avant suppression | généralisée en moteur de permissions |
 | flux d'approbation de l'extension VS Code | repris pour les grants de session |
 | rendu markdown / streaming chat | logique reprise, nouvelle vue Qt |
