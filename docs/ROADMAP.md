@@ -48,6 +48,22 @@ chacun stable et testé avant le suivant.
 - [x] Séparation données/instructions appliquée dès le jalon 2.
 - [x] [docs/SECURITY.md](SECURITY.md) tenu à jour (checklist par jalon).
 
+### Validation en VM (octobre 2026)
+- [x] ISO démarrée en VM QEMU/KVM, **BIOS et UEFI** : autologin, 1er run, raccourci → popup.
+- [x] **42 scénarios de permissions** avec effet réel vérifié ; 6 contournements trouvés
+  (grants couvrant le niveau 2, chemins relatifs, liens symboliques, `//etc`), corrigés
+  et re-testés (cf. [SECURITY.md §8](SECURITY.md)).
+- [x] Confirmation **visible** (au-dessus du popup) et **« Refuser » par défaut**.
+- [x] Élévation polkit (`pacman`) depuis le service utilisateur ; paquets de l'ISO figés
+  sur un instantané de l'Arch Linux Archive (recherche et installation en live).
+- [x] Modèle local : bon outil choisi en langage naturel, recherche de paquets par
+  mots-clés anglais, injection de prompt dans un fichier résistée.
+
+### Avant la publication de la v1.0
+- [ ] Publier l'ISO (release GitHub, tag `v1.0`).
+- [ ] Essai sur un vrai PC (rétroéclairage, Wi-Fi physique, son).
+- [ ] Mode cloud avec une vraie clé API.
+
 ---
 
 ## 🔭 Au-delà de la v1 (vision long terme, **non promise**)
@@ -69,6 +85,22 @@ Documenté pour montrer la direction. Chaque item est un projet en soi.
 
 > Le routage par mode d'accès (commandes directes → accessibilité → vision) suit toujours
 > le principe : **essayer le mode le plus fiable d'abord, la vision en dernier recours.**
+
+### Améliorations identifiées pendant les tests en VM
+Plus modestes, et directement issues de l'usage réel :
+
+- **Annuler une action** : le contrat des outils prévoit `reversible`/`undo_data`, pas
+  encore exploités.
+- **Consulter l'historique** depuis le popup (aujourd'hui : fichier SQLite d'audit).
+- **Sorties d'outils plus lisibles** : les retours à la ligne (liste de fichiers, sortie
+  de pacman) sont perdus dans le rendu du popup.
+- **Messages polkit traduits** (« Request dismissed » s'affiche tel quel).
+- **Confirmations en double** : le modèle demande parfois « Voulez-vous vraiment… ? »
+  en texte avant d'appeler l'outil, puis la fenêtre de confirmation redemande ; après
+  un refus, il lui arrive aussi de reproposer la même action. À cadrer dans le prompt
+  (la fenêtre est la seule confirmation nécessaire).
+- **Temps de réponse sans GPU** : de 20 s à près de 2 min par requête en VM 8 cœurs ;
+  piste : modèle plus petit par défaut sur les machines modestes.
 
 ---
 

@@ -14,8 +14,11 @@ My_OS est la suite logique de [My_AI](https://github.com/gonicolas12/My_AI) : on
 d'une *application* qui parle au PC à un *système* dans lequel l'IA est résidente et
 profondément intégrée.
 
-> **État du projet : v1 complète.** Les cinq jalons (socle → fichiers/permissions →
-> pilotage système → routeur cloud → packaging) sont terminés. **X11 est pleinement
+> **État du projet : v1 complète, validée en VM.** Les cinq jalons (socle →
+> fichiers/permissions → pilotage système → routeur cloud → packaging) sont terminés, et
+> l'ISO a été testée de bout en bout en VM (BIOS et UEFI) en octobre 2026 : permissions,
+> confirmations, élévation polkit, réglages, modèle local
+> ([détails](docs/SECURITY.md#8--validation-en-vm-octobre-2026)). **X11 est pleinement
 > supporté ; le port Wayland est expérimental** (cf. [§7](#7--sécurité) et
 > [docs/INSTALLATION.md](docs/INSTALLATION.md)).
 
@@ -23,14 +26,21 @@ profondément intégrée.
 
 ## 📸 Aperçu
 
-> _Captures à venir (placeholders) :_
->
-> | Popup au raccourci | Confirmation d'action | Mode cloud (opt-in) |
-> |--------------------|-----------------------|---------------------|
-> | `docs/media/popup.png` | `docs/media/confirm.png` | `docs/media/cloud.png` |
->
-> _GIF de démonstration : `docs/media/demo.gif` (« range mon dossier Téléchargements
-> par type » → plan → confirmation → exécution)._
+Captures réelles de l'ISO My_OS (VM, modèle local Qwen 3.5 4B, octobre 2026).
+
+![Démo : « Range mon dossier Téléchargements par type »](docs/media/demo.gif)
+
+*« Range mon dossier Téléchargements par type » : le modèle liste le dossier puis propose
+chaque déplacement ; une seule confirmation « Pour cette session » suffit, il range tout
+et fait son compte rendu. Les temps d'attente sont raccourcis : sans GPU, le modèle a
+mis environ une minute et demie au total.*
+
+| | |
+|:---:|:---:|
+| ![Popup et réponse du modèle local](docs/media/popup.png) | ![Confirmation de niveau 1](docs/media/confirmation-niveau1.png) |
+| **Popup au raccourci** — question en langage naturel, résultat de l'outil, réponse du modèle local ; « ☁ Cloud » active Claude à la demande | **Confirmation (niveau 1)** — écriture proposée par le modèle : une fois, ce dossier ou la session |
+| ![Confirmation renforcée de niveau 2](docs/media/confirmation-niveau2.png) | ![Élévation polkit](docs/media/elevation-polkit.png) |
+| **Confirmation renforcée (niveau 2)** — suppression : « une fois » seulement, « Refuser » par défaut | **Élévation polkit** — mot de passe pour la commande exacte, jamais de root permanent |
 
 ---
 
@@ -110,17 +120,18 @@ permissions.
 
 - 🗂️ **Fichiers** — lire, lister, écrire, déplacer, créer, supprimer. Ex. « range mon
   dossier Téléchargements par type ». L'escalade de risque détecte les chemins sensibles
-  (`~/.ssh`, `/etc`…).
+  (`~/.ssh`, `/etc`…), y compris derrière un lien symbolique ou un chemin relatif.
 - 📦 **Paquets** (`pacman`) — rechercher, installer, supprimer, mettre à jour. Élévation
-  ponctuelle via polkit (`pkexec`), jamais root en permanence.
+  ponctuelle via polkit (`pkexec`), jamais root en permanence. Fonctionne aussi depuis
+  l'ISO live (paquets figés sur un instantané de l'Arch Linux Archive).
 - 🔧 **Réglages système** (D-Bus / `pactl`) — luminosité, volume, sourdine, Wi-Fi.
 - 📊 **Processus** (`psutil`) — lister les processus, en tuer un (avec garde-fous :
   PID critiques bloqués).
 - 🧠 **Modèle local** — Qwen via Ollama, par défaut, **100 % sur la machine**.
 - ☁️ **Cloud opt-in** — Claude (API Anthropic), activé **par requête** via un toggle
   visible ; clé API dans le trousseau du système (`keyring`), jamais en clair.
-- 🛡️ **Permissions & audit** — 4 niveaux de risque, confirmations, blocklist
-  infranchissable, journal SQLite de chaque action.
+- 🛡️ **Permissions & audit** — 4 niveaux de risque, confirmations (« Refuser » par
+  défaut), blocklist infranchissable, journal SQLite de chaque action.
 - ⌨️ **Raccourci global** — X11 (`pynput`, nominal) et Wayland (portal
   `GlobalShortcuts`, **expérimental**).
 - 💬 **Popup instantané** — PySide6 + `QTextBrowser`, rendu markdown, réponses en
@@ -138,18 +149,24 @@ Une ISO bootable (base Arch + Xfce/X11) embarque My_OS prêt à l'emploi. Le pro
 [archiso](https://wiki.archlinux.org/title/Archiso) et le script de build sont dans
 [`packaging/`](packaging/) ; la construction se fait sur un hôte Arch
 (`sudo ./packaging/build_iso.sh`) puis se teste en VM. Au 1er boot, les dépendances et
-le modèle local sont récupérés (réseau requis). Voir [packaging/README.md](packaging/README.md).
+le modèle local sont récupérés (réseau requis). Prévoir **≥ 12 Go de RAM pour le modèle
+local en live** (≥ 4 Go sinon). Voir [packaging/README.md](packaging/README.md).
 
 ### b) Depuis les sources
 
-> Prérequis : Arch Linux (ou dérivé), Python 3.10+, [Ollama](https://ollama.com/download).
+> Prérequis : Arch Linux (ou dérivé), Python 3.10+, [Ollama](https://ollama.com/download)
+> et les paquets système listés dans [docs/INSTALLATION.md §2.1](docs/INSTALLATION.md)
+> (dont `python-evdev`, nécessaire à `pynput`).
 
 ```bash
 git clone https://github.com/gonicolas12/My_OS && cd My_OS
 pip install -r requirements.txt
-ollama pull qwen3.5:4b          # modèle local recommandé (≈ 8 Go RAM)
+ollama pull qwen3.5:4b          # modèle local recommandé (≥ 8 Go RAM)
 ./launch_dev.sh                 # lance daemon + popup (session X11)
 ```
+
+Sans GPU, une réponse du modèle 4B prend de quelques secondes à plus d'une minute selon
+la machine.
 
 Pour une installation **résidente** (service `systemd` utilisateur, autostart), suivre
 [docs/INSTALLATION.md](docs/INSTALLATION.md). **Notes X11/Wayland** : X11 fonctionne tel
@@ -162,9 +179,11 @@ reste expérimental.
 
 1. Appuyez sur **Ctrl+Alt+Espace** (raccourci par défaut, modifiable dans `config.yaml`).
 2. Le popup s'ouvre, centré et au-dessus de tout. Tapez votre demande en langage naturel.
-3. Pour une action sensible, une **confirmation** détaillée apparaît (avec, au besoin, une
-   élévation polkit). Vous pouvez autoriser *une fois*, *pour ce dossier*, ou *pour la
-   session*.
+3. Pour une action sensible, une **confirmation** détaillée apparaît au premier plan.
+   Au niveau 1, vous pouvez autoriser *une fois*, *pour ce dossier* ou *pour la session* ;
+   au niveau 2 (suppression, mise à jour…), seulement *une fois*, et la question revient
+   à chaque action. **Entrée et Échap refusent** : approuver est toujours un choix
+   explicite. Le mot de passe (polkit) n'est demandé que pour `pacman`.
 4. `Ctrl+L` démarre une nouvelle conversation ; `Échap` referme le popup.
 
 **Exemples de requêtes :**
@@ -195,8 +214,11 @@ pas de la fiabilité du modèle**.
 - **Statique d'abord** : le niveau vient du code (`permissions/risk_levels.py`), jamais
   du LLM.
 - **Escalade par arguments** : ne peut qu'**augmenter** le risque (ex. écrire dans `~/.ssh`).
+- **Chemin réel** : liens symboliques, chemins relatifs, `..` et `//` sont résolus avant
+  toute décision — un lien vers `~/.ssh` est traité comme `~/.ssh`.
 - **Blocklist en premier** : le niveau 3 est vérifié avant tout et ne peut être contourné.
-- **Mémorisation** : *une fois* / *ce dossier* / *cette session*.
+- **Mémorisation** : *ce dossier* / *cette session*, **au niveau 1 seulement** — une
+  action de niveau 2 est redemandée à chaque fois.
 - **Audit** : chaque action et décision est journalisée dans `~/.local/share/my_os/audit.db` (SQLite).
 
 ---
@@ -257,6 +279,11 @@ par le point de passage unique `permissions/policy_engine.py`.
   finalisation de la documentation.
 - [x] **Sécurité (transverse)** : daemon non-root, séparation données/instructions,
   `SECURITY.md` tenu à jour.
+- [x] **Validation en VM** (octobre 2026) : 42 scénarios de permissions, interface,
+  élévation polkit, modèle local ; 6 contournements trouvés, corrigés et re-testés.
+
+**Avant la publication v1.0 :** publier l'ISO (release GitHub), essai sur matériel réel,
+mode cloud avec une vraie clé.
 
 **Au-delà de la v1 (vision long terme, non promise) :** contrôle d'applications via
 accessibilité (AT-SPI), contrôle par vision d'écran, défenses anti-injection avancées,
@@ -306,15 +333,16 @@ My_OS/
 │   └── logger.py
 ├── docs/
 │   ├── ARCHITECTURE.md
-│   ├── SECURITY.md           # modèle de menaces
+│   ├── SECURITY.md           # modèle de menaces + validation en VM
 │   ├── INTERFACES.md         # contrats d'interface
-│   ├── INSTALLATION.md       # install (sources + ISO)
-│   └── ROADMAP.md            # v1 + vision long terme
+│   ├── INSTALLATION.md       # install (sources + ISO) + dépannage
+│   ├── ROADMAP.md            # v1 + vision long terme
+│   └── media/                # captures d'écran du README
 ├── packaging/                # ISO live (archiso)
 │   ├── build_iso.sh
 │   ├── README.md
 │   └── archiso/              # profiledef, packages, airootfs
-├── tests/                    # ~390 tests (permissions en priorité)
+├── tests/                    # ~420 tests (permissions en priorité)
 ├── config.yaml
 ├── myosd.service             # service systemd utilisateur
 ├── requirements.txt
