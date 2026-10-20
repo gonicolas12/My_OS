@@ -32,15 +32,17 @@ Captures réelles de l'ISO My_OS (VM, modèle local Qwen 3.5 4B, octobre 2026).
 
 *« Range mon dossier Téléchargements par type » : le modèle liste le dossier puis propose
 chaque déplacement ; une seule confirmation « Pour cette session » suffit, il range tout
-et fait son compte rendu. Les temps d'attente sont raccourcis : sans GPU, le modèle a
-mis environ une minute et demie au total.*
+(chaque action dans sa carte) et fait son compte rendu. Les temps d'attente sont
+raccourcis : sans GPU, le modèle a mis environ une minute et vingt secondes au total.*
 
 | | |
 |:---:|:---:|
-| ![Popup et réponse du modèle local](docs/media/popup.png) | ![Confirmation de niveau 1](docs/media/confirmation-niveau1.png) |
-| **Popup au raccourci** — question en langage naturel, résultat de l'outil, réponse du modèle local ; « ☁ Cloud » active Claude à la demande | **Confirmation (niveau 1)** — écriture proposée par le modèle : une fois, ce dossier ou la session |
-| ![Confirmation renforcée de niveau 2](docs/media/confirmation-niveau2.png) | ![Élévation polkit](docs/media/elevation-polkit.png) |
-| **Confirmation renforcée (niveau 2)** — suppression : « une fois » seulement, « Refuser » par défaut | **Élévation polkit** — mot de passe pour la commande exacte, jamais de root permanent |
+| ![Écran d'accueil du popup](docs/media/accueil.png) | ![Popup et réponse du modèle local](docs/media/popup.png) |
+| **Popup au raccourci** — suggestions, rappel « Échap pour fermer » ; fenêtre redimensionnable, agrandie ou en plein écran (`F11`) | **Réponse du modèle local** — le résultat de l'outil dans sa carte, puis la réponse ; « ☁ Cloud » active Claude à la demande |
+| ![Confirmation de niveau 1](docs/media/confirmation-niveau1.png) | ![Confirmation renforcée de niveau 2](docs/media/confirmation-niveau2.png) |
+| **Confirmation (niveau 1)** — écriture proposée par le modèle : une fois, ce dossier ou la session | **Confirmation renforcée (niveau 2)** — suppression : « une fois » seulement, « Refuser » par défaut |
+| ![Élévation polkit](docs/media/elevation-polkit.png) | ![Installation terminée](docs/media/installation.png) |
+| **Élévation polkit** — mot de passe pour la commande exacte, jamais de root permanent | **Installation terminée** — chaque outil dans sa carte (statut, sortie de `pacman` lisible), puis le compte rendu du modèle |
 
 ---
 
