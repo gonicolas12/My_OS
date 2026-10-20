@@ -246,7 +246,7 @@ cloud n'a **aucun droit supplémentaire** par rapport au local.
 class ClaudeClient:                       # implémente le protocole Model (§6.5)
     name = "claude"
     def __init__(self, *, api_key: str | None = None,
-                 model: str = "claude-sonnet-4-6",
+                 model: str = "claude-sonnet-5-5",
                  max_tokens: int = 4096,
                  client=None): ...         # `anthropic` importé paresseusement
     def respond(self, messages, on_token=None) -> Plan: ...  # streaming via on_token
@@ -254,7 +254,7 @@ class ClaudeClient:                       # implémente le protocole Model (§6.
 class CloudUnavailable(RuntimeError): ...  # cloud demandé mais pas de clé
 
 class CloudRouter:                         # sélecteur de backend cloud (lazy)
-    def __init__(self, *, model: str = "claude-sonnet-4-6",
+    def __init__(self, *, model: str = "claude-sonnet-5-5",
                  client_factory=None): ...  # client_factory injectable (tests)
     def is_available(self) -> bool: ...     # = secrets.has_api_key()
     def get_cloud_model(self) -> Model: ... # construit/cache le ClaudeClient ;

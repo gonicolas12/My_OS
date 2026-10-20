@@ -32,7 +32,7 @@ from models.local_llm import ALL_TOOLS_SCHEMA, BASE_SYSTEM_PROMPT, machine_conte
 
 # Modèle Claude par défaut (récent, bon rapport vitesse/intelligence). Configurable
 # via core.config.ModelConfig.cloud_model.
-DEFAULT_CLOUD_MODEL = "claude-sonnet-4-6"
+DEFAULT_CLOUD_MODEL = "claude-sonnet-5-5"
 
 # Plafond de tokens de sortie par tour. Volontairement modéré : un assistant au
 # raccourci enchaîne des réponses concises et des appels d'outils, pas des pavés.
