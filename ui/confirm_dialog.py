@@ -47,7 +47,12 @@ from ui.icons import logo_icon
 from ui.styles import build_stylesheet
 
 _LEVEL_BADGE = {1: "NIVEAU 1 · CONFIRMATION", 2: "NIVEAU 2 · CONFIRMATION RENFORCÉE"}
-_LABEL_CELL = '<td style="color:#a3a3a3; padding-right:14px" valign="top">'
+# Libellés sur une ligne ; valeurs qui se replient (jamais tronquées) : l'utilisateur
+# doit voir le chemin COMPLET de ce qu'il approuve, même très long.
+_LABEL_CELL = (
+    '<td style="color:#a3a3a3; padding-right:14px; white-space:nowrap" valign="top">'
+)
+_VALUE_CELL = '<td style="white-space:pre-wrap">'
 
 
 class ConfirmDialog(QDialog):
@@ -131,9 +136,10 @@ class ConfirmDialog(QDialog):
             '<table cellspacing="0" cellpadding="4">'
             f"<tr>{_LABEL_CELL}Outil</td>"
             f'<td style="font-family:monospace">{html.escape(tool)}</td></tr>'
-            f"<tr>{_LABEL_CELL}Action</td><td>{html.escape(summary)}</td></tr>"
+            f"<tr>{_LABEL_CELL}Action</td>{_VALUE_CELL}{html.escape(summary)}</td></tr>"
             f"<tr>{_LABEL_CELL}Arguments</td>"
-            f'<td><pre style="margin:0">{html.escape(args_str)}</pre></td></tr>'
+            f'<td style="white-space:pre-wrap; font-family:monospace">'
+            f"{html.escape(args_str)}</td></tr>"
             "</table>"
         )
         layout.addWidget(card)

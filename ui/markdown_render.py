@@ -159,8 +159,10 @@ def _style_blocks(document: QTextDocument) -> None:
         cursor = QTextCursor(block)
         extra = QTextBlockFormat()
         if block_fmt.nonBreakableLines():
-            # Bloc de code resté dans le texte (indenté, dans une liste…).
+            # Bloc de code resté dans le texte (indenté, dans une liste…) : il se
+            # replie au lieu de déborder (la vue n'a pas de défilement horizontal).
             extra.setBackground(QColor(p.code_bg))
+            extra.setNonBreakableLines(False)
             char_ranges.append(
                 (block.position(), block.position() + block.length() - 1, code_block)
             )
