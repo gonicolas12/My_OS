@@ -59,10 +59,16 @@ chacun stable et testé avant le suivant.
 - [x] Modèle local : bon outil choisi en langage naturel, recherche de paquets par
   mots-clés anglais, injection de prompt dans un fichier résistée.
 
-### Avant la publication de la v1.0
-- [ ] Publier l'ISO (release GitHub, tag `v1.0`).
-- [ ] Essai sur un vrai PC (rétroéclairage, Wi-Fi physique, son).
-- [ ] Mode cloud avec une vraie clé API.
+### Publication de la v1.0 (octobre 2026)
+- [x] ISO publiée : [release `v1.0`](https://github.com/gonicolas12/My_OS/releases/tag/v1.0)
+  (paquets figés sur l'instantané Arch Linux Archive du 2026-10-19), avec sa somme SHA-256.
+- [x] Menus de démarrage aux couleurs de My_OS ; démarrage validé en VM sur CD et sur clé
+  USB (Ventoy et image brute), en BIOS et en UEFI.
+
+### Encore à éprouver
+- [ ] Un vrai PC (pilotes Wi-Fi, rétroéclairage, cartes graphiques ; son et Wi-Fi ont été
+  validés en VM avec du matériel simulé).
+- [ ] Le mode cloud avec une vraie clé API.
 
 ---
 
