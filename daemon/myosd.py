@@ -142,7 +142,7 @@ class Daemon:  # pylint: disable=too-many-instance-attributes
         finally:
             self._shutdown()
 
-    def _on_user_message(self, message: dict, reply) -> None:  # noqa: ANN001
+    def _on_user_message(self, message: dict, reply) -> None:
         self._orchestrator.handle(message, reply)
 
     def _on_confirmation_response(self, message: dict) -> None:

@@ -77,9 +77,7 @@ class SessionGrants:
         if (tool_name, normalized) in self._file_grants:
             return True
         parent = posixpath.dirname(normalized)
-        if parent and (tool_name, parent) in self._folder_grants:
-            return True
-        return False
+        return bool(parent) and (tool_name, parent) in self._folder_grants
 
     def clear(self) -> None:
         """Vide tous les grants (utilisé en test ou réinit volontaire)."""

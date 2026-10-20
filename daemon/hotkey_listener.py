@@ -125,7 +125,7 @@ class _PortalBackend:
         assert self._transport is not None
         try:
             self._transport.listen(self._hotkey, _SHORTCUT_ID, self._on_activate)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             # Aucune défaillance du portal ne doit faire tomber le daemon.
             _log.warning(
                 "Portal GlobalShortcuts indisponible (%s) : raccourci Wayland "
@@ -139,7 +139,7 @@ class _PortalBackend:
         if self._transport is not None:
             try:
                 self._transport.stop()
-            except Exception:  # pylint: disable=broad-exception-caught
+            except Exception:  # noqa: BLE001, S110  # pylint: disable=broad-exception-caught
                 pass
         if self._thread is not None:
             self._thread.join(timeout=2.0)

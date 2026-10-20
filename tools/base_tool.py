@@ -16,6 +16,7 @@ Contrat (cf. docs/INTERFACES.md §2) :
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import ClassVar
 
 VALID_RISK_LEVELS = (0, 1, 2, 3)
 
@@ -45,7 +46,8 @@ class BaseTool:
 
     name: str = ""
     description: str = ""
-    parameters: dict = {}
+    # Schéma des arguments : attribut de CLASSE partagé, jamais modifié à l'exécution.
+    parameters: ClassVar[dict] = {}
     # risk_level est volontairement absent ici : c'est aux sous-classes de le
     # déclarer. Le hook ``__init_subclass__`` ci-dessous refuse celles qui ne
     # le font pas, conformément à l'invariant de sécurité.

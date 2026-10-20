@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 import shutil
 from pathlib import Path
+from typing import ClassVar
 
 from permissions.risk_levels import is_sensitive_path
 from tools.base_tool import BaseTool, ToolResult
@@ -104,7 +105,7 @@ class ReadFile(BaseTool):
     name = "read_file"
     description = "Lit le contenu d'un fichier texte."
     risk_level = 0
-    parameters = {"path": "str — chemin absolu du fichier à lire"}
+    parameters: ClassVar[dict] = {"path": "str — chemin absolu du fichier à lire"}
 
     def normalize_args(self, args: dict) -> dict:
         return _normalize_path_args(args, follow=("path",))
@@ -143,7 +144,7 @@ class ListDir(BaseTool):
     name = "list_dir"
     description = "Liste le contenu d'un répertoire."
     risk_level = 0
-    parameters = {"path": "str — chemin absolu du répertoire à lister"}
+    parameters: ClassVar[dict] = {"path": "str — chemin absolu du répertoire à lister"}
 
     def normalize_args(self, args: dict) -> dict:
         return _normalize_path_args(args, follow=("path",))
@@ -174,7 +175,7 @@ class WriteFile(BaseTool):
     name = "write_file"
     description = "Écrit (ou écrase) un fichier avec le contenu fourni."
     risk_level = 1
-    parameters = {
+    parameters: ClassVar[dict] = {
         "path": "str — chemin absolu du fichier à écrire",
         "content": "str — contenu textuel UTF-8",
     }
@@ -218,7 +219,7 @@ class CreateFile(BaseTool):
     name = "create_file"
     description = "Crée un fichier vide. Refuse de remplacer un fichier existant."
     risk_level = 1
-    parameters = {"path": "str — chemin absolu du fichier à créer"}
+    parameters: ClassVar[dict] = {"path": "str — chemin absolu du fichier à créer"}
 
     def normalize_args(self, args: dict) -> dict:
         return _normalize_path_args(args, follow=("path",))
@@ -254,7 +255,7 @@ class MoveFile(BaseTool):
     name = "move_file"
     description = "Déplace un fichier ou un dossier."
     risk_level = 1
-    parameters = {
+    parameters: ClassVar[dict] = {
         "src": "str — chemin absolu source",
         "dst": "str — chemin absolu destination",
     }
@@ -310,7 +311,7 @@ class DeleteFile(BaseTool):
     name = "delete_file"
     description = "Supprime un fichier (refuse les répertoires)."
     risk_level = 2
-    parameters = {"path": "str — chemin absolu du fichier à supprimer"}
+    parameters: ClassVar[dict] = {"path": "str — chemin absolu du fichier à supprimer"}
 
     def normalize_args(self, args: dict) -> dict:
         # Supprimer un lien supprime le lien, jamais sa cible.

@@ -6,6 +6,13 @@
 # contraintes de frameworks (surcharges Qt en camelCase). Elle ne désactive
 # aucun contrôle utile à la détection de vrais bugs.
 
+[tool.ruff]
+# Depuis ruff 0.17, `ruff format .` reformate aussi les blocs de code des fichiers
+# Markdown : les exemples de docs/ y perdraient leur mise en page volontaire
+# (commentaires alignés, signatures sur une ligne). Le lint et le format visent le
+# code Python du projet.
+extend-exclude = ["*.md"]
+
 [tool.pylint.main]
 # Dépendances tierces / spécifiques Linux non résolues hors machine cible.
 ignored-modules = [

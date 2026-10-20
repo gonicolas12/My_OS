@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Protocol
+from typing import ClassVar, Protocol
 
 from tools.base_tool import BaseTool, ToolResult
 
@@ -143,7 +143,7 @@ class ListProcesses(BaseTool):
         "Utile pour voir ce qui consomme les ressources."
     )
     risk_level = 0
-    parameters = {
+    parameters: ClassVar[dict] = {
         "sort_by": "str — 'memory' (défaut) ou 'cpu'",
         "limit": "int — nombre de processus à afficher (défaut 10, max 50)",
     }
@@ -190,7 +190,7 @@ class KillProcess(BaseTool):
     name = "kill_process"
     description = "Termine un processus identifié par son PID."
     risk_level = 2
-    parameters = {"pid": "int — identifiant du processus à terminer"}
+    parameters: ClassVar[dict] = {"pid": "int — identifiant du processus à terminer"}
 
     def __init__(self, provider: ProcessProvider | None = None) -> None:
         self._provider: ProcessProvider = provider or _PsutilProvider()
