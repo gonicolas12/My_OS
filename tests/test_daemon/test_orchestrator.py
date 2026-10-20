@@ -26,7 +26,6 @@ from permissions.confirmation import ConfirmationResponse
 from permissions.session_grants import SessionGrants
 from tools.base_tool import BaseTool, ToolResult
 
-
 # ---------- doubles de test : modèles ----------
 
 

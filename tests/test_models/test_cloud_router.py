@@ -26,7 +26,6 @@ from models.cloud_router import (
 )
 from models.local_llm import ALL_TOOLS_SCHEMA
 
-
 # ---------- faux client anthropic (context manager de streaming) ----------
 
 
@@ -37,7 +36,8 @@ class _FakeStream:
         self.text_stream = list(text_parts)
         self._final = final_message
 
-    def __enter__(self) -> _FakeStream:
+    # typing.Self n'existe qu'en 3.11 ; le projet vise 3.10+.
+    def __enter__(self) -> _FakeStream:  # noqa: PYI034
         return self
 
     def __exit__(self, *_exc: object) -> bool:

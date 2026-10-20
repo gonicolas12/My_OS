@@ -351,11 +351,10 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         rebascule le toggle sur OFF (jamais de cloud sans clé). L'indicateur visible
         suit l'état réel du toggle.
         """
-        if checked and not secrets.has_api_key():
-            if not self._prompt_api_key():
-                # Annulation : repasse OFF (ré-entre ici avec checked=False).
-                self._cloud_checkbox.setChecked(False)
-                return
+        if checked and not secrets.has_api_key() and not self._prompt_api_key():
+            # Annulation : repasse OFF (ré-entre ici avec checked=False).
+            self._cloud_checkbox.setChecked(False)
+            return
         self._cloud_banner.setVisible(self._cloud_checkbox.isChecked())
 
     def _prompt_api_key(self) -> bool:
@@ -375,7 +374,7 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
             return False
         try:
             secrets.set_api_key(key)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             QMessageBox.warning(
                 self, "Clé API", f"Impossible d'enregistrer la clé : {exc}"
             )

@@ -46,7 +46,7 @@ def get_api_key() -> str | None:
     """
     try:
         key = _keyring().get_password(SERVICE_NAME, API_KEY_NAME)
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         return None
     return key or None
 
@@ -71,5 +71,5 @@ def delete_api_key() -> None:
     """Supprime la clé du trousseau si présente. Idempotent (aucune erreur si absente)."""
     try:
         _keyring().delete_password(SERVICE_NAME, API_KEY_NAME)
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:  # noqa: BLE001, S110  # pylint: disable=broad-exception-caught
         pass

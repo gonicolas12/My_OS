@@ -27,6 +27,7 @@ sortie de pacman est une **donnée** non fiable (SECURITY §2.2).
 from __future__ import annotations
 
 import re
+from typing import ClassVar
 
 from core.elevation import Runner, run_command
 from tools.base_tool import BaseTool, ToolResult
@@ -101,7 +102,7 @@ class SearchPackage(_PacmanTool):
         "(les descriptions des paquets sont en anglais), ex. « video player »."
     )
     risk_level = 0
-    parameters = {
+    parameters: ClassVar[dict] = {
         "query": "str — 1 à 5 mots-clés en anglais séparés par des espaces "
         "(ex. 'video player')"
     }
@@ -139,7 +140,7 @@ class InstallPackage(_PacmanTool):
     name = "install_package"
     description = "Installe un paquet depuis les dépôts officiels."
     risk_level = 1
-    parameters = {"name": "str — nom exact du paquet à installer"}
+    parameters: ClassVar[dict] = {"name": "str — nom exact du paquet à installer"}
 
     def requires_elevation(self, args: dict) -> bool:
         return True
@@ -163,7 +164,7 @@ class RemovePackage(_PacmanTool):
     name = "remove_package"
     description = "Désinstalle un paquet (et ses dépendances devenues orphelines)."
     risk_level = 2
-    parameters = {"name": "str — nom exact du paquet à désinstaller"}
+    parameters: ClassVar[dict] = {"name": "str — nom exact du paquet à désinstaller"}
 
     def requires_elevation(self, args: dict) -> bool:
         return True
@@ -187,7 +188,7 @@ class UpdateSystem(_PacmanTool):
     name = "update_system"
     description = "Met à jour la liste des paquets et tout le système installé."
     risk_level = 2
-    parameters: dict = {}
+    parameters: ClassVar[dict] = {}
 
     def requires_elevation(self, args: dict) -> bool:
         return True

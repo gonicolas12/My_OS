@@ -24,6 +24,10 @@ from tools.files import (
     WriteFile,
 )
 
+# Tests de sémantique de chemins propre à la cible Linux (résolution réelle, HOME).
+posix_only = pytest.mark.skipif(
+    os.name != "posix", reason="sémantique des chemins de la cible Linux"
+)
 
 # ---------- registre ----------
 
@@ -276,9 +280,12 @@ def test_normalize_args_laisse_les_chemins_absolus_intacts() -> None:
     assert out["path"] == "/tmp/x"
 
 
+@posix_only
 def test_regression_securite_tilde_ssh_escalade_en_niveau_2() -> None:
     # ~/.ssh est sensible : après normalisation, l'escalade DOIT passer à 2.
     # Sans expansion, "~/.ssh/id_rsa" échapperait à la détection (faille).
+    # Linux seulement : sous Windows, HOME n'existe pas et posixpath.expanduser
+    # laisse « ~ » tel quel (sémantique de la cible Linux).
     tool = WriteFile()
     normalized = tool.normalize_args({"path": "~/.ssh/id_rsa", "content": "x"})
     assert tool.escalate(normalized) == 2
@@ -287,10 +294,6 @@ def test_regression_securite_tilde_ssh_escalade_en_niveau_2() -> None:
 # ---------- normalize_args : chemin réel (relatif, liens, //) — cible Linux ----------
 # Constats du labo VM : sans résolution, un chemin relatif, un lien symbolique ou
 # « //etc » échappaient à l'escalade, à la blocklist et aux grants.
-
-posix_only = pytest.mark.skipif(
-    os.name != "posix", reason="résolution réelle des chemins : cible Linux"
-)
 
 
 @pytest.fixture

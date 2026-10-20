@@ -293,7 +293,7 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
 
         try:
             plan = model.respond(messages, emit_token)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             reply(
                 {
                     "type": "error",
@@ -327,7 +327,7 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
             return self._model, False
         try:
             cloud_model = router.get_cloud_model()
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             # Repli défensif (ex. clé retirée entre le check et la construction).
             _cloud_log.warning("Cloud indisponible (%s) ; repli local", exc)
             reply({"type": "token", "id": msg_id, "text": _CLOUD_FALLBACK_NOTICE})
@@ -426,7 +426,7 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
         )
         try:
             result = tool.run(args)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             self._audit.update_result(row_id, success=False, reversible=False)
             return self._emit_result(msg_id, reply, f"Erreur d'exécution : {exc}")
         self._audit.update_result(

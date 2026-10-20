@@ -14,12 +14,12 @@ from collections.abc import Callable
 from core.session import SESSION_WAYLAND, SESSION_X11
 from daemon import hotkey_listener as hk
 from daemon.hotkey_listener import (
+    _SHORTCUT_ID,
     HotkeyListener,
+    _hotkey_to_trigger,
     _PortalBackend,
     _select_backend,
-    _SHORTCUT_ID,
     _X11Backend,
-    _hotkey_to_trigger,
 )
 
 
@@ -76,7 +76,7 @@ def test_facade_stop_sans_start_ne_plante_pas() -> None:
     HotkeyListener("<ctrl>+<alt>+<space>", _noop).stop()
 
 
-def test_facade_auto_selectionne_selon_la_session(monkeypatch) -> None:  # noqa: ANN001
+def test_facade_auto_selectionne_selon_la_session(monkeypatch) -> None:
     # On remplace _select_backend pour vérifier l'aiguillage sans démarrer de
     # backend réel (pynput/dbus ne sont pas importés).
     captured: dict = {}

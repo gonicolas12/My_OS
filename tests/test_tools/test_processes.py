@@ -15,10 +15,10 @@ import os
 import pytest
 
 from tools.processes import (
+    PROCESS_TOOLS,
     KillProcess,
     ListProcesses,
     ProcessInfo,
-    PROCESS_TOOLS,
 )
 
 

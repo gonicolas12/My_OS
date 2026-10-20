@@ -27,7 +27,7 @@ Aucune vérification de permission ici (rôle exclusif du ``policy_engine``).
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import ClassVar, Protocol
 
 from tools.base_tool import BaseTool, ToolResult
 
@@ -172,7 +172,9 @@ class SetBrightness(_SettingTool):
     name = "set_brightness"
     description = "Règle la luminosité de l'écran en pourcentage (0 à 100)."
     risk_level = 1
-    parameters = {"percent": "int — niveau de luminosité voulu, 0 à 100"}
+    parameters: ClassVar[dict] = {
+        "percent": "int — niveau de luminosité voulu, 0 à 100"
+    }
 
     def run(self, args: dict) -> ToolResult:
         percent = _coerce_percent(args.get("percent"))
@@ -193,7 +195,7 @@ class SetVolume(_SettingTool):
     name = "set_volume"
     description = "Règle le volume du son en pourcentage (0 à 100)."
     risk_level = 1
-    parameters = {"percent": "int — niveau de volume voulu, 0 à 100"}
+    parameters: ClassVar[dict] = {"percent": "int — niveau de volume voulu, 0 à 100"}
 
     def run(self, args: dict) -> ToolResult:
         percent = _coerce_percent(args.get("percent"))
@@ -214,7 +216,9 @@ class SetMute(_SettingTool):
     name = "set_mute"
     description = "Coupe (true) ou rétablit (false) le son."
     risk_level = 1
-    parameters = {"muted": "bool — true pour couper le son, false pour le rétablir"}
+    parameters: ClassVar[dict] = {
+        "muted": "bool — true pour couper le son, false pour le rétablir"
+    }
 
     def run(self, args: dict) -> ToolResult:
         muted = _coerce_bool(args.get("muted"))
@@ -234,7 +238,9 @@ class SetWifi(_SettingTool):
     name = "set_wifi"
     description = "Active (true) ou désactive (false) le Wi-Fi."
     risk_level = 1
-    parameters = {"enabled": "bool — true pour activer, false pour désactiver"}
+    parameters: ClassVar[dict] = {
+        "enabled": "bool — true pour activer, false pour désactiver"
+    }
 
     def run(self, args: dict) -> ToolResult:
         enabled = _coerce_bool(args.get("enabled"))
