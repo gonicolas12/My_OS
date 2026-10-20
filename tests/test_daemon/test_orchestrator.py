@@ -374,9 +374,9 @@ def test_approve_scope_session_couvre_tous_les_appels(audit: AuditLog) -> None:
         plans=[
             Plan(
                 tool_calls=[
-                    ToolCall("delete_file", {"path": "/tmp/a"}),
-                    ToolCall("delete_file", {"path": "/tmp/b"}),
-                    ToolCall("delete_file", {"path": "/tmp/c"}),
+                    ToolCall("write_file", {"path": "/tmp/a"}),
+                    ToolCall("write_file", {"path": "/tmp/b"}),
+                    ToolCall("write_file", {"path": "/tmp/c"}),
                 ]
             )
         ],
@@ -387,11 +387,43 @@ def test_approve_scope_session_couvre_tous_les_appels(audit: AuditLog) -> None:
         ],
         audit=audit,
     )
-    orch.handle({"id": "m1", "content": "tri massif"}, replies.append)
+    orch.handle({"id": "m1", "content": "écritures en série"}, replies.append)
 
     assert len(conf.asked) == 1
     entries = audit.fetch_all()
     assert [e["decision"] for e in entries] == ["approved", "auto", "auto"]
+
+
+def test_niveau_2_reconfirme_chaque_action_meme_avec_approve_scope(
+    audit: AuditLog,
+) -> None:
+    # Un client qui renvoie approve_scope sur une confirmation de niveau 2 (portée
+    # non proposée) obtient UNE exécution, jamais un grant : chaque suppression
+    # est redemandée.
+    orch, replies, conf, grants = _build(
+        plans=[
+            Plan(
+                tool_calls=[
+                    ToolCall("delete_file", {"path": "/tmp/a"}),
+                    ToolCall("delete_file", {"path": "/tmp/b"}),
+                ]
+            )
+        ],
+        confirmation_responses=[
+            ConfirmationResponse(
+                request_id="rid", decision="approve_scope", scope="session"
+            ),
+            ConfirmationResponse(request_id="rid2", decision="deny"),
+        ],
+        audit=audit,
+    )
+    orch.handle({"id": "m1", "content": "tri massif"}, replies.append)
+
+    assert len(conf.asked) == 2
+    assert all(p["allowed_scopes"] == [] for p in conf.asked)
+    assert grants.is_granted("delete_file", ["/tmp/b"]) is False
+    entries = audit.fetch_all()
+    assert [e["decision"] for e in entries] == ["approved", "denied"]
 
 
 # ---------- exécution / normalisation ----------

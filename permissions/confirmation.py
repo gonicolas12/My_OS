@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Literal
 from uuid import uuid4
 
-from permissions.policy_engine import Decision
+from permissions.policy_engine import Decision, grantable_scopes
 from tools.base_tool import BaseTool
 
 _VALID_DECISIONS = ("approve_once", "approve_scope", "deny")
@@ -31,7 +31,12 @@ def build_confirmation_needed(
     args: dict,
     decision: Decision,
 ) -> dict:
-    """Construit le message IPC ``confirmation_needed`` à envoyer au popup."""
+    """Construit le message IPC ``confirmation_needed`` à envoyer au popup.
+
+    ``allowed_scopes`` liste les portées de grant proposables (vide au niveau 2) :
+    le popup n'affiche que celles-ci, et l'orchestrator ignore toute autre portée
+    renvoyée (le daemon ne fait pas confiance au client sur ce point).
+    """
     return {
         "type": "confirmation_needed",
         "id": user_message_id,
@@ -41,6 +46,7 @@ def build_confirmation_needed(
         "risk_level": decision.risk_level,
         "summary": decision.summary,
         "requires_elevation": decision.requires_elevation,
+        "allowed_scopes": grantable_scopes(tool, args, decision.risk_level),
     }
 
 

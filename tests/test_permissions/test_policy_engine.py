@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from permissions.policy_engine import Decision, evaluate
+from permissions.policy_engine import Decision, evaluate, grantable_scopes
 from permissions.session_grants import SessionGrants
 from tools.base_tool import BaseTool, ToolResult
 
@@ -98,11 +98,13 @@ def test_niveau_1_sans_grant_demande_confirmation() -> None:
     assert decision.requires_elevation is False
 
 
-def test_niveau_2_sans_grant_demande_confirmation_avec_elevation() -> None:
+def test_niveau_2_sans_grant_demande_confirmation_sans_elevation() -> None:
+    # Le niveau 2 n'implique pas polkit : une suppression tourne en utilisateur.
+    # Annoncer une élévation ferait attendre un mot de passe qui ne viendra jamais.
     decision = evaluate(_Level2(), {"path": "/tmp/x"}, _empty_grants())
     assert decision.action == "confirm"
     assert decision.risk_level == 2
-    assert decision.requires_elevation is True
+    assert decision.requires_elevation is False
 
 
 def test_blocklist_est_evaluee_avant_tout_le_reste() -> None:
@@ -149,7 +151,7 @@ def test_escalade_par_arguments_augmente_le_niveau() -> None:
     )
     assert decision.risk_level == 2
     assert decision.action == "confirm"
-    assert decision.requires_elevation is True
+    assert decision.requires_elevation is False  # l'outil n'utilise pas polkit
 
 
 def test_escalade_ne_peut_pas_diminuer_le_niveau() -> None:
@@ -200,6 +202,75 @@ def test_grant_session_conserve_le_flag_elevation() -> None:
     decision = evaluate(_Level1NeedsRoot(), {"name": "vlc"}, grants)
     assert decision.action == "auto"
     assert decision.requires_elevation is True
+
+
+class _Level2NeedsRoot(BaseTool):
+    """Outil de niveau 2 qui passe par polkit (modèle pacman -Rns)."""
+
+    name = "remove_package"
+    description = "désinstalle un paquet"
+    risk_level = 2
+
+    def requires_elevation(self, args: dict) -> bool:
+        return True
+
+    def run(self, args: dict) -> ToolResult:
+        return ToolResult(success=True, output="")
+
+
+def test_elevation_vient_uniquement_de_l_outil() -> None:
+    decision = evaluate(_Level2NeedsRoot(), {"name": "vlc"}, _empty_grants())
+    assert decision.requires_elevation is True
+    decision = evaluate(_Level2(), {"path": "/tmp/x"}, _empty_grants())
+    assert decision.requires_elevation is False
+
+
+# ---------- grants : jamais au niveau 2 (confirmation renforcée) ----------
+
+
+def test_grant_session_ne_couvre_jamais_le_niveau_2() -> None:
+    grants = SessionGrants()
+    grants.grant("delete_file", "session")
+    decision = evaluate(_Level2(), {"path": "/tmp/x"}, grants)
+    assert decision.action == "confirm"
+    assert decision.risk_level == 2
+
+
+def test_grant_dossier_ne_couvre_jamais_le_niveau_2() -> None:
+    grants = SessionGrants()
+    grants.grant("delete_file", "this_folder", "/home/alice/Downloads")
+    decision = evaluate(_Level2(), {"path": "/home/alice/Downloads/a.zip"}, grants)
+    assert decision.action == "confirm"
+
+
+def test_grant_obtenu_au_niveau_1_ne_couvre_pas_une_escalade() -> None:
+    # Constat du labo : un « pour cette session » accordé sur une écriture anodine
+    # laissait passer sans confirmation une écriture escaladée (~/.ssh).
+    grants = SessionGrants()
+    grants.grant("write_file", "session")
+    anodin = evaluate(_EscalatingTool(), {"path": "/tmp/x"}, grants)
+    assert anodin.action == "auto"
+    sensible = evaluate(
+        _EscalatingTool(),
+        {"path": "/home/u/.ssh/authorized_keys", "sensitive": True},
+        grants,
+    )
+    assert sensible.action == "confirm"
+    assert sensible.risk_level == 2
+
+
+def test_portees_proposees_selon_niveau_et_chemins() -> None:
+    assert grantable_scopes(_Level1(), {"path": "/tmp/x"}, 1) == [
+        "this_folder",
+        "session",
+    ]
+    # Sans chemin (ex. pacman -S), « ce dossier » n'a pas de sens.
+    assert grantable_scopes(_Level1NeedsRoot(), {"name": "vlc"}, 1) == ["session"]
+    # Niveau 2 : « une fois » seulement, même pour un outil de base niveau 1 escaladé.
+    assert grantable_scopes(_Level2(), {"path": "/tmp/x"}, 2) == []
+    assert (
+        grantable_scopes(_EscalatingTool(), {"path": "/x", "sensitive": True}, 2) == []
+    )
 
 
 def test_summary_contient_le_niveau_et_le_nom_de_l_outil() -> None:
