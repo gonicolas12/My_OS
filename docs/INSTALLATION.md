@@ -167,6 +167,25 @@ octobre 2026.
   de passe `myos`), synchronisation des bases pacman en arrière-plan, installation des
   dépendances Python puis téléchargement du modèle (~3,3 Go, quelques minutes).
 
+### Démarrer sur une clé USB
+
+Copier le fichier `.iso` sur une clé ne suffit pas : la clé doit être préparée. Les deux
+méthodes ci-dessous **effacent la clé** — sauvegardez son contenu avant.
+
+- **[Ventoy](https://www.ventoy.net)** (recommandé si la clé sert aussi à autre chose) :
+  installez Ventoy sur la clé une fois, puis copiez simplement l'ISO dessus. Au démarrage,
+  choisissez l'ISO puis « Boot in normal mode ». En UEFI, Ventoy affiche ensuite son
+  propre menu, **sans compte à rebours** : validez « My_OS live » avec Entrée.
+- **[Rufus](https://rufus.ie)** sous Windows, en **mode DD** (ou `dd` sous Linux) : l'ISO
+  est écrite telle quelle, la clé ne sert plus qu'à My_OS jusqu'à son reformatage.
+
+Ensuite : **désactivez le Secure Boot** (l'ISO n'est pas signée) et démarrez sur la clé
+via le menu de démarrage du PC (F12, F11 ou Échap selon les marques). Rien n'est écrit sur
+le disque du PC. Sur un PC professionnel, vérifiez d'abord votre politique informatique
+(et la clé de récupération BitLocker : changer le Secure Boot peut la faire demander).
+
+Validé en VM pour les quatre cas : Ventoy et clé brute, en BIOS et en UEFI.
+
 Procédure détaillée, décisions et limites : **[packaging/README.md](../packaging/README.md)**.
 
 ---

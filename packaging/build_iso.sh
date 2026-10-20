@@ -88,9 +88,25 @@ echo ">> Dérivation du profil releng → $PROFILE"
 mkdir -p "$PROFILE"
 cp -a "$RELENG/." "$PROFILE/"
 
-echo ">> Application de l'overlay My_OS (profiledef + airootfs)"
+echo ">> Application de l'overlay My_OS (profiledef + airootfs + fond du menu BIOS)"
 cp -a "$OVERLAY/profiledef.sh" "$PROFILE/profiledef.sh"
 cp -aT "$OVERLAY/airootfs" "$PROFILE/airootfs"
+cp -a "$OVERLAY/syslinux/." "$PROFILE/syslinux/"
+
+echo ">> Menus de démarrage aux couleurs de My_OS"
+# releng affiche « Arch Linux install medium » (et le logo Arch en BIOS) dans les
+# trois chargeurs : syslinux (BIOS), systemd-boot (UEFI) et GRUB (loopback, Ventoy).
+find "$PROFILE/syslinux" "$PROFILE/efiboot" "$PROFILE/grub" -type f \
+    \( -name '*.cfg' -o -name '*.conf' \) -exec sed -i \
+    -e 's/It allows you to install Arch Linux or perform system maintenance with speech feedback\./It runs My_OS from memory, with speech feedback; nothing is written to the disk./' \
+    -e 's/It allows you to install Arch Linux or perform system maintenance\./It runs My_OS from memory; nothing is written to the disk./' \
+    -e 's/Boot the Arch Linux \(install\|live\) medium/Boot My_OS live/' \
+    -e 's/Arch Linux \(install\|live\) medium/My_OS live/g' \
+    -e 's/^MENU TITLE Arch Linux$/MENU TITLE My_OS/' {} +
+if grep -rqE "Arch Linux (install|live) medium|install Arch Linux" \
+    "$PROFILE/syslinux" "$PROFILE/efiboot" "$PROFILE/grub"; then
+    die "menus de démarrage : libellés Arch Linux non remplacés (releng a changé ?)"
+fi
 
 echo ">> Fusion de la liste de paquets (releng + ajouts My_OS)"
 merged="$WORK/packages.x86_64"
