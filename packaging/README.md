@@ -20,6 +20,7 @@ d'[archiso](https://wiki.archlinux.org/title/Archiso).
 | **Dépendances Python** | venv `--system-site-packages` au 1er boot | les paquets système (`pyside6`, `python-dbus`, `python-gobject`…) viennent de pacman ; seul le **PyPI-only** (`pynput`, `anthropic`, `ollama`) passe par `pip`. |
 | **Utilisateur** | `myos`, **non-root**, créé au 1er boot | le daemon ne tourne **jamais** en root (cf. [SECURITY.md](../docs/SECURITY.md) menace 3). Élévation ponctuelle via polkit/`pkexec`. |
 | **Autologin** | LightDM → session Xfce de `myos` | démo immédiate ; le service utilisateur `myosd` et le popup démarrent dans la session. |
+| **Dépôts pacman** | **instantané daté** de l'[Arch Linux Archive](https://wiki.archlinux.org/title/Arch_Linux_Archive) (build ET live) | mkarchiso retire les bases pacman de l'image ; elles sont resynchronisées au démarrage **sur le même instantané que le build**, donc cohérentes avec les paquets installés : `pacman -S` marche en live sans mise à jour partielle, quel que soit l'âge de l'ISO. Compromis : pas de mises à jour en live, et l'Archive est plus lente qu'un miroir. |
 
 Mot de passe par défaut de l'utilisateur live : **`myos`** (défini par
 `myos-prepare`). **À changer pour tout usage réel** (`passwd` une fois connecté).
@@ -40,23 +41,31 @@ packaging/
         ├── etc/lightdm/lightdm.conf.d/…              # autologin → Xfce
         ├── etc/sudoers.d/10-myos-wheel               # wheel admin (polkit reste la voie d'élévation)
         ├── etc/systemd/system/myos-prepare.service   # crée l'utilisateur au 1er boot
+        ├── etc/systemd/system/myos-pacman-sync.service  # resynchronise les bases pacman
         ├── etc/skel/.xprofile                        # init session : firstrun + démarre myosd
         ├── etc/skel/.config/autostart/…              # autostart du popup résident
         ├── etc/skel/.config/systemd/user/myosd.service  # service UTILISATEUR (ISO)
         ├── usr/local/bin/myos-daemon|popup           # lanceurs (venv utilisateur)
-        ├── usr/local/bin/myos-prepare                # création utilisateur (1er boot)
+        ├── usr/local/bin/myos-prepare                # utilisateur + miroir figé (1er boot)
+        ├── usr/local/bin/myos-pacman-sync            # pacman -Sy sur l'instantané (réessaie)
         ├── usr/local/bin/myos-user-firstrun          # venv + deps + pull modèle (1er run)
         └── opt/my_os/                                # code (copié par build_iso.sh)
 ```
 
+`etc/myos/mirrorlist` (instantané choisi) n'est pas versionné : `build_iso.sh` le
+génère dans l'image.
+
 **Activation des services.** `build_iso.sh` crée les symlinks systemd dans
 l'image (`default.target` → `graphical.target`, `display-manager.service` →
-LightDM, `NetworkManager`, `ollama`, `myos-prepare`). Ces symlinks ne sont pas
-versionnés (ils seraient peu fiables depuis Windows et « pendants » tant que les
-paquets ne sont pas installés) : ils sont posés au build, sur l'hôte Arch.
+LightDM, `NetworkManager`, `ollama`, `myos-prepare`, `myos-pacman-sync`). Ces
+symlinks ne sont pas versionnés (ils seraient peu fiables depuis Windows et
+« pendants » tant que les paquets ne sont pas installés) : ils sont posés au build,
+sur l'hôte Arch.
 
 **Chaîne de démarrage (1er boot).**
-1. `myos-prepare.service` crée l'utilisateur non-root `myos` **avant** l'autologin.
+1. `myos-prepare.service` crée l'utilisateur non-root `myos` **avant** l'autologin et
+   installe le miroir pacman figé ; `myos-pacman-sync.service` synchronise ensuite les
+   bases en arrière-plan dès que le réseau répond (sans retarder la session).
 2. LightDM ouvre automatiquement une session **Xfce** pour `myos`.
 3. `~/.xprofile` lance `myos-user-firstrun` (venv + `pip` + `ollama pull` en tâche
    de fond), importe `DISPLAY`/`XAUTHORITY` dans systemd `--user`, puis démarre
@@ -89,7 +98,12 @@ sudo pacman -S archiso
 sudo ./packaging/build_iso.sh                 # ISO dans packaging/out/
 sudo ./packaging/build_iso.sh -o /mnt/iso     # répertoire de sortie explicite
 sudo ./packaging/build_iso.sh -w /mnt/build   # répertoire de travail sur un gros disque
+sudo ./packaging/build_iso.sh -s 2026/10/18   # instantané de l'Archive (défaut : la veille)
 ```
+
+Les paquets de l'ISO viennent de l'**instantané** `-s` de l'Arch Linux Archive (la
+veille par défaut, vérifié avant le build). Le même instantané devient le miroir du
+système live, ce qui garde les bases pacman cohérentes avec les paquets installés.
 
 `build_iso.sh` exporte le code suivi par git (`git archive HEAD`) : **buildez
 depuis un commit propre** (les modifications non committées ne sont pas incluses).
@@ -115,7 +129,8 @@ qemu-system-x86_64 -enable-kvm -m 4096 -smp 2 \
 qemu-system-x86_64 -enable-kvm -m 4096 -smp 2 -cdrom packaging/out/my_os-*.iso
 ```
 
-Donnez à la VM **assez de RAM** (≥ 4 Go) et un **accès réseau** (1er boot). À
+Donnez à la VM **assez de RAM** (≥ 4 Go ; ≥ 12 Go pour le modèle local, cf. §5) et
+un **accès réseau** (1er boot). À
 vérifier au boot :
 1. Autologin vers Xfce, utilisateur `myos` (non-root : `whoami` → `myos`).
 2. Fin du 1er run (venv + `ollama pull` ; voir `~/.local/share/my_os/model-pull.log`).
@@ -134,12 +149,21 @@ vérifier au boot :
   (cf. [INTERFACES.md §9](../docs/INTERFACES.md)). Aucun support Wayland n'est promis sur l'ISO.
 - **Noms de paquets** : valables sur Arch fin 2026 ; à vérifier contre les dépôts
   courants au moment du build (`pacman -Si <pkg>`).
-- **Build/boot non testés ici** : produits sous Windows, ils n'ont pas été
-  exécutés. Le `bash -n`/`sh -n` valide la syntaxe ; `shellcheck` est recommandé
-  sur l'hôte Arch. La validation réelle est l'étape VM ci-dessus.
+- **Build et boot validés en VM** (QEMU/KVM, BIOS et UEFI, octobre 2026) : autologin,
+  1er run, raccourci → popup, confirmations niveaux 1/2, blocklist, élévation polkit
+  (`pacman -S`), réglages et processus, avec le modèle local. Pas encore validé sur
+  matériel réel (rétroéclairage, Wi-Fi physique, cartes son).
+- **Paquets figés** sur l'instantané du build : pas de mises à jour de sécurité en
+  live (`update_system` n'a rien à installer), et l'Archive est plus lente qu'un
+  miroir. Reconstruire l'ISO pour la rafraîchir.
 - **1er boot en ligne** : sans réseau, les dépendances `pip` et le modèle ne sont
   pas récupérés ; l'assistant signalera l'absence de modèle jusqu'au prochain
-  `ollama pull qwen3.5:4b`.
+  `ollama pull qwen3.5:4b`. Un échec de `pip` est journalisé dans
+  `~/.local/share/my_os/firstrun.log` et retenté à la session suivante.
+- **RAM en live** : tout ce qui est écrit vit en RAM (cowspace, fixé à **50 % de la
+  RAM** par `build_iso.sh`). Le modèle (~3,3 Go) n'est tiré que s'il reste ≥ 4 Gio
+  libres, soit **≥ 12 Go de RAM** pour le modèle local en live ; en dessous, le pull
+  est ignoré et la raison est écrite dans `model-pull.log`.
 - **Mot de passe live connu** (`myos`) : acceptable pour une démo live, à changer
   pour un usage réel.
 

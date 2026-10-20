@@ -127,7 +127,8 @@ Processus :
 à « qu'est-ce qui consomme ma RAM / mon CPU ? » ;
 - terminer un processus par son PID (kill_process).
 Paquets (pacman) :
-- rechercher un paquet (search_package), installer (install_package), \
+- rechercher un paquet (search_package, mots-clés EN ANGLAIS : « video player »), \
+installer (install_package), \
 désinstaller (remove_package), mettre à jour tout le système (update_system).
 Réglages système :
 - luminosité de l'écran (set_brightness, 0–100), volume (set_volume, 0–100), \
@@ -330,13 +331,20 @@ PACKAGE_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "search_package",
-            "description": "Recherche un paquet disponible dans les dépôts officiels.",
+            "description": (
+                "Recherche des paquets dans les dépôts officiels. Les descriptions "
+                "des paquets sont en anglais : cherche avec des mots-clés EN "
+                "ANGLAIS (ex. « video player » pour un lecteur vidéo)."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Terme à rechercher (nom ou motif)",
+                        "description": (
+                            "1 à 5 mots-clés en anglais, sans accents, séparés "
+                            "par des espaces (ex. 'video player')"
+                        ),
                     }
                 },
                 "required": ["query"],

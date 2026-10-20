@@ -36,9 +36,13 @@ from tools.base_tool import BaseTool, ToolResult
 # les espaces et tout métacaractère. Borne de longueur défensive.
 _PACKAGE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9@._+-]{0,99}$")
 
-# Requête de recherche : un peu plus permissive (majuscules tolérées car
+# Mot-clé de recherche : un peu plus permissif (majuscules tolérées car
 # ``pacman -Ss`` matche un motif), mais toujours sans « - » initial ni espace.
 _SEARCH_QUERY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9@._+-]{0,99}$")
+
+# Une requête peut contenir plusieurs mots-clés (« video player ») : chacun est
+# validé et passé comme argument distinct à pacman -Ss (qui les combine en ET).
+_MAX_SEARCH_TERMS = 5
 
 # Tronque la sortie pacman réinjectée pour ne pas noyer le modèle / l'UI.
 _MAX_OUTPUT_CHARS = 4000
@@ -92,27 +96,41 @@ class SearchPackage(_PacmanTool):
     """Recherche un paquet dans les dépôts (``pacman -Ss``). Lecture, sans root."""
 
     name = "search_package"
-    description = "Recherche un paquet disponible dans les dépôts officiels."
+    description = (
+        "Recherche des paquets dans les dépôts officiels, par mots-clés EN ANGLAIS "
+        "(les descriptions des paquets sont en anglais), ex. « video player »."
+    )
     risk_level = 0
-    parameters = {"query": "str — terme à rechercher (nom de paquet ou motif)"}
+    parameters = {
+        "query": "str — 1 à 5 mots-clés en anglais séparés par des espaces "
+        "(ex. 'video player')"
+    }
 
     def run(self, args: dict) -> ToolResult:
         query = args.get("query")
-        if not isinstance(query, str) or not _SEARCH_QUERY_RE.match(query):
+        terms = query.split() if isinstance(query, str) else []
+        if (
+            not terms
+            or len(terms) > _MAX_SEARCH_TERMS
+            or not all(_SEARCH_QUERY_RE.match(term) for term in terms)
+        ):
+            # Message pensé pour le modèle : il doit pouvoir corriger et relancer
+            # plutôt que répondre de mémoire (constat du labo : paquet inventé).
             return _err(
-                "search_package : requête invalide (lettres, chiffres et "
-                "« @._+- » uniquement, sans tiret initial ni espace)"
+                f"search_package : requête invalide « {query} ». Relance avec 1 à "
+                f"{_MAX_SEARCH_TERMS} mots-clés EN ANGLAIS sans accents (ex. « video "
+                "player ») : lettres, chiffres et « @._+- », sans tiret initial."
             )
-        result = run_command(["pacman", "-Ss", query], runner=self._runner)
+        result = run_command(["pacman", "-Ss", *terms], runner=self._runner)
         # pacman -Ss renvoie un code != 0 quand il n'y a aucun résultat : ce
         # n'est pas une erreur d'exécution, on le présente comme « rien trouvé ».
         if not result.ok and not result.stderr.strip():
             return ToolResult(
                 success=True,
-                output=f"Aucun paquet ne correspond à « {query} ».",
+                output=f"Aucun paquet ne correspond à « {' '.join(terms)} ».",
                 reversible=False,
             )
-        return _format_result(f"Résultats pour « {query} » :", result)
+        return _format_result(f"Recherche « {' '.join(terms)} »", result)
 
 
 class InstallPackage(_PacmanTool):

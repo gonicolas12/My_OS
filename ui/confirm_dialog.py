@@ -3,10 +3,18 @@
 Reçoit un payload ``confirmation_needed`` (cf. INTERFACES §1), affiche le
 niveau de risque, l'outil et ses arguments, puis propose à l'utilisateur :
 
-* **Refuser** → ``decision="deny"``
-* **Une fois** → ``decision="approve_once"`` (pas de grant créé)
-* **Pour ce dossier** → ``decision="approve_scope"`` + ``scope="this_folder"``
-* **Pour cette session** → ``decision="approve_scope"`` + ``scope="session"``
+* **Refuser** → ``decision="deny"`` — bouton par défaut (Entrée, Échap) ;
+* **Une fois** → ``decision="approve_once"`` (pas de grant créé) ;
+* **Pour ce dossier** → ``decision="approve_scope"`` + ``scope="this_folder"`` ;
+* **Pour cette session** → ``decision="approve_scope"`` + ``scope="session"``.
+
+Les deux portées ne sont affichées que si le daemon les propose
+(``allowed_scopes``) : jamais au niveau 2 (confirmation renforcée), et « ce
+dossier » seulement pour un outil qui touche des chemins.
+
+La fenêtre reste **au-dessus** du popup (lui-même « toujours au-dessus ») : sinon
+le gestionnaire de fenêtres la place dessous et l'utilisateur ne voit pas ce
+qu'il approuve.
 
 La portée *this_file* est volontairement absente du jalon 2 (rarement utile
 en pratique pour les outils fichiers ; pourra être ajoutée plus tard).
@@ -18,6 +26,7 @@ import html
 import json
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -38,7 +47,19 @@ class ConfirmDialog(QDialog):
         super().__init__(parent)
         self._payload = payload
         self._response: tuple[str, str | None] | None = None
+        self._deny_btn: QPushButton | None = None
+        # Même couche que le popup (WindowStaysOnTopHint) : sans ce drapeau, xfwm
+        # et consorts ouvrent la confirmation SOUS le popup, donc invisible.
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self._build_ui()
+
+    def showEvent(self, event: QShowEvent) -> None:
+        """Au premier plan, focus sur « Refuser » (Entrée ne valide jamais par réflexe)."""
+        super().showEvent(event)
+        self.raise_()
+        self.activateWindow()
+        if self._deny_btn is not None:
+            self._deny_btn.setFocus()
 
     @property
     def response(self) -> tuple[str, str | None]:
@@ -51,12 +72,11 @@ class ConfirmDialog(QDialog):
         tool = str(self._payload.get("tool", ""))
         summary = str(self._payload.get("summary", ""))
         args = self._payload.get("args", {})
-        # Élévation : flag explicite du policy_engine (orthogonal au niveau ; un
-        # pacman -S de niveau 1 l'exige). Repli sur risk_level>=2 pour les
-        # anciens payloads sans le champ.
-        requires_elevation = bool(
-            self._payload.get("requires_elevation", risk_level >= 2)
-        )
+        # Élévation : flag explicite du policy_engine, vrai seulement si l'outil
+        # passera par polkit (ex. pacman -S). Jamais déduit du niveau : annoncer un
+        # mot de passe qui ne sera pas demandé tromperait l'utilisateur.
+        requires_elevation = bool(self._payload.get("requires_elevation", False))
+        allowed_scopes = self._payload.get("allowed_scopes") or []
 
         title = "Confirmation requise"
         if requires_elevation:
@@ -95,26 +115,42 @@ class ConfirmDialog(QDialog):
             warning.setStyleSheet("color: #ff8c00;")
             layout.addWidget(warning)
 
+        if risk_level >= 2:
+            reinforced = QLabel(
+                "Confirmation renforcée : cette action est redemandée à chaque fois."
+            )
+            reinforced.setWordWrap(True)
+            layout.addWidget(reinforced)
+
         button_row = QHBoxLayout()
 
         deny_btn = QPushButton("Refuser")
         deny_btn.clicked.connect(lambda: self._respond("deny", None))
+        # Entrée = Refuser : la fenêtre peut s'ouvrir pendant la frappe, une
+        # approbation doit toujours être un choix explicite.
+        deny_btn.setDefault(True)
         button_row.addWidget(deny_btn)
+        self._deny_btn = deny_btn
 
         once_btn = QPushButton("Une fois")
-        once_btn.setDefault(True)
         once_btn.clicked.connect(lambda: self._respond("approve_once", None))
         button_row.addWidget(once_btn)
 
-        folder_btn = QPushButton("Pour ce dossier")
-        folder_btn.clicked.connect(
-            lambda: self._respond("approve_scope", "this_folder")
-        )
-        button_row.addWidget(folder_btn)
+        # Portées de grant : seulement celles proposées par le daemon (aucune au
+        # niveau 2). Le daemon ignore de toute façon une portée non proposée.
+        if "this_folder" in allowed_scopes:
+            folder_btn = QPushButton("Pour ce dossier")
+            folder_btn.clicked.connect(
+                lambda: self._respond("approve_scope", "this_folder")
+            )
+            button_row.addWidget(folder_btn)
 
-        session_btn = QPushButton("Pour cette session")
-        session_btn.clicked.connect(lambda: self._respond("approve_scope", "session"))
-        button_row.addWidget(session_btn)
+        if "session" in allowed_scopes:
+            session_btn = QPushButton("Pour cette session")
+            session_btn.clicked.connect(
+                lambda: self._respond("approve_scope", "session")
+            )
+            button_row.addWidget(session_btn)
 
         layout.addLayout(button_row)
 

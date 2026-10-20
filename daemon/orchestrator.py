@@ -390,15 +390,14 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
 
         audit_decision = "auto"
         if decision.action == "confirm":
-            response = self._confirmation.ask(
-                build_confirmation_needed(
-                    request_id=new_request_id(),
-                    user_message_id=msg_id,
-                    tool=tool,
-                    args=args,
-                    decision=decision,
-                )
+            request = build_confirmation_needed(
+                request_id=new_request_id(),
+                user_message_id=msg_id,
+                tool=tool,
+                args=args,
+                decision=decision,
             )
+            response = self._confirmation.ask(request)
             if not response.is_approval:
                 self._audit.log(
                     tool=tool.name,
@@ -411,7 +410,10 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
                 return self._emit_result(
                     msg_id, reply, f"Refusé par l'utilisateur : {decision.summary}"
                 )
-            if response.creates_grant and response.scope is not None:
+            # Un grant n'est enregistré que pour une portée proposée par le daemon :
+            # jamais au niveau 2, même si le client renvoie approve_scope (l'action
+            # est alors exécutée une seule fois).
+            if response.creates_grant and response.scope in request["allowed_scopes"]:
                 self._record_grant(tool, args, response.scope)
             audit_decision = "approved"
 

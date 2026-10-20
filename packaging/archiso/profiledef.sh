@@ -34,6 +34,7 @@ file_permissions=(
   ["/usr/local/bin/myos-popup"]="0:0:755"
   ["/usr/local/bin/myos-user-firstrun"]="0:0:755"
   ["/usr/local/bin/myos-prepare"]="0:0:755"
+  ["/usr/local/bin/myos-pacman-sync"]="0:0:755"
   # Code de My_OS : root:root, lecture seule (l'app n'écrit jamais dans /opt).
   ["/opt/my_os"]="0:0:755"
 )

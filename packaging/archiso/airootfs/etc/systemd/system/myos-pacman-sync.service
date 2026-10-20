@@ -1,0 +1,15 @@
+# My_OS — synchronisation des bases pacman au démarrage de l'ISO live.
+# Miroir = instantané figé du build (cf. build_iso.sh -s, installé par
+# myos-prepare) : pas de mise à jour partielle. Type=exec : tourne en arrière-plan,
+# n'empêche pas d'atteindre la session graphique quand le réseau tarde.
+[Unit]
+Description=My_OS — synchronisation des bases pacman (instantané de l'ISO)
+After=myos-prepare.service pacman-init.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+ExecStart=/usr/local/bin/myos-pacman-sync
+
+[Install]
+WantedBy=multi-user.target

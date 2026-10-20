@@ -68,12 +68,47 @@ def test_search_package_sans_resultat_reste_un_succes() -> None:
     assert "Aucun paquet" in result.output
 
 
-@pytest.mark.parametrize("bad", ["-rf", "vlc; rm -rf /", "vlc foo", "", "../x", None])
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "-rf",
+        "vlc; rm -rf /",
+        "vlc -Syu",  # un mot-clé suivant ne peut pas devenir une option pacman
+        "lecteur vidéo",  # accents refusés : le modèle est invité à passer à l'anglais
+        "a b c d e f",  # 6 mots-clés : au-delà de la borne
+        "",
+        "   ",
+        "../x",
+        None,
+    ],
+)
 def test_search_package_requete_invalide_ne_lance_rien(bad: object) -> None:
     runner = _RecordingRunner()
     result = SearchPackage(runner).run({"query": bad})
     assert result.success is False
     assert runner.calls == []  # validation AVANT tout lancement
+
+
+def test_search_package_plusieurs_mots_cles_en_arguments_distincts() -> None:
+    # Constat du labo : le modèle cherche « video player » ; refuser l'espace le
+    # poussait à répondre de mémoire (paquet inventé). Chaque mot est un argv.
+    runner = _RecordingRunner(stdout="extra/vlc 3.0 ...")
+    result = SearchPackage(runner).run({"query": "  video   player "})
+    assert result.success is True
+    assert runner.calls == [["pacman", "-Ss", "video", "player"]]
+
+
+def test_search_package_erreur_guide_le_modele_vers_l_anglais() -> None:
+    result = SearchPackage(_RecordingRunner()).run({"query": "lecteur vidéo"})
+    assert "ANGLAIS" in result.output
+    assert "video player" in result.output
+
+
+def test_search_package_echec_pacman_sans_double_deux_points() -> None:
+    runner = _RecordingRunner(returncode=1, stdout="", stderr="erreur de base")
+    result = SearchPackage(runner).run({"query": "vlc"})
+    assert result.success is False
+    assert ": :" not in result.output
 
 
 # --- install_package (niveau 1 + élévation) ---

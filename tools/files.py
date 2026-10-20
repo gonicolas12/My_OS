@@ -14,6 +14,7 @@ Pas de ``subprocess(shell=True)`` : on utilise exclusivement ``pathlib`` et
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
@@ -51,19 +52,49 @@ def _not_found(label: str, path: str) -> ToolResult:
     return _err(message)
 
 
-def _expand_path_args(args: dict, *keys: str) -> dict:
-    """Copie de ``args`` où les chemins listés sont expansés (``~`` → home).
+def _real_path(path: str, *, follow_last: bool) -> str:
+    """Chemin réellement atteint par le système, tel que doivent le voir les permissions.
 
-    Centralise la normalisation pour que blocklist, escalade, grants et
-    exécution voient tous le même chemin réel.
+    ``~`` expansé, chemin relatif rendu absolu (répertoire courant du daemon),
+    ``..``, ``//`` et liens symboliques résolus : sans cela, ``../../home/u/.ssh``,
+    ``//etc`` ou un lien vers ``~/.ssh`` échappent à l'escalade, à la blocklist et
+    aux grants, et l'audit trace le lien au lieu du fichier réellement modifié.
+
+    ``follow_last=False`` résout le dossier parent mais garde le dernier élément :
+    supprimer ou déplacer un lien agit sur le lien, pas sur sa cible.
+
+    Hors Linux (dev/tests sous Windows), seul ``~`` est expansé : résoudre un
+    chemin POSIX sur un disque Windows le réécrirait (``C:\\etc``).
+    """
+    if os.name != "posix":
+        return str(Path(path).expanduser()) if path.startswith("~") else path
+    expanded = os.path.expanduser(path)
+    head, name = os.path.split(expanded)
+    if follow_last or name in ("", ".", ".."):
+        return os.path.realpath(expanded)
+    return os.path.join(os.path.realpath(head or "."), name)
+
+
+def _normalize_path_args(
+    args: dict, *, follow: tuple[str, ...] = (), entry: tuple[str, ...] = ()
+) -> dict:
+    """Copie de ``args`` où les chemins sont remplacés par leur chemin réel.
+
+    ``follow`` : la cible finale compte (lire, écrire, créer à travers un lien).
+    ``entry`` : l'entrée elle-même compte (supprimer, déplacer un lien).
+    Centralise la normalisation pour que blocklist, escalade, grants, audit et
+    exécution voient tous le même chemin.
     """
     out = dict(args)
-    for key in keys:
+    for key in (*follow, *entry):
         value = out.get(key)
-        # On ne touche au chemin que s'il commence par ~ : inutile (et risqué
-        # sous Windows, qui réécrirait les séparateurs) sur un chemin absolu.
-        if isinstance(value, str) and value.startswith("~"):
-            out[key] = str(Path(value).expanduser())
+        if isinstance(value, str) and value:
+            try:
+                out[key] = _real_path(value, follow_last=key in follow)
+            except (ValueError, OSError):
+                # Chemin inexploitable (ex. octet nul venu du modèle) : laissé tel
+                # quel, run() échouera proprement — ne pas faire planter la requête.
+                pass
     return out
 
 
@@ -76,7 +107,7 @@ class ReadFile(BaseTool):
     parameters = {"path": "str — chemin absolu du fichier à lire"}
 
     def normalize_args(self, args: dict) -> dict:
-        return _expand_path_args(args, "path")
+        return _normalize_path_args(args, follow=("path",))
 
     def affected_paths(self, args: dict) -> list[str]:
         path = args.get("path")
@@ -115,7 +146,7 @@ class ListDir(BaseTool):
     parameters = {"path": "str — chemin absolu du répertoire à lister"}
 
     def normalize_args(self, args: dict) -> dict:
-        return _expand_path_args(args, "path")
+        return _normalize_path_args(args, follow=("path",))
 
     def affected_paths(self, args: dict) -> list[str]:
         path = args.get("path")
@@ -149,7 +180,7 @@ class WriteFile(BaseTool):
     }
 
     def normalize_args(self, args: dict) -> dict:
-        return _expand_path_args(args, "path")
+        return _normalize_path_args(args, follow=("path",))
 
     def escalate(self, args: dict) -> int:
         path = args.get("path")
@@ -190,7 +221,7 @@ class CreateFile(BaseTool):
     parameters = {"path": "str — chemin absolu du fichier à créer"}
 
     def normalize_args(self, args: dict) -> dict:
-        return _expand_path_args(args, "path")
+        return _normalize_path_args(args, follow=("path",))
 
     def escalate(self, args: dict) -> int:
         path = args.get("path")
@@ -229,7 +260,9 @@ class MoveFile(BaseTool):
     }
 
     def normalize_args(self, args: dict) -> dict:
-        return _expand_path_args(args, "src", "dst")
+        # src : l'entrée elle-même est déplacée (un lien reste un lien) ;
+        # dst : la cible compte (un lien vers un dossier y fait atterrir src).
+        return _normalize_path_args(args, entry=("src",), follow=("dst",))
 
     def escalate(self, args: dict) -> int:
         src = args.get("src")
@@ -280,7 +313,8 @@ class DeleteFile(BaseTool):
     parameters = {"path": "str — chemin absolu du fichier à supprimer"}
 
     def normalize_args(self, args: dict) -> dict:
-        return _expand_path_args(args, "path")
+        # Supprimer un lien supprime le lien, jamais sa cible.
+        return _normalize_path_args(args, entry=("path",))
 
     def affected_paths(self, args: dict) -> list[str]:
         path = args.get("path")

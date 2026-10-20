@@ -12,15 +12,19 @@ Ordre impératif (cf. docs/INTERFACES.md §3) :
    immédiatement clipé par ``max(..., tool.risk_level)`` pour rendre
    l'invariant « l'escalade peut UNIQUEMENT augmenter » indépendant du
    comportement des sous-classes (défense en profondeur).
-3. Si les grants déjà accordés couvrent les chemins affectés → ``auto``
-   au niveau effectif courant.
+3. Si les grants déjà accordés couvrent les chemins affectés → ``auto``,
+   **uniquement jusqu'au niveau** :data:`GRANTABLE_MAX_LEVEL` (1). Le niveau 2
+   (confirmation renforcée) est redemandé à chaque fois : sinon un grant obtenu
+   sur une action anodine couvrirait une action escaladée (ex. ``~/.ssh``).
 4. Décision par niveau : 0 → auto ; 1 → confirm ; 2 → confirm ; 3 → bloqué.
 
-``requires_elevation`` (polkit) est **orthogonal au niveau** : il est vrai si
-l'action est de niveau 2 (sensible) **ou** si l'outil déclare explicitement
-avoir besoin de root via ``tool.requires_elevation(args)`` — typiquement un
-``pacman -S`` de niveau 1 (cf. docs/INTERFACES.md §3). L'élévation réelle se
-fait à l'exécution dans :func:`core.elevation.run_command`, pas ici.
+``requires_elevation`` (polkit) est **orthogonal au niveau** : il reflète
+uniquement ``tool.requires_elevation(args)``, c'est-à-dire un outil qui passe
+réellement par ``pkexec`` — typiquement ``pacman -S`` en niveau 1 (cf.
+docs/INTERFACES.md §3). Une suppression de fichier de niveau 2, exécutée en
+utilisateur, n'en demande pas : l'annoncer ferait attendre un mot de passe qui ne
+viendra jamais. L'élévation réelle se fait à l'exécution dans
+:func:`core.elevation.run_command`, pas ici.
 """
 
 from __future__ import annotations
@@ -31,6 +35,10 @@ from permissions.blocklist import is_blocked
 from permissions.session_grants import SessionGrants
 from tools.base_tool import BaseTool
 
+# Niveau maximal qu'un grant (dossier / session) peut couvrir. Au-delà, chaque
+# action est reconfirmée et aucune portée de grant n'est proposée ni enregistrée.
+GRANTABLE_MAX_LEVEL = 1
+
 
 @dataclass
 class Decision:
@@ -38,8 +46,8 @@ class Decision:
 
     ``action`` vaut ``"auto"``, ``"confirm"`` ou ``"blocked"`` ; ``risk_level``
     est le niveau effectif après escalade ; ``summary`` est un résumé lisible
-    par l'utilisateur ; ``requires_elevation`` indique si une élévation
-    ``polkit`` est attendue (typiquement niveau 2).
+    par l'utilisateur ; ``requires_elevation`` indique si l'outil passera par
+    une élévation ``polkit`` (``pkexec``) à l'exécution.
     """
 
     action: str
@@ -70,12 +78,15 @@ def evaluate(tool: BaseTool, args: dict, grants: SessionGrants) -> Decision:
     # 2. Risque effectif (l'escalade ne peut qu'augmenter).
     level = _effective_risk(tool, args)
 
-    # Élévation : orthogonale au niveau. Vrai si action sensible (niveau 2) OU si
-    # l'outil déclare avoir besoin de root (ex. pacman -S, niveau 1 mais root).
-    elevation = level == 2 or tool.requires_elevation(args)
+    # Élévation : orthogonale au niveau, déclarée par l'outil lui-même (pkexec
+    # réellement utilisé, ex. pacman -S en niveau 1) — jamais déduite du niveau.
+    elevation = tool.requires_elevation(args)
 
-    # 3. Grant existant → auto, quel que soit le niveau (sauf blocklist déjà éliminée).
-    if grants.is_granted(tool.name, tool.affected_paths(args)):
+    # 3. Grant existant → auto, seulement jusqu'à GRANTABLE_MAX_LEVEL : le niveau 2
+    #    n'est jamais délégué à un grant (blocklist déjà éliminée plus haut).
+    if level <= GRANTABLE_MAX_LEVEL and grants.is_granted(
+        tool.name, tool.affected_paths(args)
+    ):
         return Decision(
             action="auto",
             risk_level=level,
@@ -96,3 +107,16 @@ def evaluate(tool: BaseTool, args: dict, grants: SessionGrants) -> Decision:
         )
     # Niveau 3 hors blocklist : ne devrait pas survenir mais on bloque par sécurité.
     return Decision(action="blocked", risk_level=3, summary=summary)
+
+
+def grantable_scopes(tool: BaseTool, args: dict, risk_level: int) -> list[str]:
+    """Portées de grant que l'utilisateur peut choisir pour cette action.
+
+    Vide au-delà de :data:`GRANTABLE_MAX_LEVEL` (confirmation renforcée : « une
+    fois » seulement). ``this_folder`` n'a de sens que si l'outil touche des
+    chemins (un ``pacman -S`` n'en a pas). Le popup n'affiche que ces portées et
+    l'orchestrator n'enregistre jamais un grant hors de cette liste.
+    """
+    if risk_level > GRANTABLE_MAX_LEVEL:
+        return []
+    return ["this_folder", "session"] if tool.affected_paths(args) else ["session"]

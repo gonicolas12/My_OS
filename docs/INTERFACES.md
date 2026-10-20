@@ -26,10 +26,17 @@ Communication sur une **socket Unix locale**. Le daemon est le **serveur** (cré
 ```json
 { "type": "token", "id": "uuid", "text": "fragment de réponse" }
 { "type": "tool_request", "id": "uuid", "tool": "move_file", "args": {...}, "risk_level": 1, "summary": "Déplacer 3 fichiers vers Images/" }
-{ "type": "confirmation_needed", "id": "uuid", "request_id": "uuid-action", "tool": "delete_file", "args": {...}, "risk_level": 2, "summary": "...", "requires_elevation": false }
+{ "type": "confirmation_needed", "id": "uuid", "request_id": "uuid-action", "tool": "delete_file", "args": {...}, "risk_level": 2, "summary": "...", "requires_elevation": false, "allowed_scopes": [] }
 { "type": "done", "id": "uuid" }
 { "type": "error", "id": "uuid", "message": "..." }
 ```
+
+`allowed_scopes` liste les portées de grant que le popup peut proposer, calculées
+par le daemon (`policy_engine.grantable_scopes`) : `[]` au **niveau 2** (confirmation
+renforcée, « une fois » seulement), `["session"]` pour un outil sans chemin (ex.
+`install_package`), `["this_folder", "session"]` sinon. Le popup n'affiche que ces
+boutons ; **« Refuser » est le bouton par défaut** (Entrée), et la fenêtre reste
+au-dessus du popup. `requires_elevation` n'est vrai que si l'outil passera par polkit.
 
 ### Réponse de confirmation popup → daemon
 ```json
@@ -37,9 +44,11 @@ Communication sur une **socket Unix locale**. Le daemon est le **serveur** (cré
   "type": "confirmation_response",
   "request_id": "uuid-action",
   "decision": "approve_once",   // approve_once | approve_scope | deny
-  "scope": "this_folder"        // optionnel : this_file | this_folder | session
+  "scope": "this_folder"        // optionnel : une portée de allowed_scopes
 }
 ```
+Une portée absente de `allowed_scopes` n'est **jamais** enregistrée : l'action est
+alors exécutée une seule fois (le daemon ne fait pas confiance au client là-dessus).
 
 ### Message de contrôle popup → daemon (reset)
 L'orchestrator garde la conversation **en mémoire entre les requêtes** (cf. §6).
@@ -77,10 +86,12 @@ class BaseTool:
     def normalize_args(self, args: dict) -> dict:
         """Normalise les arguments AVANT évaluation des permissions.
         Appelé par l'orchestrator en amont de policy_engine.evaluate : la forme
-        normalisée est donc vue par la blocklist, l'escalade, les grants ET run.
-        Par défaut : identité. Les outils fichiers expansent ~ ici, pour qu'un
-        chemin comme ~/.ssh soit bien détecté sensible (sinon il échapperait à
-        l'escalade)."""
+        normalisée est donc vue par la blocklist, l'escalade, les grants, l'audit
+        ET run. Par défaut : identité. Les outils fichiers y résolvent le chemin
+        RÉEL (~ expansé, relatif → absolu, .., // et liens symboliques résolus ;
+        pour supprimer/déplacer, le parent seulement : un lien reste un lien).
+        Sinon ../../home/u/.ssh, //etc ou un lien vers ~/.ssh échapperaient à
+        l'escalade, à la blocklist et aux grants."""
         return args
 
     def escalate(self, args: dict) -> int:
@@ -124,28 +135,36 @@ class Decision:
     action: str                  # "auto" | "confirm" | "blocked"
     risk_level: int
     summary: str                 # description lisible de l'action
-    requires_elevation: bool     # nécessite polkit ?
+    requires_elevation: bool     # l'outil passera-t-il par polkit (pkexec) ?
+
+GRANTABLE_MAX_LEVEL = 1          # niveau max qu'un grant peut couvrir
 
 def evaluate(tool: BaseTool, args: dict, grants: "SessionGrants") -> Decision:
     """Décide du sort d'une action.
     Ordre impératif :
       1. blocklist.is_blocked(tool, args) → si oui, action="blocked"
       2. level = max(tool.escalate(args), tool.risk_level)
-      3. requires_elevation = (level == 2) or tool.requires_elevation(args)
-      4. si grants couvre déjà cette action → action="auto"
+      3. requires_elevation = tool.requires_elevation(args)
+      4. si level <= GRANTABLE_MAX_LEVEL et grants couvre l'action → action="auto"
       5. sinon level 0 → "auto" ; level 1/2 → "confirm" ; level 3 → "blocked"
     """
+
+def grantable_scopes(tool: BaseTool, args: dict, risk_level: int) -> list[str]:
+    """Portées proposables : [] au-delà de GRANTABLE_MAX_LEVEL ;
+    ["session"] sans chemin affecté ; ["this_folder", "session"] sinon."""
 ```
 
 Le `policy_engine` est le **point de passage unique**. Aucune action n'atteint `tool.run()` sans une `Decision` avec `action in ("auto",)` ou une confirmation utilisateur explicite.
 
-**Élévation (`requires_elevation`).** Ce drapeau est **orthogonal au niveau de risque** : il vaut vrai si l'action est de niveau 2 (sensible) *ou* si l'outil déclare avoir besoin de root via `tool.requires_elevation(args)`. Exemple : `install_package` (pacman `-S`) est de **niveau 1** (confirmation simple) mais `requires_elevation=True` (root requis). À l'inverse `delete_file` est niveau 2 sans élévation réelle. Le drapeau est purement consultatif (UI + payload `confirmation_needed`) ; **l'élévation effective** est réalisée à l'exécution par l'outil via `core.elevation.run_command(..., elevate=True)` (cf. §8), jamais par le daemon lui-même qui reste utilisateur.
+**Grants et niveau 2.** Un grant (« ce dossier », « cette session ») ne couvre **jamais** une action de niveau 2 : la confirmation renforcée est redemandée à chaque fois. Sinon un grant obtenu sur une action anodine de niveau 1 couvrirait la même action escaladée par ses arguments (ex. `write_file` vers `~/.ssh/authorized_keys`), ce qui viderait l'escalade de son sens.
+
+**Élévation (`requires_elevation`).** Ce drapeau est **orthogonal au niveau de risque** : il reflète uniquement `tool.requires_elevation(args)`, c'est-à-dire un outil qui passe réellement par `pkexec`. Exemple : `install_package` (pacman `-S`) est de **niveau 1** (confirmation simple) mais `requires_elevation=True` (root requis). À l'inverse `delete_file` est niveau 2 **sans** élévation : l'annoncer ferait attendre un mot de passe qui ne viendra jamais. Le drapeau est purement consultatif (UI + payload `confirmation_needed`) ; **l'élévation effective** est réalisée à l'exécution par l'outil via `core.elevation.run_command(..., elevate=True)` (cf. §8), jamais par le daemon lui-même qui reste utilisateur.
 
 ---
 
 ## 4 · Journal d'audit (`permissions/audit_log.py`)
 
-Table SQLite `audit` dans `data/audit.db` :
+Table SQLite `audit` dans `~/.local/share/my_os/audit.db` :
 
 | Colonne | Type | Description |
 |---------|------|-------------|
@@ -245,7 +264,7 @@ tantôt au local, tantôt au cloud (c'est voulu).
 Chaque envoi cloud est journalisé via un **logger dédié `myosd.cloud`**
 (horodatage, nom du modèle, **nombre de messages et de caractères** transmis) —
 **jamais** la clé, **jamais** le contenu. Le canal est le logger (journald sous
-systemd), distinct du **journal d'audit** (`data/audit.db`), réservé aux actions
+systemd), distinct du **journal d'audit** (`~/.local/share/my_os/audit.db`), réservé aux actions
 d'outils et décisions de permission (§4). La minimisation des données envoyées au
 cloud est traitée en §6 et SECURITY menace 2.
 

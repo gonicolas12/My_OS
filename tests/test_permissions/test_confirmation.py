@@ -53,7 +53,45 @@ def test_build_confirmation_needed_contient_tous_les_champs() -> None:
         "risk_level": 2,
         "summary": "suppr de /tmp/x",
         "requires_elevation": True,
+        "allowed_scopes": [],  # niveau 2 : « une fois » seulement
     }
+
+
+class _PathWriter(BaseTool):
+    name = "write_file"
+    description = "stub niveau 1 avec chemins"
+    risk_level = 1
+
+    def affected_paths(self, args: dict) -> list[str]:
+        return [args["path"]]
+
+    def run(self, args: dict) -> ToolResult:
+        return ToolResult(success=True, output="")
+
+
+def test_build_confirmation_needed_propose_les_portees_au_niveau_1() -> None:
+    decision = Decision(action="confirm", risk_level=1, summary="écrire /tmp/x")
+    payload = build_confirmation_needed(
+        request_id="rid-2",
+        user_message_id="uid-2",
+        tool=_PathWriter(),
+        args={"path": "/tmp/x"},
+        decision=decision,
+    )
+    assert payload["allowed_scopes"] == ["this_folder", "session"]
+
+
+def test_build_confirmation_needed_sans_portee_quand_le_niveau_escalade() -> None:
+    # Même outil de base niveau 1, escaladé en 2 (chemin sensible) : aucun grant.
+    decision = Decision(action="confirm", risk_level=2, summary="écrire ~/.ssh")
+    payload = build_confirmation_needed(
+        request_id="rid-3",
+        user_message_id="uid-3",
+        tool=_PathWriter(),
+        args={"path": "/home/u/.ssh/authorized_keys"},
+        decision=decision,
+    )
+    assert payload["allowed_scopes"] == []
 
 
 def test_parse_approve_once() -> None:

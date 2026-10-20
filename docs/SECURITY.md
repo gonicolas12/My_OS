@@ -33,7 +33,7 @@ Tout contenu que l'IA **lit** est une **donnée non fiable**, jamais une instruc
 ### 2.3 · Traçabilité
 Rien de conséquent n'est silencieux.
 
-- Chaque action (et chaque décision de permission) est journalisée dans `data/audit.db`.
+- Chaque action (et chaque décision de permission) est journalisée dans `~/.local/share/my_os/audit.db`.
 - Les opérations réversibles devraient pouvoir être annulées.
 - L'utilisateur peut consulter l'historique de ce que l'IA a fait.
 
@@ -76,7 +76,7 @@ Rien de conséquent n'est silencieux.
   toggle est ON, et une notice in-transcript marque chaque requête partie au cloud.
 - **Journalisé sans fuite.** Chaque envoi cloud est tracé par le logger dédié
   `myosd.cloud` (modèle, nombre de messages et de caractères transmis) — **jamais**
-  la clé, **jamais** le contenu. Canal distinct du journal d'audit `data/audit.db`
+  la clé, **jamais** le contenu. Canal distinct du journal d'audit `~/.local/share/my_os/audit.db`
   (réservé aux actions d'outils et décisions de permission).
 - **Minimisation des données.** En mode cloud, c'est **tout l'historique persistant
   courant** (borné par `MAX_HISTORY_MESSAGES`) qui part, pas seulement le dernier
@@ -138,6 +138,18 @@ Rien de conséquent n'est silencieux.
 2. L'escalade par arguments ne peut qu'**augmenter** le risque (ex. `write_file` → niveau 2 si cible sensible).
 3. La blocklist (niveau 3) est évaluée **en premier** et ne peut être contournée.
 4. Un outil sans `risk_level` déclaré ne doit pas être chargé.
+5. Les permissions jugent le **chemin réel** : `normalize_args` résout `~`, les chemins
+   relatifs, `..`, `//` et les liens symboliques **avant** blocklist, escalade, grants et
+   audit. Sans cela, `../../home/u/.ssh`, `//etc` ou un lien vers `~/.ssh` échappaient
+   aux règles 2 et 3, et l'audit traçait le lien au lieu du fichier modifié.
+6. Un grant (« ce dossier », « cette session ») ne couvre **jamais** le niveau 2 : la
+   confirmation renforcée est redemandée à chaque fois, et le daemon n'enregistre aucun
+   grant hors des portées qu'il a lui-même proposées (`allowed_scopes`).
+7. La confirmation est **visible et sûre par défaut** : fenêtre au-dessus du popup,
+   « Refuser » sur Entrée. Une approbation est toujours un choix explicite.
+
+Ces règles 5 à 7 viennent des tests en VM du 2026-10-19 (contournements reproduits
+avec effet réel, puis corrigés et re-testés).
 
 ---
 

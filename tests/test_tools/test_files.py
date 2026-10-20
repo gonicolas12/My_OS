@@ -7,10 +7,13 @@ les erreurs OS sont renvoyées proprement (pas de stack trace, success=False).
 # pylint: disable=missing-function-docstring
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
+from permissions.policy_engine import evaluate
+from permissions.session_grants import SessionGrants
 from tools.files import (
     FILE_TOOLS,
     CreateFile,
@@ -279,3 +282,127 @@ def test_regression_securite_tilde_ssh_escalade_en_niveau_2() -> None:
     tool = WriteFile()
     normalized = tool.normalize_args({"path": "~/.ssh/id_rsa", "content": "x"})
     assert tool.escalate(normalized) == 2
+
+
+# ---------- normalize_args : chemin réel (relatif, liens, //) — cible Linux ----------
+# Constats du labo VM : sans résolution, un chemin relatif, un lien symbolique ou
+# « //etc » échappaient à l'escalade, à la blocklist et aux grants.
+
+posix_only = pytest.mark.skipif(
+    os.name != "posix", reason="résolution réelle des chemins : cible Linux"
+)
+
+
+@pytest.fixture
+def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    home = tmp_path / "home" / "u"
+    (home / ".ssh").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    return home
+
+
+@posix_only
+def test_chemin_relatif_resolu_depuis_le_repertoire_du_daemon(
+    fake_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workdir = tmp_path / "opt" / "my_os"  # WorkingDirectory du service sur l'ISO
+    workdir.mkdir(parents=True)
+    monkeypatch.chdir(workdir)
+    relatif = os.path.relpath(fake_home / ".ssh" / "authorized_keys", workdir)
+    tool = WriteFile()
+    out = tool.normalize_args({"path": relatif, "content": "x"})
+    assert out["path"] == os.path.realpath(fake_home / ".ssh" / "authorized_keys")
+    assert tool.escalate(out) == 2
+
+
+@posix_only
+def test_ecrire_a_travers_un_lien_vers_ssh_escalade(
+    fake_home: Path, tmp_path: Path
+) -> None:
+    (tmp_path / "sshlink").symlink_to(fake_home / ".ssh")
+    tool = WriteFile()
+    out = tool.normalize_args(
+        {"path": str(tmp_path / "sshlink" / "authorized_keys"), "content": "x"}
+    )
+    assert out["path"] == os.path.realpath(fake_home / ".ssh" / "authorized_keys")
+    assert tool.escalate(out) == 2
+
+
+@posix_only
+def test_grant_dossier_ne_couvre_pas_un_lien_vers_ssh(
+    fake_home: Path, tmp_path: Path
+) -> None:
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    (lab / "ak").symlink_to(fake_home / ".ssh" / "authorized_keys")
+    grants = SessionGrants()
+    grants.grant("write_file", "this_folder", str(lab))
+    tool = WriteFile()
+    decision = evaluate(
+        tool, tool.normalize_args({"path": str(lab / "ak"), "content": "x"}), grants
+    )
+    assert decision.action == "confirm"
+    assert decision.risk_level == 2
+
+
+@posix_only
+@pytest.mark.parametrize("path", ["//etc", "/tmp/../etc", "/etc/", "../" * 12 + "etc"])
+def test_racine_systeme_deguisee_reste_bloquee(
+    path: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    tool = DeleteFile()
+    decision = evaluate(tool, tool.normalize_args({"path": path}), SessionGrants())
+    assert decision.action == "blocked"
+
+
+@posix_only
+def test_supprimer_un_lien_supprime_le_lien_pas_sa_cible(tmp_path: Path) -> None:
+    cible = tmp_path / "precieux.txt"
+    cible.write_text("x", encoding="utf-8")
+    lien = tmp_path / "raccourci"
+    lien.symlink_to(cible)
+    tool = DeleteFile()
+    out = tool.normalize_args({"path": str(lien)})
+    assert out["path"] == os.path.join(os.path.realpath(tmp_path), "raccourci")
+    assert tool.run(out).success is True
+    assert cible.exists()
+    assert not lien.is_symlink()
+
+
+@posix_only
+def test_deplacer_dans_un_lien_vers_ssh_escalade(
+    fake_home: Path, tmp_path: Path
+) -> None:
+    src = tmp_path / "a.txt"
+    src.write_text("x", encoding="utf-8")
+    (tmp_path / "vers_ssh").symlink_to(fake_home / ".ssh")
+    tool = MoveFile()
+    out = tool.normalize_args({"src": str(src), "dst": str(tmp_path / "vers_ssh")})
+    assert out["dst"] == os.path.realpath(fake_home / ".ssh")
+    assert tool.escalate(out) == 2
+
+
+def test_chemin_avec_octet_nul_ne_fait_pas_planter_la_normalisation() -> None:
+    # realpath lève ValueError sur un octet nul ; normalize_args est appelé hors
+    # du try de l'orchestrator : il ne doit jamais lever (l'erreur surgit dans
+    # run, que l'orchestrator transforme en « Erreur d'exécution »).
+    tool = WriteFile()
+    out = tool.normalize_args({"path": "/tmp/a\x00b", "content": "x"})
+    assert out["path"] == "/tmp/a\x00b"
+
+
+@posix_only
+def test_home_derriere_un_lien_garde_ssh_sensible(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Ex. /home → /var/home : chemins réels d'un côté, HOME symbolique de l'autre.
+    real = tmp_path / "var" / "home" / "u"
+    (real / ".ssh").mkdir(parents=True)
+    (tmp_path / "home").mkdir()
+    (tmp_path / "home" / "u").symlink_to(real)
+    monkeypatch.setenv("HOME", str(tmp_path / "home" / "u"))
+    tool = WriteFile()
+    out = tool.normalize_args({"path": "~/.ssh/authorized_keys", "content": "x"})
+    assert out["path"] == os.path.realpath(real / ".ssh" / "authorized_keys")
+    assert tool.escalate(out) == 2
