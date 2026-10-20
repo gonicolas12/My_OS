@@ -36,6 +36,7 @@ packaging/
 └── archiso/
     ├── profiledef.sh         # métadonnées ISO + permissions des fichiers My_OS
     ├── packages.x86_64       # AJOUTS de paquets (fusionnés avec releng au build)
+    ├── syslinux/splash.png   # fond du menu de démarrage BIOS (aux couleurs de My_OS)
     └── airootfs/             # fichiers déposés dans le système live
         ├── etc/motd                                  # message d'accueil
         ├── etc/lightdm/lightdm.conf.d/…              # autologin → Xfce
@@ -130,9 +131,13 @@ qemu-system-x86_64 -enable-kvm -m 4096 -smp 2 -cdrom packaging/out/my_os-*.iso
 ```
 
 Donnez à la VM **assez de RAM** (≥ 4 Go ; ≥ 12 Go pour le modèle local, cf. §5) et
-un **accès réseau** (1er boot). À
+un **accès réseau** (1er boot). Pour reproduire une clé USB plutôt qu'un CD, attachez
+l'ISO comme disque USB (`-drive if=none,id=cle,format=raw,file=…iso -device qemu-xhci
+-device usb-storage,drive=cle`). Pour une vraie clé : cf.
+[INSTALLATION.md §5](../docs/INSTALLATION.md) (Ventoy ou Rufus en mode DD). À
 vérifier au boot :
-1. Autologin vers Xfce, utilisateur `myos` (non-root : `whoami` → `myos`).
+1. Menu de démarrage « My_OS live », puis autologin vers Xfce, utilisateur `myos`
+   (non-root : `whoami` → `myos`).
 2. Fin du 1er run (venv + `ollama pull` ; voir `~/.local/share/my_os/model-pull.log`).
 3. **Ctrl+Alt+Espace** ouvre le popup, centré et au-dessus de tout.
 4. Une requête simple (« liste mon dossier home ») fonctionne en local.

@@ -150,7 +150,9 @@ Une ISO bootable (base Arch + Xfce/X11) embarque My_OS prêt à l'emploi. Le pro
 [`packaging/`](packaging/) ; la construction se fait sur un hôte Arch
 (`sudo ./packaging/build_iso.sh`) puis se teste en VM. Au 1er boot, les dépendances et
 le modèle local sont récupérés (réseau requis). Prévoir **≥ 12 Go de RAM pour le modèle
-local en live** (≥ 4 Go sinon). Voir [packaging/README.md](packaging/README.md).
+local en live** (≥ 4 Go sinon). Sur une clé USB : [Ventoy](https://www.ventoy.net) ou Rufus
+en mode DD, Secure Boot désactivé ([détails](docs/INSTALLATION.md)). Voir aussi
+[packaging/README.md](packaging/README.md).
 
 ### b) Depuis les sources
 
