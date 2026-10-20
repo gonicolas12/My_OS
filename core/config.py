@@ -54,8 +54,8 @@ class UIConfig:
     """Paramètres du popup Qt."""
 
     theme: str = "dark"
-    width: int = 600
-    height: int = 400
+    width: int = 720  # taille à la 1re ouverture (ensuite mémorisée par le popup)
+    height: int = 540
 
 
 @dataclass

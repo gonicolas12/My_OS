@@ -22,11 +22,6 @@ QtWidgets = pytest.importorskip("PySide6.QtWidgets")
 from ui.confirm_dialog import ConfirmDialog
 
 
-@pytest.fixture(scope="module")
-def app() -> object:
-    return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-
-
 def _payload(level: int, scopes: list[str], elevation: bool = False) -> dict:
     return {
         "type": "confirmation_needed",

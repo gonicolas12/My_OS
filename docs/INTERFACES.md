@@ -84,7 +84,7 @@ avec le daemon.
 ### Messages de contrôle daemon → popup
 Le raccourci global est capté par le daemon ; c'est lui qui ordonne au popup (résident, caché) de s'afficher. Ce message de contrôle n'est pas lié à une requête, donc sans champ `id`.
 ```json
-{ "type": "show" }   // le popup s'affiche centré, au-dessus de tout, et prend le focus
+{ "type": "show" }   // le popup s'affiche au-dessus de tout et prend le focus
 ```
 La fermeture (Échap) est gérée localement par le popup (il se cache) ; aucun message n'est requis vers le daemon.
 
@@ -516,9 +516,10 @@ raccourci.
 
 ### 9.3 · Présentation du popup (`ui/wayland_layer.py`)
 
-Sous X11, le popup garde son comportement actuel : `FramelessWindowHint |
-WindowStaysOnTopHint | Tool`, centrage par `move()`, `raise_()`, focus. Ces
-mécanismes **n'ont pas d'effet sous Wayland** (pas de positionnement global ni
+Sous X11, le popup est une fenêtre `FramelessWindowHint | WindowStaysOnTopHint |
+Tool` : centré par `move()` à la première ouverture, puis rouvert là où l'utilisateur
+l'a laissé (géométrie mémorisée), `raise_()`, focus. Ces mécanismes **n'ont pas
+d'effet sous Wayland** (pas de positionnement global ni
 d'always-on-top côté client). Un helper isole la logique testable :
 
 ```python
@@ -534,9 +535,9 @@ def is_wayland(session_type: str) -> bool: ...
 
 `main()` du popup appelle `prepare_layer_shell(detect_session_type())` **avant**
 de créer la `QApplication`. Le `Popup` reçoit un `session_type` (optionnel, détecté
-par défaut) : `_show_centered` n'applique le `move()` de centrage que sous X11 ;
-sous Wayland il se contente de `show()`/`raise_()`/focus et laisse le compositeur
-(layer-shell) placer la surface. **Repli/diagnostic** : si le plugin layer-shell
+par défaut) : `present()` n'applique le placement (`move()`, géométrie mémorisée) que
+sous X11 ; sous Wayland il se contente de `show()`/`raise_()`/focus et laisse le
+compositeur (layer-shell) placer la surface. **Repli/diagnostic** : si le plugin layer-shell
 est absent, Qt retombe sur `xdg-shell` (fenêtre normale, centrage approximatif par
 le compositeur) ; un avertissement est journalisé. On n'annonce pas un centrage
 overlay garanti sous Wayland.

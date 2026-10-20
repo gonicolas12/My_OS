@@ -1,15 +1,21 @@
 """Popup Qt (PySide6) de My_OS — processus séparé du daemon.
 
 Le popup est un **client** de la socket IPC. Il reste résident et caché, et
-s'affiche (centré, au-dessus de tout, focus) quand le daemon envoie ``show``
+s'affiche (au-dessus de tout, focus sur la saisie) quand le daemon envoie ``show``
 (déclenché par le raccourci global). L'utilisateur tape un message, le popup
 l'envoie au daemon ; Échap referme le popup.
 
-La réponse du modèle s'affiche en streaming (token par token) et est rendue en
-markdown via ``QTextBrowser.setMarkdown`` (et non ``QWebEngineView`` : ouverture
-instantanée, aucun moteur web). Le contenu affiché reste une DONNÉE — QTextBrowser
-n'exécute aucun script et les liens ne s'ouvrent pas seuls (cf. docs/SECURITY.md
-§2.2 et ui/markdown_render.py).
+Fenêtre sans cadre système (``ui/window_chrome.py``) : barre de titre maison,
+redimensionnement par les bords et les coins, agrandissement (double-clic ou
+bouton), plein écran (F11 ou bouton). Taille, position et état sont mémorisés
+(``~/.config/my_os/popup.conf``) : le popup revient là où on l'a laissé.
+
+La conversation (``ui/chat_view.py``) affiche la réponse en streaming, rendue en
+markdown par le moteur de texte de Qt (``QTextBrowser``, jamais ``QWebEngineView`` :
+ouverture instantanée, aucun moteur web). Les sorties d'outils arrivent en messages
+``tool_result`` et s'affichent en texte brut dans des cartes. Le contenu affiché
+reste une DONNÉE : aucun script, aucun lien suivi, aucune ressource chargée (cf.
+docs/SECURITY.md §2.2).
 """
 
 from __future__ import annotations
@@ -17,22 +23,21 @@ from __future__ import annotations
 import signal
 import socket
 import sys
+import time
 from pathlib import Path
 from uuid import uuid4
 
-from PySide6.QtCore import QPoint, Qt, QThread, QTimer, Signal
-from PySide6.QtGui import QCloseEvent, QKeySequence, QMouseEvent, QShortcut
+from PySide6.QtCore import QEvent, QRect, QSettings, Qt, QThread, Signal
+from PySide6.QtGui import QCloseEvent, QCursor, QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
-    QCheckBox,
+    QFrame,
     QHBoxLayout,
     QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
-    QPushButton,
-    QSizeGrip,
-    QTextBrowser,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -42,14 +47,31 @@ from core.ipc import iter_messages, send_message
 from core.logger import get_logger
 from core.session import detect_session_type
 from models import secrets
+from ui.chat_view import AssistantMessage, ChatView
+from ui.composer import Composer
 from ui.confirm_dialog import ConfirmDialog
-from ui.markdown_render import conversation_to_markdown
-from ui.styles import build_stylesheet
+from ui.icons import logo_icon
+from ui.styles import CHAT_COLUMN_MAX, build_stylesheet
 from ui.wayland_layer import is_wayland, prepare_layer_shell
+from ui.window_chrome import ResizeGrips, TitleBar, hotkey_label
 
 _log = get_logger("popup")
 
 _RECONNECT_MS = 500
+_MIN_WIDTH = 380
+_MIN_HEIGHT = 320
+# États de fenêtre conservés d'une ouverture à l'autre.
+_KEPT_STATES = Qt.WindowState.WindowFullScreen | Qt.WindowState.WindowMaximized
+
+STATUS_THINKING = "Le modèle réfléchit"
+STATUS_CONFIRMING = "En attente de votre confirmation"
+MESSAGE_OFFLINE = (
+    "Le service My_OS (myosd) ne répond pas : la demande n'a pas été envoyée. "
+    "Vérifiez qu'il tourne (systemctl --user status myosd)."
+)
+MESSAGE_CONNECTION_LOST = (
+    "Connexion au service My_OS perdue : la réponse est interrompue."
+)
 
 
 class IPCClient(QThread):
@@ -57,6 +79,7 @@ class IPCClient(QThread):
 
     show_requested = Signal()
     message_received = Signal(dict)
+    connection_changed = Signal(bool)
 
     def __init__(self, socket_path: Path) -> None:
         super().__init__()
@@ -71,6 +94,7 @@ class IPCClient(QThread):
                 self.msleep(_RECONNECT_MS)
                 continue
             assert self._sock is not None
+            self.connection_changed.emit(True)
             try:
                 for message in iter_messages(self._sock):
                     if message.get("type") == "show":
@@ -80,15 +104,17 @@ class IPCClient(QThread):
             except OSError:
                 pass
             self._close_socket()
+            self.connection_changed.emit(False)
 
-    def send(self, message: dict) -> None:
-        """Envoie un message au daemon (sans rien faire si déconnecté)."""
+    def send(self, message: dict) -> bool:
+        """Envoie un message au daemon ; ``False`` si déconnecté ou en échec."""
         if self._sock is None:
-            return
+            return False
         try:
             send_message(self._sock, message)
         except OSError:
-            pass
+            return False
+        return True
 
     def stop(self) -> None:
         """Stoppe la boucle et ferme la connexion."""
@@ -115,247 +141,375 @@ class IPCClient(QThread):
             self._sock = None
 
 
-class _DragBar(QWidget):
-    """Barre de titre qui permet de déplacer une fenêtre frameless à la souris."""
-
-    def __init__(self, window: QWidget) -> None:
-        super().__init__()
-        self._window = window
-        self._press_offset: QPoint | None = None
-        self.setObjectName("dragbar")
-        self.setFixedHeight(30)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 0, 10, 0)
-        title = QLabel("My_OS")
-        title.setObjectName("dragtitle")
-        layout.addWidget(title)
-        layout.addStretch()
-
-    def mousePressEvent(self, event: QMouseEvent) -> None:
-        """Mémorise l'écart curseur ↔ coin de la fenêtre au début du glisser."""
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._press_offset = (
-                event.globalPosition().toPoint()
-                - self._window.frameGeometry().topLeft()
-            )
-            event.accept()
-
-    def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        """Déplace la fenêtre en suivant le curseur tant que le bouton est tenu."""
-        if (
-            self._press_offset is not None
-            and event.buttons() & Qt.MouseButton.LeftButton
-        ):
-            self._window.move(event.globalPosition().toPoint() - self._press_offset)
-            event.accept()
-
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        """Termine le glisser."""
-        self._press_offset = None
-        event.accept()
-
-
 class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
-    """Fenêtre popup : champ de saisie + zone d'affichage de la conversation."""
+    """Fenêtre popup : barre de titre, conversation, zone de saisie."""
 
-    def __init__(self, config: Config, session_type: str | None = None) -> None:
+    def __init__(
+        self,
+        config: Config,
+        session_type: str | None = None,
+        *,
+        client: IPCClient | None = None,
+        settings: QSettings | None = None,
+    ) -> None:
         super().__init__()
         self._config = config
-        # Type de session (x11/wayland) : conditionne la présentation (centrage X11
+        # Type de session (x11/wayland) : conditionne la présentation (placement X11
         # vs surface layer-shell sous Wayland). Détecté par défaut, injectable pour
         # les tests (cf. docs/INTERFACES.md §9).
         self._session_type = session_type or detect_session_type()
-        self._status_base = ""
-        self._status_dots = 0
-        self._messages: list[dict[str, str]] = []
+        # Taille/position/état mémorisés entre deux ouvertures (et deux sessions).
+        self._settings = (
+            settings if settings is not None else QSettings("my_os", "popup")
+        )
+        self._placed = False
+        self._connected = False
+        self._was_maximized = False  # état à retrouver en quittant le plein écran
+        # État (agrandi / plein écran) et géométrie normale au moment de la fermeture :
+        # le gestionnaire de fenêtres les efface d'une fenêtre masquée (cf. present).
+        self._shown_state = Qt.WindowState.WindowNoState
+        self._normal_geometry: QRect | None = None
+        # Réponses en cours, par id de requête : un message du daemon n'est routé
+        # que vers SA réponse (les fragments d'une requête oubliée sont ignorés).
+        self._turns: dict[str, AssistantMessage] = {}
         self._build_window()
         self._build_ui()
 
-        self._client = IPCClient(config.socket_path)
-        self._client.show_requested.connect(self._show_centered)
+        self._client = client if client is not None else IPCClient(config.socket_path)
+        self._client.show_requested.connect(self.present)
         self._client.message_received.connect(self._on_message)
+        self._client.connection_changed.connect(self._on_connection_changed)
         self._client.start()
 
+    # ---- construction --------------------------------------------------------
     def _build_window(self) -> None:
         self.setWindowTitle("My_OS")
+        self.setWindowIcon(logo_icon())
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
         )
-        # Taille initiale (depuis la config) mais fenêtre redimensionnable :
-        # on fixe seulement un minimum pour rester utilisable.
-        self.resize(self._config.ui.width, self._config.ui.height)
-        self.setMinimumSize(360, 240)
+        # Taille de départ (config) ; ensuite celle choisie à la souris est gardée.
+        self.resize(
+            max(self._config.ui.width, _MIN_WIDTH),
+            max(self._config.ui.height, _MIN_HEIGHT),
+        )
+        self.setMinimumSize(_MIN_WIDTH, _MIN_HEIGHT)
         self.setStyleSheet(build_stylesheet(self._config.ui.theme))
 
     def _build_ui(self) -> None:
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        self._root = QFrame()
+        self._root.setObjectName("popupRoot")
+        outer.addWidget(self._root)
+        layout = QVBoxLayout(self._root)
+        layout.setContentsMargins(1, 1, 1, 1)
+        layout.setSpacing(0)
 
-        # Barre de titre déplaçable.
-        root.addWidget(_DragBar(self))
+        self.title_bar = TitleBar()
+        self.title_bar.new_chat_clicked.connect(self.new_conversation)
+        self.title_bar.fullscreen_clicked.connect(self.toggle_fullscreen)
+        self.title_bar.maximize_clicked.connect(self.toggle_maximized)
+        self.title_bar.close_clicked.connect(self.hide)
+        layout.addWidget(self.title_bar)
 
-        body = QVBoxLayout()
-        body.setContentsMargins(8, 6, 8, 8)
-        body.setSpacing(6)
+        self.chat = ChatView(hotkey_label(self._config.hotkey))
+        self.chat.suggestion_clicked.connect(self._use_suggestion)
+        layout.addWidget(self.chat, 1)
 
-        self._view = QTextBrowser()
-        self._view.setOpenExternalLinks(False)
-        body.addWidget(self._view)
+        bottom = QWidget()
+        bottom_layout = QHBoxLayout(bottom)
+        bottom_layout.setContentsMargins(16, 6, 16, 10)
+        bottom_layout.addStretch(1)
+        column = QWidget()
+        column.setMaximumWidth(CHAT_COLUMN_MAX)
+        column.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        column_layout = QVBoxLayout(column)
+        column_layout.setContentsMargins(0, 0, 0, 0)
+        column_layout.setSpacing(6)
 
-        # Contrôles cloud (jalon 4) : toggle opt-in PAR REQUÊTE + bouton clé.
-        cloud_row = QHBoxLayout()
-        cloud_row.setContentsMargins(2, 0, 2, 0)
-        self._cloud_checkbox = QCheckBox("☁ Cloud (Claude)")
-        self._cloud_checkbox.setObjectName("cloudtoggle")
-        self._cloud_checkbox.setToolTip(
-            "Envoyer CETTE requête au cloud (Claude) au lieu du modèle local.\n"
-            "Opt-in, par requête. Nécessite une clé API (bouton 🔑)."
-        )
-        self._cloud_checkbox.toggled.connect(self._on_cloud_toggled)
-        self._key_button = QPushButton("🔑")
-        self._key_button.setObjectName("keybutton")
-        self._key_button.setToolTip(
-            "Configurer la clé API Anthropic\n(stockée dans le trousseau du système)"
-        )
-        self._key_button.clicked.connect(self._prompt_api_key)
-        cloud_row.addWidget(self._cloud_checkbox)
-        cloud_row.addWidget(self._key_button)
-        cloud_row.addStretch()
-        body.addLayout(cloud_row)
-
-        # Indicateur « mode cloud actif » : très visible, caché tant que le toggle
+        # Indicateur « mode cloud actif » : très visible, caché tant que la bascule
         # est OFF. Rend l'envoi cloud VISIBLE (cf. SECURITY menace 2).
         self._cloud_banner = QLabel(
-            "☁ Mode cloud actif — cette requête sera envoyée à Anthropic (Claude)."
+            "☁ Mode cloud actif : la prochaine requête sera envoyée à Anthropic (Claude)."
         )
-        self._cloud_banner.setObjectName("cloudbanner")
+        self._cloud_banner.setObjectName("cloudBanner")
         self._cloud_banner.setWordWrap(True)
         self._cloud_banner.hide()
-        body.addWidget(self._cloud_banner)
+        column_layout.addWidget(self._cloud_banner)
 
-        # Indicateur d'activité (caché au repos), animé par un QTimer.
-        self._status = QLabel()
-        self._status.setObjectName("status")
-        self._status.hide()
-        self._status_timer = QTimer(self)
-        self._status_timer.timeout.connect(self._tick_status)
-        body.addWidget(self._status)
+        self.composer = Composer()
+        self.composer.submitted.connect(self._send)
+        self.composer.cloud_toggled.connect(self._on_cloud_toggled)
+        self.composer.key_requested.connect(self._prompt_api_key)
+        column_layout.addWidget(self.composer)
 
-        self._input = QLineEdit()
-        self._input.setPlaceholderText("Tapez votre message…")
-        self._input.returnPressed.connect(self._send_current_input)
-        body.addWidget(self._input)
+        self._footer = QLabel(
+            "Entrée : envoyer · Maj+Entrée : nouvelle ligne · "
+            "Ctrl+L : nouvelle conversation · F11 : plein écran"
+        )
+        self._footer.setObjectName("footerHint")
+        self._footer.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        column_layout.addWidget(self._footer)
+        bottom_layout.addWidget(column, 100)
+        bottom_layout.addStretch(1)
+        layout.addWidget(bottom)
 
-        # Poignée de redimensionnement en bas à droite (fonctionne en frameless).
-        grip_row = QHBoxLayout()
-        grip_row.setContentsMargins(0, 0, 0, 0)
-        grip_row.addStretch()
-        grip_row.addWidget(QSizeGrip(self))
-        body.addLayout(grip_row)
-
-        root.addLayout(body)
+        self._grips = ResizeGrips(self)
 
         # Échap cache le popup. Raccourci au niveau fenêtre (et non keyPressEvent)
-        # car le QLineEdit focalisé avale la touche avant qu'elle remonte.
-        escape = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
-        escape.activated.connect(self.hide)
-
+        # car le champ de saisie focalisé avale la touche avant qu'elle remonte.
+        QShortcut(QKeySequence(Qt.Key.Key_Escape), self).activated.connect(self.hide)
         # Ctrl+L : nouvelle conversation (efface l'affichage ET demande au daemon
         # d'oublier l'historique, pour rester cohérents — cf. INTERFACES §1 reset).
-        new_chat = QShortcut(QKeySequence("Ctrl+L"), self)
-        new_chat.activated.connect(self._new_conversation)
+        QShortcut(QKeySequence("Ctrl+L"), self).activated.connect(self.new_conversation)
+        QShortcut(QKeySequence(Qt.Key.Key_F11), self).activated.connect(
+            self.toggle_fullscreen
+        )
+        self._refresh_mode()
+        self._refresh_window_state()
 
-    def _set_status(self, text: str) -> None:
-        """Affiche l'indicateur d'activité avec une animation de points."""
-        self._status_base = text
-        self._status_dots = 0
-        self._status.setText(text)
-        self._status.show()
-        self._status_timer.start(400)
+    # ---- affichage -----------------------------------------------------------
+    def present(self) -> None:
+        """Affiche le popup au premier plan, focus sur la saisie.
 
-    def _clear_status(self) -> None:
-        """Cache l'indicateur d'activité."""
-        self._status_timer.stop()
-        self._status.clear()
-        self._status.hide()
-
-    def _tick_status(self) -> None:
-        """Anime les points de suspension de l'indicateur."""
-        self._status_dots = (self._status_dots + 1) % 4
-        self._status.setText(self._status_base + "." * self._status_dots)
-
-    def _show_centered(self) -> None:
-        # Sous X11 : on centre nous-mêmes via move() (le compositeur le permet).
+        Première ouverture : taille/position mémorisées, sinon centré sur l'écran
+        du curseur. Ensuite, le popup revient où on l'a laissé (recentré seulement
+        s'il n'est plus sur aucun écran, ex. moniteur débranché).
+        """
         # Sous Wayland : pas de positionnement global côté client ; la surface
-        # layer-shell est centrée par le compositeur (cf. ui/wayland_layer.py).
-        # On évite move() qui n'aurait aucun effet (et provoquerait un warning Qt).
+        # layer-shell est placée par le compositeur (cf. ui/wayland_layer.py).
         if not is_wayland(self._session_type):
-            screen = QApplication.primaryScreen()
-            if screen is not None:
-                frame = self.frameGeometry()
-                frame.moveCenter(screen.availableGeometry().center())
-                self.move(frame.topLeft())
-        self.show()
+            if not self._placed:
+                self._placed = True
+                if not self._restore_geometry():
+                    self._center_on_screen()
+            elif not self._is_on_screen():
+                self._center_on_screen()
+        if not self.isVisible():
+            self._show_in_kept_state()
         self.raise_()
         self.activateWindow()
-        self._input.setFocus()
+        self.composer.focus_input()
 
-    def _render(self) -> None:
-        """Rend toute la conversation en markdown et défile vers le bas."""
-        self._view.setMarkdown(conversation_to_markdown(self._messages))
-        scrollbar = self._view.verticalScrollBar()
-        scrollbar.setValue(scrollbar.maximum())
+    def _show_in_kept_state(self) -> None:
+        """Réaffiche le popup agrandi / en plein écran s'il l'était à la fermeture.
 
-    def _append_to_assistant(self, text: str) -> None:
-        """Ajoute du texte au message assistant en cours (en crée un au besoin)."""
-        if not self._messages or self._messages[-1]["role"] != "assistant":
-            self._messages.append({"role": "assistant", "text": ""})
-        self._messages[-1]["text"] += text
-
-    def _new_conversation(self) -> None:
-        """Démarre une nouvelle conversation : vide l'affichage et l'historique daemon."""
-        self._messages.clear()
-        self._render()
-        self._clear_status()
-        self._client.send({"type": "reset"})
-
-    def _send_current_input(self) -> None:
-        text = self._input.text().strip()
-        if not text:
+        xfwm4 (comme d'autres gestionnaires) retire ``_NET_WM_STATE`` d'une fenêtre
+        masquée : un simple ``show()`` la rouvrirait à la taille de l'écran mais en
+        fenêtre normale, débordant sous le panneau. On repart donc de la géométrie
+        normale, puis on redemande l'état : quitter le plein écran retrouve la taille
+        choisie par l'utilisateur.
+        """
+        state = self._shown_state
+        if not state & _KEPT_STATES:
+            self.show()
             return
-        self._input.clear()
-        self._messages.append({"role": "user", "text": text})
-        # Bulle assistant vide, prête à recevoir le streaming.
-        self._messages.append({"role": "assistant", "text": ""})
-        self._render()
-        self._set_status("Le modèle réfléchit")
-        self._client.send(
-            {
-                "type": "user_message",
-                "id": str(uuid4()),
-                "content": text,
-                # Opt-in cloud PAR REQUÊTE : porte l'état du toggle. Le daemon reste
-                # libre de replier en local si aucune clé n'est configurée.
-                "use_cloud": self._cloud_checkbox.isChecked(),
-            }
+        self.setWindowState(Qt.WindowState.WindowNoState)
+        if self._normal_geometry is not None and self._normal_geometry.isValid():
+            self.setGeometry(self._normal_geometry)
+        if state & Qt.WindowState.WindowFullScreen:
+            self.showFullScreen()
+        else:
+            self.showMaximized()
+
+    def toggle_fullscreen(self) -> None:
+        """Plein écran ⇄ état précédent (fenêtre normale ou agrandie)."""
+        if self.isFullScreen():
+            if self._was_maximized:
+                self.showMaximized()
+            else:
+                self.showNormal()
+        else:
+            self._was_maximized = self.isMaximized()
+            self.showFullScreen()
+
+    def toggle_maximized(self) -> None:
+        """Agrandir ⇄ restaurer (sans effet en plein écran)."""
+        if self.isFullScreen():
+            return
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+
+    def changeEvent(self, event: QEvent) -> None:
+        """Suit les changements d'état (agrandi, plein écran) de la fenêtre."""
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange:
+            self._refresh_window_state()
+
+    def resizeEvent(self, event: QEvent) -> None:
+        """Replace les poignées ; cache l'aide clavier si la fenêtre est étroite."""
+        super().resizeEvent(event)
+        self._grips.place()
+        self._footer.setVisible(self.width() >= 560 and self.height() >= 420)
+
+    def hideEvent(self, event: QEvent) -> None:
+        """Mémorise taille, position et état à chaque fermeture."""
+        super().hideEvent(event)
+        self._remember_state()
+        self._save_geometry()
+
+    def _remember_state(self) -> None:
+        self._shown_state = self.windowState() & _KEPT_STATES
+        self._normal_geometry = self.normalGeometry()
+
+    def _refresh_window_state(self) -> None:
+        maximized, fullscreen = self.isMaximized(), self.isFullScreen()
+        self.title_bar.set_window_state(maximized=maximized, fullscreen=fullscreen)
+        framed = not (maximized or fullscreen)
+        self._grips.set_active(framed)
+        self._root.setProperty("edge", "border" if framed else "none")
+        self._root.style().unpolish(self._root)
+        self._root.style().polish(self._root)
+
+    def _restore_geometry(self) -> bool:
+        geometry = self._settings.value("geometry")
+        if geometry is None:
+            return False
+        try:
+            restored = self.restoreGeometry(geometry)
+        except (TypeError, ValueError):
+            return False
+        self._remember_state()
+        return bool(restored) and self._is_on_screen()
+
+    def _save_geometry(self) -> None:
+        if is_wayland(self._session_type) or not self._placed:
+            return
+        self._settings.setValue("geometry", self.saveGeometry())
+        self._settings.sync()
+
+    def _is_on_screen(self) -> bool:
+        frame = self.frameGeometry()
+        return any(
+            screen.availableGeometry().intersects(frame)
+            for screen in QGuiApplication.screens()
         )
 
+    def _center_on_screen(self) -> None:
+        screen = (
+            QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
+        )
+        if screen is None:
+            return
+        available = screen.availableGeometry()
+        self.setWindowState(Qt.WindowState.WindowNoState)
+        width = min(self.width(), available.width())
+        height = min(self.height(), available.height())
+        self.resize(width, height)
+        frame = self.frameGeometry()
+        frame.moveCenter(available.center())
+        self.move(frame.topLeft())
+
+    # ---- conversation ----------------------------------------------------------
+    def new_conversation(self) -> None:
+        """Nouvelle conversation : vide l'affichage et l'historique du daemon."""
+        self._turns.clear()
+        self.chat.clear()
+        self.composer.set_busy(False)
+        self._client.send({"type": "reset"})
+        self.composer.focus_input()
+
+    def _use_suggestion(self, text: str) -> None:
+        self.composer.set_text(text)
+
+    def _send(self, text: str) -> None:
+        self.chat.add_user_message(text)
+        turn = self.chat.add_assistant_message()
+        request_id = str(uuid4())
+        sent = self._connected and self._client.send(
+            {
+                "type": "user_message",
+                "id": request_id,
+                "content": text,
+                # Opt-in cloud PAR REQUÊTE : porte l'état de la bascule. Le daemon reste
+                # libre de replier en local si aucune clé n'est configurée.
+                "use_cloud": self.composer.cloud_toggle.isChecked(),
+            }
+        )
+        if not sent:
+            turn.add_notice("error", MESSAGE_OFFLINE)
+            turn.finish()
+            return
+        turn.set_status(STATUS_THINKING)
+        self._turns[request_id] = turn
+        self.composer.set_busy(True)
+
+    def _finish(self, request_id: str) -> None:
+        turn = self._turns.pop(request_id, None)
+        if turn is not None:
+            turn.finish()
+        self.composer.set_busy(bool(self._turns))
+
+    def _on_message(self, message: dict) -> None:
+        mtype = message.get("type")
+        if mtype == "confirmation_needed":
+            self._show_confirmation_dialog(message)
+            return
+        request_id = str(message.get("id", ""))
+        turn = self._turns.get(request_id)
+        if turn is None:
+            return  # requête oubliée (nouvelle conversation) ou inconnue
+        if mtype == "token":
+            turn.append_text(str(message.get("text", "")))
+        elif mtype == "tool_result":
+            turn.add_tool_result(
+                str(message.get("tool", "")),
+                str(message.get("status", "")),
+                str(message.get("text", "")),
+            )
+        elif mtype == "notice":
+            turn.add_notice(
+                str(message.get("level", "info")), str(message.get("text", ""))
+            )
+        elif mtype == "done":
+            self._finish(request_id)
+        elif mtype == "error":
+            turn.add_notice("error", f"Erreur : {message.get('message', '')}")
+            self._finish(request_id)
+
+    def _on_connection_changed(self, connected: bool) -> None:
+        self._connected = connected
+        if not connected:
+            for request_id, turn in list(self._turns.items()):
+                turn.add_notice("error", MESSAGE_CONNECTION_LOST)
+                self._finish(request_id)
+        self._refresh_mode()
+
+    def _refresh_mode(self) -> None:
+        model = self._config.model
+        if not self._connected:
+            self.title_bar.set_mode(
+                "offline", "Le service My_OS (myosd) ne répond pas pour l'instant."
+            )
+        elif self.composer.cloud_toggle.isChecked():
+            self.title_bar.set_mode(
+                "cloud",
+                f"Les requêtes partent au cloud : {model.cloud_model} (Anthropic).",
+            )
+        else:
+            backend = model.name if model.backend == "ollama" else "modèle de test"
+            self.title_bar.set_mode(
+                "local", f"Modèle local ({backend}) : rien ne quitte la machine."
+            )
+
+    # ---- cloud -----------------------------------------------------------------
     def _on_cloud_toggled(self, checked: bool) -> None:
         """Active/désactive le mode cloud pour les prochaines requêtes.
 
         À la première activation sans clé enregistrée, demande la clé (saisie
-        masquée) et la stocke dans le trousseau. Si l'utilisateur annule, on
-        rebascule le toggle sur OFF (jamais de cloud sans clé). L'indicateur visible
-        suit l'état réel du toggle.
+        masquée) et la stocke dans le trousseau. Si l'utilisateur annule, la
+        bascule repasse sur OFF (jamais de cloud sans clé). L'indicateur visible
+        suit l'état réel de la bascule.
         """
         if checked and not secrets.has_api_key() and not self._prompt_api_key():
-            # Annulation : repasse OFF (ré-entre ici avec checked=False).
-            self._cloud_checkbox.setChecked(False)
-            return
-        self._cloud_banner.setVisible(self._cloud_checkbox.isChecked())
+            self.composer.set_cloud_checked(False)
+        self._cloud_banner.setVisible(self.composer.cloud_toggle.isChecked())
+        self._refresh_mode()
 
     def _prompt_api_key(self) -> bool:
         """Demande la clé API (saisie masquée) et la stocke dans le trousseau.
@@ -364,13 +518,19 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         ni envoyée par l'IPC : le popup l'écrit directement dans le trousseau du
         système (``models.secrets`` → keyring), cf. docs/SECURITY.md menace 4.
         """
-        key, ok = QInputDialog.getText(
-            self,
-            "Clé API Anthropic",
-            "Clé API Anthropic (stockée dans le trousseau, jamais en clair) :",
-            QLineEdit.EchoMode.Password,
+        dialog = QInputDialog(self)
+        dialog.setWindowTitle("Clé API Anthropic")
+        dialog.setLabelText(
+            "Clé API Anthropic (stockée dans le trousseau, jamais en clair) :"
         )
-        if not ok or not key.strip():
+        dialog.setTextEchoMode(QLineEdit.EchoMode.Password)
+        dialog.setOkButtonText("Enregistrer")
+        dialog.setCancelButtonText("Annuler")
+        dialog.setMinimumWidth(460)
+        if not dialog.exec():
+            return False
+        key = dialog.textValue()
+        if not key.strip():
             return False
         try:
             secrets.set_api_key(key)
@@ -381,40 +541,43 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
             return False
         return True
 
-    def _on_message(self, message: dict) -> None:
-        mtype = message.get("type")
-        if mtype == "token":
-            # Streaming : chaque fragment s'ajoute à la réponse en cours.
-            self._append_to_assistant(str(message.get("text", "")))
-            self._render()
-        elif mtype == "done":
-            self._clear_status()
-        elif mtype == "error":
-            self._clear_status()
-            self._append_to_assistant(f"\n\n⚠ Erreur : {message.get('message', '')}")
-            self._render()
-        elif mtype == "confirmation_needed":
-            self._show_confirmation_dialog(message)
-
+    # ---- confirmations ---------------------------------------------------------
     def _show_confirmation_dialog(self, payload: dict) -> None:
         """Affiche le dialog modal et renvoie la réponse au daemon."""
-        self._set_status("En attente de votre confirmation")
+        request_id = str(payload.get("request_id", ""))
+        turn = self._turns.get(str(payload.get("id", "")))
+        if turn is None:
+            # Action d'une requête abandonnée (nouvelle conversation entre-temps) :
+            # refusée d'office, jamais exécutée sans un accord donné en contexte.
+            _log.info("Confirmation d'une requête abandonnée : refus automatique")
+            self._client.send(
+                {
+                    "type": "confirmation_response",
+                    "request_id": request_id,
+                    "decision": "deny",
+                }
+            )
+            return
+        turn.set_status(STATUS_CONFIRMING)
+        if not self.isVisible():
+            self.present()  # la demande s'affiche sur la conversation qui la motive
         dialog = ConfirmDialog(payload, parent=self)
         dialog.exec()
         decision, scope = dialog.response
         response: dict = {
             "type": "confirmation_response",
-            "request_id": str(payload.get("request_id", "")),
+            "request_id": request_id,
             "decision": decision,
         }
         if scope is not None:
             response["scope"] = scope
         self._client.send(response)
         # Reprise : l'exécution de l'action suit la confirmation.
-        self._set_status("Le modèle réfléchit")
+        turn.set_status(STATUS_THINKING)
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Arrête proprement le thread IPC avant la fermeture de la fenêtre."""
+        self._save_geometry()
         self._client.stop()
         self._client.wait(1000)
         super().closeEvent(event)
@@ -428,16 +591,18 @@ def main() -> None:
 
     # Sélection de présentation AVANT la QApplication (cf. docs/INTERFACES.md §9) :
     # sous Wayland, demande l'intégration shell layer-shell (overlay centré) ; sous
-    # X11, no-op (centrage par move()). Doit précéder QApplication pour être pris en
-    # compte par l'intégration Qt Wayland.
+    # X11, no-op. Doit précéder QApplication pour être pris en compte par
+    # l'intégration Qt Wayland.
     session_type = detect_session_type()
     prepare_layer_shell(session_type)
 
+    started = time.monotonic()
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)  # rester résident quand le popup se cache
     config = load_config()
     popup = Popup(config, session_type=session_type)
     _ = popup  # garde une référence vivante
+    _log.info("Popup prêt (caché) en %.0f ms", (time.monotonic() - started) * 1000)
     sys.exit(app.exec())
 
 

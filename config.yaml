@@ -17,11 +17,13 @@
 # entre chevrons, ex. "<ctrl>+<alt>+<space>", "<ctrl>+<alt>+m").
 hotkey: "<ctrl>+<alt>+<space>"
 
-# Popup Qt.
+# Popup Qt. width/height = taille à la première ouverture : ensuite, la taille, la
+# position et l'état (agrandi, plein écran) choisis à la souris sont mémorisés dans
+# ~/.config/my_os/popup.conf.
 ui:
   theme: dark
-  width: 600
-  height: 400
+  width: 720
+  height: 540
 
 # Backend modèle utilisé par l'orchestrator.
 #   backend: stub    -> StubRuleModel (regex FR/EN, pas besoin d'Ollama)
