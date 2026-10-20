@@ -1,0 +1,20 @@
+#!/bin/sh
+# Synchronise les bases pacman au démarrage de l'ISO live (cf. build_iso.sh -s).
+# mkarchiso retire les bases de l'image : sans elles, rechercher ou installer un
+# paquet échoue. Le miroir est l'instantané figé du build (installé par
+# myos-prepare) : les bases correspondent aux paquets installés, donc aucune mise
+# à jour partielle. Réseau requis : on réessaie 5 min, sans bloquer la session.
+set -u
+
+attempt=0
+while [ "$attempt" -lt 30 ]; do
+    if pacman -Sy --noconfirm >/dev/null 2>&1; then
+        echo "Bases pacman synchronisées ($(grep -m1 '^Server' /etc/pacman.d/mirrorlist))"
+        exit 0
+    fi
+    attempt=$((attempt + 1))
+    sleep 10
+done
+echo "Bases pacman non synchronisées (réseau indisponible ?) : rechercher ou" \
+    "installer un paquet échouera jusqu'à un « pacman -Sy »." >&2
+exit 1

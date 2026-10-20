@@ -15,5 +15,11 @@ if ! id myos >/dev/null 2>&1; then
     echo 'myos:myos' | chpasswd
 fi
 
+# Miroir pacman figé sur l'instantané de l'ISO (cf. build_iso.sh -s) : les bases
+# synchronisées par myos-pacman-sync correspondent aux paquets installés.
+if [ -f /etc/myos/mirrorlist ]; then
+    install -m 644 /etc/myos/mirrorlist /etc/pacman.d/mirrorlist
+fi
+
 mkdir -p /var/lib/myos
 touch /var/lib/myos/.prepared
