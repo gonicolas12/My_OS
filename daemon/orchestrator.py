@@ -94,13 +94,19 @@ MAX_HISTORY_MESSAGES = 40
 # JAMAIS le contenu. Canal distinct du journal d'audit (réservé aux outils).
 _cloud_log = get_logger("myosd.cloud")
 
-# Notices in-transcript (envoyées comme tokens au popup) pour rendre le routage
+# Notices in-transcript (messages ``notice``, cf. INTERFACES §1) : rendent le routage
 # cloud VISIBLE dans la conversation, en plus de l'indicateur du popup.
-_CLOUD_ACTIVE_NOTICE = "\n☁ _Requête envoyée au cloud (Claude)…_\n\n"
+_CLOUD_ACTIVE_NOTICE = "☁ Requête envoyée au cloud (Claude)."
 _CLOUD_FALLBACK_NOTICE = (
-    "\n⚠ _Mode cloud demandé mais aucune clé API n'est configurée — "
-    "réponse générée en local._\n\n"
+    "⚠ Mode cloud demandé mais aucune clé API n'est configurée : "
+    "réponse générée en local."
 )
+
+# Statuts d'un message ``tool_result`` (cf. INTERFACES §1).
+RESULT_OK = "ok"
+RESULT_ERROR = "error"
+RESULT_DENIED = "denied"
+RESULT_BLOCKED = "blocked"
 
 
 class Model(Protocol):
@@ -143,6 +149,29 @@ class ConfirmationProvider(Protocol):
 
 
 Reply = Callable[[dict], None]
+
+
+def _emit_result(reply: Reply, msg_id: str, tool: str, status: str, text: str) -> str:
+    """Envoie le résultat d'un outil au popup (``tool_result``) et le renvoie.
+
+    Le popup l'affiche à part de la narration, en texte brut (c'est une DONNÉE).
+    La valeur **renvoyée** est le même texte, réinjecté tel quel au modèle.
+    """
+    reply(
+        {
+            "type": "tool_result",
+            "id": msg_id,
+            "tool": tool,
+            "status": status,
+            "text": text,
+        }
+    )
+    return text
+
+
+def _notice(reply: Reply, msg_id: str, level: str, text: str) -> None:
+    """Envoie une notice du daemon (``info`` / ``warning``), affichée hors narration."""
+    reply({"type": "notice", "id": msg_id, "level": level, "text": text})
 
 
 class Orchestrator:  # pylint: disable=too-many-instance-attributes
@@ -256,15 +285,12 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
                         {"role": "tool", "tool": tool_call.tool, "content": output}
                     )
         else:
-            reply(
-                {
-                    "type": "token",
-                    "id": user_message_id,
-                    "text": (
-                        f"\n\n_(J'ai atteint la limite de {MAX_STEPS} étapes. "
-                        "Si la tâche n'est pas terminée, relancez-moi pour continuer.)_\n"
-                    ),
-                }
+            _notice(
+                reply,
+                user_message_id,
+                "warning",
+                f"J'ai atteint la limite de {MAX_STEPS} étapes. Si la tâche n'est "
+                "pas terminée, relancez-moi pour continuer.",
             )
 
         # Borne l'historique persistant après ce tour (sans casser les paires
@@ -323,16 +349,16 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
             return self._model, False
         router = self._cloud_router
         if router is None or not router.is_available():
-            reply({"type": "token", "id": msg_id, "text": _CLOUD_FALLBACK_NOTICE})
+            _notice(reply, msg_id, "warning", _CLOUD_FALLBACK_NOTICE)
             return self._model, False
         try:
             cloud_model = router.get_cloud_model()
         except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             # Repli défensif (ex. clé retirée entre le check et la construction).
             _cloud_log.warning("Cloud indisponible (%s) ; repli local", exc)
-            reply({"type": "token", "id": msg_id, "text": _CLOUD_FALLBACK_NOTICE})
+            _notice(reply, msg_id, "warning", _CLOUD_FALLBACK_NOTICE)
             return self._model, False
-        reply({"type": "token", "id": msg_id, "text": _CLOUD_ACTIVE_NOTICE})
+        _notice(reply, msg_id, "info", _CLOUD_ACTIVE_NOTICE)
         return cloud_model, True
 
     @staticmethod
@@ -355,9 +381,10 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
     def _handle_tool_call(self, msg_id: str, call: ToolCall, reply: Reply) -> str:
         """Évalue + exécute un appel d'outil. Renvoie le texte à réinjecter au modèle.
 
-        Le même texte est aussi envoyé au popup (token) pour la transparence.
-        Couvre tous les cas (inconnu / bloqué / refusé / erreur / succès) afin que
-        le modèle « voie » toujours ce qui s'est passé et puisse s'adapter.
+        Le même texte est aussi envoyé au popup (``tool_result``) pour la
+        transparence. Couvre tous les cas (inconnu / bloqué / refusé / erreur /
+        succès) afin que le modèle « voie » toujours ce qui s'est passé et puisse
+        s'adapter.
         """
         tool = self._tools.get(call.tool)
         if tool is None:
@@ -370,7 +397,9 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
                 success=False,
                 reversible=False,
             )
-            return self._emit_result(msg_id, reply, f"Outil inconnu : {call.tool}")
+            return _emit_result(
+                reply, msg_id, call.tool, RESULT_BLOCKED, f"Outil inconnu : {call.tool}"
+            )
 
         # Normalise les arguments (ex. expansion de ~) AVANT toute évaluation :
         # blocklist, escalade, grants et run voient ainsi le chemin réel.
@@ -386,7 +415,9 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
                 success=False,
                 reversible=False,
             )
-            return self._emit_result(msg_id, reply, f"Bloqué : {decision.summary}")
+            return _emit_result(
+                reply, msg_id, tool.name, RESULT_BLOCKED, f"Bloqué : {decision.summary}"
+            )
 
         audit_decision = "auto"
         if decision.action == "confirm":
@@ -407,8 +438,12 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
                     success=False,
                     reversible=False,
                 )
-                return self._emit_result(
-                    msg_id, reply, f"Refusé par l'utilisateur : {decision.summary}"
+                return _emit_result(
+                    reply,
+                    msg_id,
+                    tool.name,
+                    RESULT_DENIED,
+                    f"Refusé par l'utilisateur : {decision.summary}",
                 )
             # Un grant n'est enregistré que pour une portée proposée par le daemon :
             # jamais au niveau 2, même si le client renvoie approve_scope (l'action
@@ -428,24 +463,14 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
             result = tool.run(args)
         except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             self._audit.update_result(row_id, success=False, reversible=False)
-            return self._emit_result(msg_id, reply, f"Erreur d'exécution : {exc}")
+            return _emit_result(
+                reply, msg_id, tool.name, RESULT_ERROR, f"Erreur d'exécution : {exc}"
+            )
         self._audit.update_result(
             row_id, success=result.success, reversible=result.reversible
         )
-        return self._emit_result(msg_id, reply, result.output)
-
-    @staticmethod
-    def _emit_result(msg_id: str, reply: Reply, text: str) -> str:
-        """Envoie le résultat au popup et le renvoie (brut) pour réinjection.
-
-        Côté popup, le résultat est formaté comme un bloc citation markdown
-        (sur ses propres lignes), pour le séparer visuellement de la narration
-        du modèle. La valeur **renvoyée** (réinjectée au modèle) reste le texte
-        brut, sans balisage.
-        """
-        quoted = "\n\n> " + text.replace("\n", "\n> ") + "\n\n"
-        reply({"type": "token", "id": msg_id, "text": quoted})
-        return text
+        status = RESULT_OK if result.success else RESULT_ERROR
+        return _emit_result(reply, msg_id, tool.name, status, result.output)
 
     def _record_grant(self, tool: BaseTool, args: dict, scope: str) -> None:
         if scope == "session":

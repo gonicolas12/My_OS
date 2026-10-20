@@ -25,14 +25,32 @@ Communication sur une **socket Unix locale**. Le daemon est le **serveur** (cré
 ### Messages daemon → popup (streaming)
 ```json
 { "type": "token", "id": "uuid", "text": "fragment de réponse" }
+{ "type": "tool_result", "id": "uuid", "tool": "list_processes", "status": "ok", "text": "sortie de l'outil" }
+{ "type": "notice", "id": "uuid", "level": "info", "text": "☁ Requête envoyée au cloud (Claude)." }
 { "type": "confirmation_needed", "id": "uuid", "request_id": "uuid-action", "tool": "delete_file", "args": {...}, "risk_level": 2, "summary": "...", "requires_elevation": false, "allowed_scopes": [] }
 { "type": "done", "id": "uuid" }
 { "type": "error", "id": "uuid", "message": "..." }
 ```
 
-Le résultat de chaque outil (succès, refus, blocage, erreur) arrive dans le flux de
-`token`, sous forme de bloc citation markdown : il n'y a pas de message dédié aux appels
-d'outils (l'ancien `tool_request`, prévu au jalon 1, n'a jamais été émis).
+`token` ne porte que la narration du modèle (markdown). Le résultat de chaque appel
+d'outil arrive dans un message **`tool_result`** dédié, émis dans l'ordre du flux (entre
+deux narrations) :
+
+| `status` | Cas |
+|----------|-----|
+| `ok` | outil exécuté, succès |
+| `error` | outil exécuté mais en échec (`ToolResult.success=False` ou exception) |
+| `denied` | refusé par l'utilisateur à la confirmation |
+| `blocked` | blocklist ou niveau 3, ou outil inconnu |
+
+`text` est **exactement** le texte réinjecté au modèle (ex. `Bloqué : …`, `Refusé par
+l'utilisateur : …`). C'est une **DONNÉE** : le popup l'affiche en texte brut, sans
+l'interpréter comme du markdown (une sortie d'outil ne met jamais en forme l'interface).
+
+`notice` signale un événement du daemon à afficher à part dans la conversation, hors
+narration : envoi au cloud (`info`), repli local faute de clé ou limite d'étapes atteinte
+(`warning`). Le `text` est en texte brut. Un message `notice`, `tool_result` ou `token`
+dont l'`id` ne correspond à aucune requête en cours (ex. après `reset`) est ignoré.
 
 `allowed_scopes` liste les portées de grant que le popup peut proposer, calculées
 par le daemon (`policy_engine.grantable_scopes`) : `[]` au **niveau 2** (confirmation
