@@ -91,6 +91,8 @@ Deux réglages viennent aussi de My_AI. Ollama est joint sur `127.0.0.1` : un «
 
 La fenêtre de contexte (`model.num_ctx`, 16 384 tokens par défaut) est la même à chaque requête : Ollama recharge le modèle quand elle change. Le client n'envoie que la part de l'historique qui y tient. Chaque résultat d'outil est plafonné au quart de la fenêtre ; au-delà du budget, les plus vieux tours partent d'un bloc, jusqu'à la moitié du budget, pour que le début de l'envoi reste stable et qu'Ollama reprenne ce qu'il a déjà lu. Ollama ne coupe donc plus jamais le début du prompt, où sont les règles et les outils.
 
+Le daemon ne choisit pas où tourne le modèle : Ollama prend la carte graphique dédiée quand il en trouve une, sinon le processeur. L'ISO embarque pour cela le backend Vulkan d'Ollama et les pilotes Vulkan libres (AMD, Intel, NVIDIA) ; une installation depuis les sources ajoute le backend de sa carte (`INSTALLATION.md §2.3`).
+
 ### 4.2 · Routeur cloud (`models/cloud_router.py`)
 Aiguille une requête vers le backend local ou cloud (Claude via la lib `anthropic`). Le cloud est **opt-in**, activé par requête. Le routeur :
 - vérifie qu'une clé API est présente (via `models/secrets.py`) ;

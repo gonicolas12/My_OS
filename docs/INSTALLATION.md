@@ -61,6 +61,19 @@ sudo systemctl enable --now ollama  # ou `ollama serve` dans un terminal
 ollama pull qwen3.5:4b              # ~3,3 Go ; recommandé ≥ 8 Go de RAM
 ```
 
+Le paquet `ollama` seul ne sait utiliser que le processeur. Avec une **carte graphique**,
+installez aussi le backend d'Ollama qui lui correspond, puis `sudo systemctl restart ollama` :
+
+| Carte graphique | Paquets |
+|---|---|
+| NVIDIA, pilote propriétaire | `ollama-cuda` (avec `nvidia-utils`) |
+| AMD | `ollama-rocm`, ou plus léger : `ollama-vulkan` + `vulkan-radeon` |
+| Intel Arc | `ollama-vulkan` + `vulkan-intel` |
+| NVIDIA Turing et suivantes, pilote libre | `ollama-vulkan` + `vulkan-nouveau` |
+
+Après une requête, `ollama ps` affiche `100% GPU` dans sa colonne PROCESSOR. L'ISO
+embarque la voie Vulkan.
+
 Comme sur l'ISO, passez le **contexte du modèle en 8 bits** (cache K/V) : deux fois moins
 de mémoire pour les mêmes réponses. Le réglage est un drop-in systemd du service
 `ollama`, fourni dans le dépôt :
@@ -191,6 +204,9 @@ octobre 2026.
 - **RAM** : ≥ 4 Go pour démarrer ; **≥ 12 Go pour le modèle local en live** (tout ce qui
   est écrit vit en RAM, modèle compris). En dessous, le modèle n'est pas téléchargé et
   le popup signale son absence.
+- **Carte graphique** : le modèle tourne sur une carte dédiée AMD, Intel ou NVIDIA
+  récente (Vulkan) quand il y en a une, sinon sur le processeur. Pas encore éprouvé sur
+  du matériel réel : cf. [packaging/README.md](../packaging/README.md) §5.
 - **1er boot** (réseau requis) : autologin vers Xfce (utilisateur non-root `myos`, mot
   de passe `myos`), synchronisation des bases pacman en arrière-plan, installation des
   dépendances Python puis téléchargement du modèle (~3,3 Go, quelques minutes).
@@ -227,6 +243,11 @@ Procédure détaillée, décisions et limites : **[packaging/README.md](../packa
   Secret Service n'est pas démarré (`gnome-keyring`). My_OS replie alors en **local**.
 - **Le modèle ne répond pas** : vérifiez `ollama serve` et `ollama list` (le modèle
   `qwen3.5:4b` doit être présent).
+- **Le modèle reste sur le processeur malgré une carte graphique** :
+  `journalctl -u ollama | grep "inference compute"` liste ce qu'Ollama a trouvé au
+  démarrage. Vérifiez qu'un backend GPU est installé (§2.3) et que `vulkaninfo --summary`
+  voit la carte. Ollama écarte par défaut les GPU intégrés : pour les essayer, ajoutez
+  `Environment="OLLAMA_IGPU_ENABLE=1"` dans un drop-in du service `ollama`.
 - **Le modèle ne se charge plus** (« quantized V cache requires flash_attn to be
   enabled » dans `journalctl -u ollama`) : `OLLAMA_FLASH_ATTENTION=0` est posé alors que
   le contexte est en 8 bits (`OLLAMA_KV_CACHE_TYPE=q8_0`). Retirez l'un des deux ;

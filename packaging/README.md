@@ -18,6 +18,7 @@ d'[archiso](https://wiki.archlinux.org/title/Archiso).
 | **Compositeur** | **Xfce / X11** | chemin **nominal** pleinement supporté (le port Wayland reste expérimental, cf. §5). Robuste pour une première ISO. |
 | **Modèle local** | **téléchargé au 1er boot** (`ollama pull qwen3.5:4b`) | ISO légère ; reste *local et privé* à l'usage. Compromis : **réseau requis au 1er démarrage**. Alternative « modèle embarqué » (ISO lourde, hors-ligne) : cf. §6. |
 | **Contexte du modèle** | **8 bits** (`OLLAMA_KV_CACHE_TYPE=q8_0`, drop-in systemd du service `ollama`) | deux fois moins de mémoire pour la même fenêtre ; mêmes outils choisis et même vitesse, mesurés en VM sur Ollama 0.40.6. Exige la flash attention, qu'Ollama active seul (ne pas poser `OLLAMA_FLASH_ATTENTION=0`). |
+| **Carte graphique** | **Vulkan** (`ollama-vulkan` + pilotes Mesa `vulkan-radeon`, `vulkan-intel`, `vulkan-nouveau`) | le paquet `ollama` seul n'a que des backends processeur. Avec Vulkan, une carte dédiée AMD, Intel ou NVIDIA (Turing et suivantes, via NVK) fait tourner le modèle, sinon le processeur prend le relais. ~120 Mio installés, contre 1 Gio pour CUDA et 3 Gio pour ROCm, laissés hors de l'ISO. |
 | **Dépendances Python** | venv `--system-site-packages` au 1er boot | les paquets système (`pyside6`, `python-dbus`, `python-gobject`…) viennent de pacman ; seul le **PyPI-only** (`pynput`, `anthropic`, `ollama`) passe par `pip`. |
 | **Utilisateur** | `myos`, **non-root**, créé au 1er boot | le daemon ne tourne **jamais** en root (cf. [SECURITY.md](../docs/SECURITY.md) menace 3). Élévation ponctuelle via polkit/`pkexec`. |
 | **Autologin** | LightDM → session Xfce de `myos` | démo immédiate ; le service utilisateur `myosd` et le popup démarrent dans la session. |
@@ -146,6 +147,8 @@ vérifier au boot :
 5. Une action sensible déclenche bien une **confirmation** (polkit pour l'élévation).
 6. Contexte du modèle en 8 bits : après une requête,
    `journalctl -u ollama | grep "K (q8_0)"` affiche la taille du cache.
+7. Sur un PC avec carte graphique : `vulkaninfo --summary` la liste, et après une
+   requête `ollama ps` affiche `100% GPU` dans la colonne PROCESSOR.
 
 ---
 
@@ -162,6 +165,14 @@ vérifier au boot :
   1er run, raccourci → popup, confirmations niveaux 1/2, blocklist, élévation polkit
   (`pacman -S`), réglages et processus, avec le modèle local. Pas encore validé sur
   matériel réel (rétroéclairage, Wi-Fi physique, cartes son).
+- **Carte graphique non éprouvée sur matériel réel.** Validé en VM : sans GPU, Ollama
+  reste sur le processeur, sans erreur ni ralentissement ; avec un pilote Vulkan
+  logiciel forcé (lavapipe), le modèle est chargé en entier sur le périphérique
+  Vulkan, flash attention et contexte en 8 bits compris, et répond juste. Ollama écarte
+  par défaut les GPU intégrés (`OLLAMA_IGPU_ENABLE=1` pour les essayer, plus rapides
+  ou plus lents que le processeur selon la machine). Les cartes NVIDIA antérieures à
+  Turing (GTX 10xx et avant) n'ont pas de pilote NVK : modèle sur le processeur, sauf à
+  installer sur disque le pilote propriétaire et `ollama-cuda`.
 - **Paquets figés** sur l'instantané du build : pas de mises à jour de sécurité en
   live (`update_system` n'a rien à installer), et l'Archive est plus lente qu'un
   miroir. Reconstruire l'ISO pour la rafraîchir.
