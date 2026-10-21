@@ -70,7 +70,7 @@ class ModelConfig:
 
     backend: str = "stub"  # "stub" | "ollama"
     name: str = "qwen3.5:4b"  # modèle Ollama si backend="ollama"
-    host: str | None = None  # URL HTTP Ollama (None = défaut local)
+    host: str | None = None  # URL HTTP Ollama (None = $OLLAMA_HOST ou 127.0.0.1)
     think: bool = False  # raisonnement natif du modèle (latence ↑ ; OFF = réactif)
     cloud_model: str = "claude-sonnet-5-5"  # modèle Claude si requête routée cloud
 
