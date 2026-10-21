@@ -4,10 +4,19 @@
 from __future__ import annotations
 
 import os
+import sys
 from types import SimpleNamespace
 from typing import Any
 
-from models.local_llm import ALL_TOOLS_SCHEMA, FILE_TOOLS_SCHEMA, OllamaClient
+import pytest
+
+from models.local_llm import (
+    ALL_TOOLS_SCHEMA,
+    DEFAULT_HOST,
+    FILE_TOOLS_SCHEMA,
+    OllamaClient,
+    _ollama_host,
+)
 
 
 def _history(user_message: str) -> list[dict]:
@@ -39,6 +48,69 @@ class _FakeClient:
     def chat(self, **kwargs: Any) -> list[SimpleNamespace]:
         self.last_kwargs = kwargs
         return self._chunks
+
+
+def test_adresse_par_defaut_127_0_0_1(monkeypatch) -> None:
+    monkeypatch.delenv("OLLAMA_HOST", raising=False)
+    assert _ollama_host(None) == DEFAULT_HOST == "http://127.0.0.1:11434"
+    assert _ollama_host("  ") == DEFAULT_HOST
+
+
+@pytest.mark.parametrize(
+    ("configured", "expected"),
+    [
+        ("http://localhost:11434", "http://127.0.0.1:11434"),
+        ("http://LocalHost:11434/", "http://127.0.0.1:11434/"),
+        ("localhost", "127.0.0.1"),
+        ("localhost:11500", "127.0.0.1:11500"),
+        (
+            "https://moi:secret@localhost:8443/ollama",
+            "https://moi:secret@127.0.0.1:8443/ollama",
+        ),
+    ],
+)
+def test_localhost_devient_127_0_0_1(configured: str, expected: str) -> None:
+    # « localhost » se résout d'abord en ::1, où Ollama n'écoute pas.
+    assert _ollama_host(configured) == expected
+
+
+@pytest.mark.parametrize(
+    "configured",
+    [
+        "http://192.168.1.20:11434",  # Ollama sur une autre machine
+        "http://localhost.lan:11434",  # autre nom qui commence par localhost
+        "http://monlocalhost:11434",
+        "http://[::1]:11434",  # IPv6 demandé explicitement
+        "http://127.0.0.1:8080",
+    ],
+)
+def test_autres_adresses_inchangees(configured: str) -> None:
+    assert _ollama_host(configured) == configured
+
+
+def test_ollama_host_de_l_environnement_sans_adresse_en_config(monkeypatch) -> None:
+    monkeypatch.setenv("OLLAMA_HOST", "localhost:11500")
+    assert _ollama_host(None) == "127.0.0.1:11500"
+
+
+def test_adresse_de_la_config_prioritaire_sur_ollama_host(monkeypatch) -> None:
+    monkeypatch.setenv("OLLAMA_HOST", "http://10.0.0.5:11434")
+    assert _ollama_host("http://localhost:11434") == "http://127.0.0.1:11434"
+
+
+def test_client_ollama_cree_sur_127_0_0_1(monkeypatch) -> None:
+    # Câblage réel : sans adresse configurée, la lib ``ollama`` reçoit 127.0.0.1
+    # explicitement (faux module : la lib n'est pas requise pour les tests).
+    received: dict[str, Any] = {}
+
+    class _Client:
+        def __init__(self, host: str | None = None) -> None:
+            received["host"] = host
+
+    monkeypatch.setitem(sys.modules, "ollama", SimpleNamespace(Client=_Client))
+    monkeypatch.delenv("OLLAMA_HOST", raising=False)
+    OllamaClient()
+    assert received["host"] == "http://127.0.0.1:11434"
 
 
 def test_plan_assemble_narration_et_tool_calls_depuis_les_fragments() -> None:

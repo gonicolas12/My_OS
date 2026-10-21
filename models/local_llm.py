@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import getpass
 import os
+import re
 from typing import TYPE_CHECKING, Any
 
 from daemon.orchestrator import Plan, TokenCallback, ToolCall
@@ -56,12 +57,38 @@ def machine_context() -> str:
     )
 
 
+# Adresse d'Ollama quand ni la config ni OLLAMA_HOST n'en donnent une.
+DEFAULT_HOST = "http://127.0.0.1:11434"
+
+# « localhost » en position d'hôte, avec ou sans schéma ni identifiants
+# (localhost, localhost:11434, http://localhost:11434, http://u:p@localhost…).
+_LOCALHOST = re.compile(
+    r"^((?:[a-z][a-z0-9+.-]*://)?(?:[^@/]*@)?)localhost(?=[:/]|$)", re.IGNORECASE
+)
+
+
+def _ollama_host(host: str | None) -> str:
+    """Adresse d'Ollama : ``host`` (config), sinon ``OLLAMA_HOST``, sinon
+    :data:`DEFAULT_HOST`, dans le même ordre que la lib ``ollama``.
+
+    Un hôte « localhost » devient 127.0.0.1 : Ollama n'écoute qu'en IPv4 par
+    défaut, et « localhost » se résout d'abord en ::1, soit une connexion refusée
+    avant chaque requête. Sous Linux, refusée aussitôt, elle coûte moins d'1 ms
+    (mesuré en VM) ; sous Windows, ≈ 2 s par requête (mesuré dans My_AI). Toute
+    autre adresse (Ollama sur une autre machine, IPv6 explicite) reste telle quelle.
+    """
+    host = (host or "").strip() or os.environ.get("OLLAMA_HOST", "").strip()
+    if not host:
+        return DEFAULT_HOST
+    return _LOCALHOST.sub(r"\g<1>127.0.0.1", host, count=1)
+
+
 def _make_ollama_client(host: str | None) -> Any:
     """Instancie un client Ollama. Import paresseux : la dépendance ``ollama``
     n'est requise qu'ici, pas pour importer le module (mode stub / tests)."""
     import ollama
 
-    return ollama.Client(host=host) if host else ollama.Client()
+    return ollama.Client(host=_ollama_host(host))
 
 
 def _to_ollama(messages: list[dict]) -> list[dict]:
