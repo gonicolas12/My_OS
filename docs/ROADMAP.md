@@ -65,7 +65,10 @@ chacun stable et testé avant le suivant.
 - [x] Menus de démarrage aux couleurs de My_OS ; démarrage validé en VM sur CD et sur clé
   USB (Ventoy et image brute), en BIOS et en UEFI.
 
-### Interface du popup repensée (octobre 2026, après la v1.0)
+### v1.1 — interface du popup repensée (octobre 2026)
+- [x] ISO publiée : [release `v1.1`](https://github.com/gonicolas12/My_OS/releases/tag/v1.1)
+  (paquets figés sur l'instantané Arch Linux Archive du 2026-10-20), avec sa somme
+  SHA-256 ; validée en VM (interface sous xfwm4, 42 scénarios de permissions, modèle local).
 - [x] Fenêtre libre : redimensionnable par les bords et les coins, déplaçable, agrandie
   (double-clic sur la barre de titre), plein écran (`F11`) ; taille, position et état
   mémorisés. Validé en VM sous xfwm4, confirmation comprise au-dessus du plein écran.
