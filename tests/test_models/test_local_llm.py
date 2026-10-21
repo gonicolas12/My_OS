@@ -3,6 +3,7 @@
 # pylint: disable=missing-function-docstring,use-implicit-booleaness-not-comparison
 from __future__ import annotations
 
+import json
 import os
 import sys
 from types import SimpleNamespace
@@ -10,9 +11,12 @@ from typing import Any
 
 import pytest
 
+from core.config import ModelConfig
+from daemon.orchestrator import ToolCall
 from models.local_llm import (
     ALL_TOOLS_SCHEMA,
     DEFAULT_HOST,
+    DEFAULT_NUM_CTX,
     FILE_TOOLS_SCHEMA,
     OllamaClient,
     _ollama_host,
@@ -111,6 +115,160 @@ def test_client_ollama_cree_sur_127_0_0_1(monkeypatch) -> None:
     monkeypatch.delenv("OLLAMA_HOST", raising=False)
     OllamaClient()
     assert received["host"] == "http://127.0.0.1:11434"
+
+
+def _turn(n: int, result: str) -> list[dict]:
+    """Un tour complet : demande, appel d'outil, résultat, réponse finale."""
+    return [
+        {"role": "user", "content": f"demande {n}"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [ToolCall("list_dir", {"path": f"/tmp/{n}"})],
+        },
+        {"role": "tool", "tool": "list_dir", "content": result},
+        {"role": "assistant", "content": f"réponse {n}", "tool_calls": []},
+    ]
+
+
+def _sent(fake: _FakeClient) -> list[dict]:
+    """Messages envoyés à Ollama lors du dernier appel, sans le prompt système."""
+    assert fake.last_kwargs is not None
+    return fake.last_kwargs["messages"][1:]
+
+
+def test_fenetre_de_contexte_envoyee_a_chaque_requete() -> None:
+    # Toujours la même : Ollama recharge le modèle quand elle change.
+    fake = _FakeClient([_chunk(content="ok")])
+    OllamaClient(client=fake).respond(_history("ping"))
+    assert fake.last_kwargs["options"] == {"num_ctx": DEFAULT_NUM_CTX}
+    OllamaClient(client=fake, num_ctx=8192).respond(_history("ping"))
+    assert fake.last_kwargs["options"] == {"num_ctx": 8192}
+
+
+def test_daemon_transmet_la_fenetre_de_la_config(monkeypatch) -> None:
+    from daemon.myosd import _build_model
+
+    received: dict[str, Any] = {}
+
+    class _Client:
+        def __init__(self, host: str | None = None) -> None:
+            self.host = host
+
+        def chat(self, **kwargs: Any) -> list[SimpleNamespace]:
+            received.update(kwargs)
+            return [_chunk(content="ok")]
+
+    monkeypatch.setitem(sys.modules, "ollama", SimpleNamespace(Client=_Client))
+    model = _build_model(ModelConfig(backend="ollama", num_ctx=8192))
+    model.respond(_history("ping"))
+    assert received["options"] == {"num_ctx": 8192}
+
+
+def test_historique_court_envoye_en_entier() -> None:
+    history = _turn(1, "a.txt b.txt") + _turn(2, "c.txt")
+    fake = _FakeClient([_chunk()])
+    OllamaClient(client=fake).respond(history)
+    assert [m["content"] for m in _sent(fake)] == [m["content"] for m in history]
+
+
+def test_resultat_d_outil_trop_long_tronque_et_signale() -> None:
+    # Un fichier lu en entier occuperait toute la fenêtre : début gardé, coupure
+    # signalée au modèle. L'historique du daemon, lui, reste intact.
+    content = "x" * 100_000
+    history = [
+        {"role": "user", "content": "lis /tmp/f"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [ToolCall("read_file", {"path": "/tmp/f"})],
+        },
+        {"role": "tool", "tool": "read_file", "content": content},
+    ]
+    fake = _FakeClient([_chunk()])
+    OllamaClient(client=fake).respond(history)
+    sent = _sent(fake)[-1]["content"]
+    assert sent.startswith("x" * 10_000)
+    assert len(sent) < 20_000
+    assert "tronqué" in sent
+    assert history[-1]["content"] == content
+
+
+@pytest.mark.parametrize("num_ctx", [4096, 8192, 16384])
+def test_prompt_envoye_tient_dans_la_fenetre(num_ctx: int) -> None:
+    # Avant : au-delà de la fenêtre, Ollama coupait le DÉBUT du prompt (règles et
+    # outils compris) et la réponse s'arrêtait net, fenêtre pleine.
+    history = [m for n in range(30) for m in _turn(n, "fichier.txt\n" * 400)]
+    history.append({"role": "user", "content": "et maintenant ?"})
+    fake = _FakeClient([_chunk()])
+    OllamaClient(client=fake, num_ctx=num_ctx).respond(history)
+
+    messages = fake.last_kwargs["messages"]
+    tools = json.dumps(fake.last_kwargs["tools"], ensure_ascii=False)
+    chars = len(tools) + sum(len(m["content"]) for m in messages)
+    assert chars / 3 < num_ctx  # ~3,5 caractères par token mesurés : marge comprise
+    assert messages[0]["role"] == "system"
+    assert messages[1]["role"] == "user"  # tours entiers : aucun résultat orphelin
+    assert messages[-1] == {"role": "user", "content": "et maintenant ?"}
+
+
+def test_debut_de_l_envoi_stable_d_une_requete_a_l_autre() -> None:
+    # Les tours les plus anciens partent d'un bloc (jusqu'à la moitié du budget) :
+    # tant que la fenêtre ne redéborde pas, le début de l'envoi ne bouge plus et
+    # Ollama reprend ce qu'il a déjà lu au lieu de tout relire.
+    fake = _FakeClient([_chunk()])
+    client = OllamaClient(client=fake, num_ctx=8192)
+    history = [m for n in range(12) for m in _turn(n, "y" * 3000)]
+    history.append({"role": "user", "content": "suite 1"})
+    client.respond(history)
+    first = _sent(fake)[0]
+    assert first["role"] == "user" and first["content"] != "demande 0"
+
+    history += [
+        {"role": "assistant", "content": "ok", "tool_calls": []},
+        {"role": "user", "content": "suite 2"},
+    ]
+    client.respond(history)
+    assert _sent(fake)[0] == first
+
+    # Nouveau débordement : le début avance de nouveau, d'un bloc.
+    history += [m for n in range(12, 20) for m in _turn(n, "y" * 3000)]
+    history.append({"role": "user", "content": "suite 3"})
+    client.respond(history)
+    assert _sent(fake)[0]["content"] not in (first["content"], "demande 0")
+
+
+def test_conversation_videe_envoyee_depuis_le_debut() -> None:
+    fake = _FakeClient([_chunk()])
+    client = OllamaClient(client=fake, num_ctx=8192)
+    long_history = [m for n in range(12) for m in _turn(n, "y" * 3000)]
+    client.respond(long_history + [{"role": "user", "content": "suite"}])
+    # Ctrl+L : le daemon repart d'un historique neuf.
+    client.respond(_history("bonjour"))
+    assert _sent(fake) == [{"role": "user", "content": "bonjour"}]
+
+
+def test_requete_en_cours_trop_longue_anciens_resultats_retires() -> None:
+    # Une seule requête qui lit trois gros fichiers : les plus anciens résultats
+    # cèdent la place, le dernier reste lisible en entier.
+    history: list[dict] = [{"role": "user", "content": "compare trois fichiers"}]
+    for n in range(3):
+        history += [
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [ToolCall("read_file", {"path": f"/tmp/{n}"})],
+            },
+            {"role": "tool", "tool": "read_file", "content": str(n) * 6000},
+        ]
+    fake = _FakeClient([_chunk()])
+    OllamaClient(client=fake, num_ctx=8192).respond(history)
+
+    results = [m["content"] for m in _sent(fake) if m["role"] == "tool"]
+    assert len(results) == 3
+    assert "retiré" in results[0]
+    assert results[-1] == "2" * 6000
+    assert _sent(fake)[0] == {"role": "user", "content": "compare trois fichiers"}
 
 
 def test_plan_assemble_narration_et_tool_calls_depuis_les_fragments() -> None:

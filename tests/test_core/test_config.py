@@ -51,6 +51,13 @@ def test_load_config_lit_un_fichier_explicite(tmp_path: Path) -> None:
     assert cfg.model.name == "qwen3.5:2b"
 
 
+def test_load_config_fenetre_de_contexte(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text("model:\n  backend: ollama\n  num_ctx: 8192\n", encoding="utf-8")
+    assert load_config(path).model.num_ctx == 8192
+    assert load_config(tmp_path / "absent.yaml").model.num_ctx == 16384
+
+
 def test_load_config_ignore_les_cles_inconnues(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     path.write_text("model:\n  backend: ollama\n  inconnu: 42\n", encoding="utf-8")
