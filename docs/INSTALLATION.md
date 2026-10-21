@@ -39,7 +39,7 @@ sudo pacman -S --needed \
 > ponctuelle). `gnome-keyring`/`libsecret` fournissent le trousseau (Secret Service) pour
 > la clé API cloud. **`python-evdev`** est la dépendance native de `pynput` : sans lui,
 > `pip install pynput` doit la compiler (gcc requis) et échoue souvent. Les polices
-> `noto-fonts*` affichent les symboles du popup (☁, 🔑). Les noms de paquets peuvent
+> `noto-fonts*` affichent les symboles du popup (☁, ⚠). Les noms de paquets peuvent
 > évoluer : vérifiez avec `pacman -Si <pkg>`.
 
 ### 2.2 · Récupérer le projet et les dépendances Python
@@ -113,7 +113,7 @@ peut donc rester en lecture seule).
 
 Le cloud (Claude) est **opt-in, par requête** et **désactivé par défaut**.
 
-1. Dans le popup, cochez **« ☁ Cloud (Claude) »**.
+1. Dans le popup, activez **« ☁ Cloud »** (sous la zone de saisie).
 2. À la première activation, saisissez votre **clé API Anthropic** : elle est stockée
    dans le **trousseau du système** (`keyring`), **jamais** en clair (ni `config.yaml`,
    ni logs, ni audit).

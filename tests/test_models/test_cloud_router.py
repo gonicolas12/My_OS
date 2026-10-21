@@ -97,13 +97,13 @@ def test_respond_assemble_narration_et_tool_calls() -> None:
 
 def test_respond_envoie_systeme_outils_et_messages_traduits() -> None:
     anthropic = _FakeAnthropic(_FakeStream([], _final([_text_block("ok")])))
-    ClaudeClient(client=anthropic, model="claude-sonnet-4-6").respond(
+    ClaudeClient(client=anthropic, model="claude-sonnet-5-5").respond(
         [{"role": "user", "content": "salut"}]
     )
 
     kwargs = anthropic.messages.last_kwargs
     assert kwargs is not None
-    assert kwargs["model"] == "claude-sonnet-4-6"
+    assert kwargs["model"] == "claude-sonnet-5-5"
     assert kwargs["messages"] == [{"role": "user", "content": "salut"}]
     names = {tool["name"] for tool in kwargs["tools"]}
     assert "read_file" in names and "install_package" in names

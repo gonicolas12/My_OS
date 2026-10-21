@@ -32,15 +32,17 @@ Captures réelles de l'ISO My_OS (VM, modèle local Qwen 3.5 4B, octobre 2026).
 
 *« Range mon dossier Téléchargements par type » : le modèle liste le dossier puis propose
 chaque déplacement ; une seule confirmation « Pour cette session » suffit, il range tout
-et fait son compte rendu. Les temps d'attente sont raccourcis : sans GPU, le modèle a
-mis environ une minute et demie au total.*
+(chaque action dans sa carte) et fait son compte rendu. Les temps d'attente sont
+raccourcis : sans GPU, le modèle a mis environ une minute et vingt secondes au total.*
 
 | | |
 |:---:|:---:|
-| ![Popup et réponse du modèle local](docs/media/popup.png) | ![Confirmation de niveau 1](docs/media/confirmation-niveau1.png) |
-| **Popup au raccourci** — question en langage naturel, résultat de l'outil, réponse du modèle local ; « ☁ Cloud » active Claude à la demande | **Confirmation (niveau 1)** — écriture proposée par le modèle : une fois, ce dossier ou la session |
-| ![Confirmation renforcée de niveau 2](docs/media/confirmation-niveau2.png) | ![Élévation polkit](docs/media/elevation-polkit.png) |
-| **Confirmation renforcée (niveau 2)** — suppression : « une fois » seulement, « Refuser » par défaut | **Élévation polkit** — mot de passe pour la commande exacte, jamais de root permanent |
+| ![Écran d'accueil du popup](docs/media/accueil.png) | ![Popup et réponse du modèle local](docs/media/popup.png) |
+| **Popup au raccourci** — suggestions, rappel « Échap pour fermer » ; fenêtre redimensionnable, agrandie ou en plein écran (`F11`) | **Réponse du modèle local** — le résultat de l'outil dans sa carte, puis la réponse ; « ☁ Cloud » active Claude à la demande |
+| ![Confirmation de niveau 1](docs/media/confirmation-niveau1.png) | ![Confirmation renforcée de niveau 2](docs/media/confirmation-niveau2.png) |
+| **Confirmation (niveau 1)** — écriture proposée par le modèle : une fois, ce dossier ou la session | **Confirmation renforcée (niveau 2)** — suppression : « une fois » seulement, « Refuser » par défaut |
+| ![Élévation polkit](docs/media/elevation-polkit.png) | ![Installation terminée](docs/media/installation.png) |
+| **Élévation polkit** — mot de passe pour la commande exacte, jamais de root permanent | **Installation terminée** — chaque outil dans sa carte (statut, sortie de `pacman` lisible), puis le compte rendu du modèle |
 
 ---
 
@@ -134,8 +136,10 @@ permissions.
   défaut), blocklist infranchissable, journal SQLite de chaque action.
 - ⌨️ **Raccourci global** — X11 (`pynput`, nominal) et Wayland (portal
   `GlobalShortcuts`, **expérimental**).
-- 💬 **Popup instantané** — PySide6 + `QTextBrowser`, rendu markdown, réponses en
-  streaming, thème sombre.
+- 💬 **Popup instantané** — PySide6 + `QTextBrowser` (aucun moteur web), réponses en
+  streaming rendues en markdown, sorties d'outils dans des cartes, thème noir et orange.
+  Fenêtre redimensionnable par les bords, agrandissable, en plein écran (`F11`), qui
+  revient là où on l'a laissée.
 
 ---
 
@@ -181,13 +185,19 @@ reste expérimental.
 ## 5 · Utilisation
 
 1. Appuyez sur **Ctrl+Alt+Espace** (raccourci par défaut, modifiable dans `config.yaml`).
-2. Le popup s'ouvre, centré et au-dessus de tout. Tapez votre demande en langage naturel.
+2. Le popup s'ouvre au-dessus de tout (centré la première fois, puis là où vous l'avez
+   laissé). Tapez votre demande en langage naturel : `Entrée` envoie, `Maj+Entrée` va à
+   la ligne.
 3. Pour une action sensible, une **confirmation** détaillée apparaît au premier plan.
    Au niveau 1, vous pouvez autoriser *une fois*, *pour ce dossier* ou *pour la session* ;
    au niveau 2 (suppression, mise à jour…), seulement *une fois*, et la question revient
    à chaque action. **Entrée et Échap refusent** : approuver est toujours un choix
    explicite. Le mot de passe (polkit) n'est demandé que pour `pacman`.
-4. `Ctrl+L` démarre une nouvelle conversation ; `Échap` referme le popup.
+4. `Échap` referme le popup (rappelé en haut à droite) ; `Ctrl+L` démarre une nouvelle
+   conversation.
+5. La fenêtre se redimensionne par ses bords et ses coins et se déplace par sa barre de
+   titre ; double-cliquez sur la barre pour l'agrandir, `F11` pour le plein écran. Taille,
+   position et état sont mémorisés (`~/.config/my_os/popup.conf`).
 
 **Exemples de requêtes :**
 - « Range mon dossier Téléchargements par type. »
@@ -196,9 +206,9 @@ reste expérimental.
 - « Qu'est-ce qui mange ma RAM en ce moment ? »
 - « Résume ce fichier. » *(le contenu lu reste une donnée, jamais une instruction)*
 
-**Mode cloud (optionnel) :** cochez « ☁ Cloud (Claude) », saisissez votre clé API
-Anthropic (stockée dans le trousseau) ; un indicateur signale que **cette** requête part
-au cloud. Conseil : `Ctrl+L` avant, pour minimiser les données envoyées.
+**Mode cloud (optionnel) :** activez « ☁ Cloud » sous la zone de saisie, puis saisissez
+votre clé API Anthropic (stockée dans le trousseau) ; un indicateur signale que **cette**
+requête part au cloud. Conseil : `Ctrl+L` avant, pour minimiser les données envoyées.
 
 ---
 
@@ -287,6 +297,9 @@ par le point de passage unique `permissions/policy_engine.py`.
 
 - [x] **v1.0 publiée** : [release GitHub](https://github.com/gonicolas12/My_OS/releases/tag/v1.0)
   avec l'ISO et sa somme SHA-256.
+- [x] **Interface du popup repensée** (après la v1.0) : fenêtre redimensionnable,
+  agrandie ou en plein écran, rappel « Échap pour fermer », conversation sur le gabarit
+  de My_AI en noir et orange, cartes d'outils lisibles.
 
 **Encore à éprouver :** matériel réel (pilotes Wi-Fi, rétroéclairage, cartes graphiques)
 et mode cloud avec une vraie clé — retours bienvenus dans les
@@ -327,10 +340,14 @@ My_OS/
 │   ├── secrets.py            # clé API via keyring
 │   └── stub_model.py         # backend de règles (tests / sans Ollama)
 ├── ui/                       # Couche 4 — popup Qt
-│   ├── popup.py              # fenêtre PySide6
-│   ├── markdown_render.py    # rendu via QTextBrowser
+│   ├── popup.py              # fenêtre PySide6, client IPC, états de la fenêtre
+│   ├── chat_view.py          # conversation : bulles, réponses, cartes d'outils
+│   ├── composer.py           # zone de saisie (Cloud, clé API, envoi)
+│   ├── window_chrome.py      # barre de titre + redimensionnement (sans cadre)
+│   ├── markdown_render.py    # markdown sans HTML ni image (QTextBrowser)
 │   ├── confirm_dialog.py     # dialogue de confirmation
-│   ├── styles.py             # thème sombre/orange
+│   ├── icons.py              # icônes et logo dessinés (QPainter)
+│   ├── styles.py             # jetons de design, thème noir/orange
 │   └── wayland_layer.py      # présentation Wayland (layer-shell), repli X11
 ├── core/
 │   ├── config.py             # config + résolution socket

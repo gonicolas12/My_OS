@@ -104,13 +104,19 @@ Interface invoquée au raccourci. Nouvelle vue en PySide6, mais la **logique** d
 
 | Fichier | Rôle |
 |---------|------|
-| `ui/popup.py` | fenêtre PySide6 : conversation + saisie, affichage en streaming (token par token), centrée/au-dessus sous X11 |
-| `ui/markdown_render.py` | rendu markdown de la conversation via `QTextBrowser` (léger) |
+| `ui/popup.py` | fenêtre PySide6 : client IPC, routage des messages du daemon vers la bonne réponse, états de la fenêtre (agrandie, plein écran) et mémoire de sa géométrie |
+| `ui/chat_view.py` | conversation : bulle de l'utilisateur, réponse en streaming, cartes d'outils et de code, notices, écran d'accueil, défilement collé en bas |
+| `ui/composer.py` | zone de saisie multiligne, bascule « ☁ Cloud », clé API, bouton d'envoi |
+| `ui/window_chrome.py` | barre de titre (rappel « Échap pour fermer », boutons) et poignées de redimensionnement d'une fenêtre sans cadre système |
+| `ui/markdown_render.py` | découpage texte / blocs de code et mise en forme du markdown (`QTextDocument`, sans HTML brut ni image) |
 | `ui/confirm_dialog.py` | dialogue de confirmation d'action |
-| `ui/styles.py` | thème sombre/orange (esprit My_AI) |
+| `ui/icons.py` | icônes et logo dessinés au `QPainter` (aucun fichier image, pas de QtSvg) |
+| `ui/styles.py` | jetons de design et feuille QSS, charte noir/orange (gabarit de l'interface de My_AI) |
 | `ui/wayland_layer.py` | présentation Wayland du popup (surface `layer-shell`), repli X11 — jalon 5 (cf. `INTERFACES.md §9`) |
 
-**Choix technique.** `QTextBrowser` plutôt que `QWebEngineView` : le popup doit s'ouvrir **instantanément** au raccourci ; un moteur Chromium embarqué serait trop lourd à charger.
+**Choix technique.** `QTextBrowser` plutôt que `QWebEngineView` : le popup doit s'ouvrir **instantanément** au raccourci ; un moteur Chromium embarqué serait trop lourd à charger, et resterait résident toute la session. Le moteur de texte de Qt n'exécute aucun script : c'est aussi ce qui garantit qu'un contenu lu ne peut rien faire dans le processus qui répond aux confirmations (cf. `SECURITY.md §2.2`).
+
+**Fenêtre.** Le popup est *frameless* (look uniforme, sans décoration du gestionnaire de fenêtres) : sa barre de titre et ses poignées de bord délèguent déplacement et redimensionnement au gestionnaire de fenêtres (`startSystemMove` / `startSystemResize`), avec un repli manuel. Double-clic sur la barre : agrandir ; `F11` : plein écran. Taille, position et état sont mémorisés dans `~/.config/my_os/popup.conf`, et réappliqués à chaque ouverture (xfwm4 efface l'état d'une fenêtre masquée).
 
 **Port Wayland (jalon 5 — expérimental).** X11 reste le chemin **nominal**,
 pleinement supporté. Sous Wayland, le centrage et l'always-on-top côté client Qt
@@ -159,6 +165,7 @@ dans `INTERFACES.md §9`. Repli propre + diagnostic si le compositeur n'a pas
 |--------|----------|
 | Journal d'audit | `~/.local/share/my_os/audit.db` (SQLite) |
 | Configuration | `config.yaml` (versionné) + `config.local.yaml` (surcharges locales, non versionné) |
+| Taille, position et état du popup | `~/.config/my_os/popup.conf` (`QSettings`, aucune donnée sensible) |
 | Clé API / secrets | trousseau OS (`keyring`) — **pas** sur disque en clair |
 | Grants de session | en mémoire (réinitialisés à chaque session) |
 | Dépendances PyPI (ISO) | venv `~/.local/share/my_os/venv` (créé au 1er run, journal `firstrun.log`) |
@@ -176,6 +183,7 @@ dans `INTERFACES.md §9`. Repli propre + diagnostic si le compositeur n'a pas
 | logique confirmation avant suppression | généralisée en moteur de permissions |
 | flux d'approbation de l'extension VS Code | repris pour les grants de session |
 | rendu markdown / streaming chat | logique reprise, nouvelle vue Qt |
+| interface React (jetons de design, fil de messages, composer) | charte transposée en Qt : mêmes gris, arrondis et tailles, accent orange de My_OS |
 | SQLite (base de connaissances) | réutilisé pour le journal d'audit |
 
 L'effort **neuf** se concentre sur : le daemon (couche 1), le moteur de permissions (couche 2), et la vue Qt (couche 4).

@@ -54,8 +54,8 @@ class UIConfig:
     """Paramètres du popup Qt."""
 
     theme: str = "dark"
-    width: int = 600
-    height: int = 400
+    width: int = 720  # taille à la 1re ouverture (ensuite mémorisée par le popup)
+    height: int = 540
 
 
 @dataclass
@@ -72,7 +72,7 @@ class ModelConfig:
     name: str = "qwen3.5:4b"  # modèle Ollama si backend="ollama"
     host: str | None = None  # URL HTTP Ollama (None = défaut local)
     think: bool = False  # raisonnement natif du modèle (latence ↑ ; OFF = réactif)
-    cloud_model: str = "claude-sonnet-4-6"  # modèle Claude si requête routée cloud
+    cloud_model: str = "claude-sonnet-5-5"  # modèle Claude si requête routée cloud
 
 
 def default_audit_db_path() -> Path:

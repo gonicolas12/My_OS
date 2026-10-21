@@ -203,6 +203,20 @@ def _tokens(replies: list[dict]) -> list[str]:
     return [r["text"] for r in replies if r["type"] == "token"]
 
 
+def _results(replies: list[dict]) -> list[tuple[str, str, str]]:
+    """``(outil, statut, texte)`` de chaque message ``tool_result``."""
+    return [
+        (r["tool"], r["status"], r["text"])
+        for r in replies
+        if r["type"] == "tool_result"
+    ]
+
+
+def _notices(replies: list[dict]) -> list[tuple[str, str]]:
+    """``(niveau, texte)`` de chaque message ``notice``."""
+    return [(r["level"], r["text"]) for r in replies if r["type"] == "notice"]
+
+
 # ---------- réponses sans outil ----------
 
 
@@ -248,7 +262,9 @@ def test_outil_niveau_0_execute_directement_et_audit_auto(audit: AuditLog) -> No
     orch.handle({"id": "m1", "content": "lis"}, replies.append)
 
     assert conf.asked == []  # niveau 0 : aucune confirmation
-    assert any("contenu de /tmp/x" in t for t in _tokens(replies))
+    assert _results(replies) == [("read_file", "ok", "contenu de /tmp/x")]
+    # La sortie d'un outil n'est jamais mêlée à la narration du modèle.
+    assert all("contenu de /tmp/x" not in t for t in _tokens(replies))
     assert replies[-1]["type"] == "done"
     entries = audit.fetch_all()
     assert len(entries) == 1
@@ -273,7 +289,7 @@ def test_outil_niveau_1_demande_confirmation_et_execute_si_approuve(
     assert payload["type"] == "confirmation_needed"
     assert payload["tool"] == "write_file"
     assert payload["risk_level"] == 1
-    assert any("écrit /tmp/x" in t for t in _tokens(replies))
+    assert _results(replies) == [("write_file", "ok", "écrit /tmp/x")]
     entries = audit.fetch_all()
     assert entries[0]["decision"] == "approved"
     assert entries[0]["success"] is True
@@ -289,7 +305,9 @@ def test_outil_confirme_mais_refuse_n_est_pas_execute(audit: AuditLog) -> None:
     )
     orch.handle({"id": "m1", "content": "écris"}, replies.append)
 
-    assert any("Refusé" in t for t in _tokens(replies))
+    [(tool, status, text)] = _results(replies)
+    assert (tool, status) == ("write_file", "denied")
+    assert text.startswith("Refusé par l'utilisateur")
     entries = audit.fetch_all()
     assert entries[0]["decision"] == "denied"
     assert entries[0]["success"] is False
@@ -321,7 +339,9 @@ def test_outil_inconnu_est_bloque_et_audite(audit: AuditLog) -> None:
     )
     orch.handle({"id": "m1", "content": "?"}, replies.append)
 
-    assert any("Outil inconnu" in t for t in _tokens(replies))
+    assert _results(replies) == [
+        ("hypothetical_tool", "blocked", "Outil inconnu : hypothetical_tool")
+    ]
     entries = audit.fetch_all()
     assert entries[0]["decision"] == "blocked"
     assert entries[0]["risk_level"] == 3
@@ -335,7 +355,9 @@ def test_outil_bloque_par_blocklist_n_est_pas_execute(audit: AuditLog) -> None:
     )
     orch.handle({"id": "m1", "content": "supprime"}, replies.append)
 
-    assert any("Bloqué" in t for t in _tokens(replies))
+    [(tool, status, text)] = _results(replies)
+    assert (tool, status) == ("delete_file", "blocked")
+    assert text.startswith("Bloqué")
     entries = audit.fetch_all()
     assert entries[0]["decision"] == "blocked"
 
@@ -434,9 +456,30 @@ def test_outil_qui_plante_dans_run_audite_un_echec(audit: AuditLog) -> None:
     )
     orch.handle({"id": "m1", "content": "fais boum"}, replies.append)
 
-    assert any("Erreur" in t for t in _tokens(replies))
+    [(tool, status, text)] = _results(replies)
+    assert (tool, status) == ("boom", "error")
+    assert "explosion volontaire" in text
     entries = audit.fetch_all()
     assert entries[0]["success"] is False
+
+
+def test_outil_en_echec_donne_un_resultat_error(audit: AuditLog) -> None:
+    class _Missing(BaseTool):
+        name = "read_file"
+        description = "lecture qui échoue"
+        risk_level = 0
+
+        def run(self, args: dict) -> ToolResult:
+            return ToolResult(success=False, output="Fichier introuvable : /tmp/x")
+
+    orch, replies, _, _ = _build(
+        plans=[Plan(tool_calls=[ToolCall("read_file", {"path": "/tmp/x"})])],
+        audit=audit,
+        tools={"read_file": _Missing()},
+    )
+    orch.handle({"id": "m1", "content": "lis"}, replies.append)
+
+    assert _results(replies) == [("read_file", "error", "Fichier introuvable : /tmp/x")]
 
 
 def test_normalize_args_est_applique_avant_run_et_audit(audit: AuditLog) -> None:
@@ -447,7 +490,7 @@ def test_normalize_args_est_applique_avant_run_et_audit(audit: AuditLog) -> None
     )
     orch.handle({"id": "m1", "content": "lis"}, replies.append)
 
-    assert any("lu /home/test/notes.txt" in t for t in _tokens(replies))
+    assert _results(replies) == [("read_file", "ok", "lu /home/test/notes.txt")]
     entries = audit.fetch_all()
     assert entries[0]["args"]["path"] == "/home/test/notes.txt"
 
@@ -565,7 +608,8 @@ def test_max_steps_interrompt_la_boucle(audit: AuditLog) -> None:
 
     # La boucle s'arrête : un seul outil exécuté par tour, plafonné à MAX_STEPS.
     assert len(audit.fetch_all()) == MAX_STEPS
-    assert any(f"limite de {MAX_STEPS} étapes" in t for t in _tokens(replies))
+    [(level, text)] = _notices(replies)
+    assert level == "warning" and f"limite de {MAX_STEPS} étapes" in text
     assert replies[-1]["type"] == "done"
 
 
@@ -688,7 +732,8 @@ def test_use_cloud_route_vers_le_backend_cloud(audit: AuditLog) -> None:
     assert router.gets == 1  # backend cloud résolu une seule fois pour la requête
     assert any("REPONSE-CLOUD" in t for t in _tokens(replies))
     assert all("REPONSE-LOCALE" not in t for t in _tokens(replies))
-    assert any("cloud" in t.lower() for t in _tokens(replies))  # notice in-transcript
+    # Notice in-transcript : l'envoi au cloud est visible dans la conversation.
+    assert _notices(replies) == [("info", "☁ Requête envoyée au cloud (Claude).")]
     assert replies[-1]["type"] == "done"
 
 
@@ -705,6 +750,7 @@ def test_use_cloud_false_reste_local_meme_si_routeur_disponible(
 
     assert router.gets == 0  # use_cloud=False : le cloud n'est jamais sollicité
     assert any("REPONSE-LOCALE" in t for t in _tokens(replies))
+    assert _notices(replies) == []
 
 
 def test_use_cloud_sans_cle_replie_local_avec_notice(audit: AuditLog) -> None:
@@ -718,8 +764,9 @@ def test_use_cloud_sans_cle_replie_local_avec_notice(audit: AuditLog) -> None:
 
     assert router.gets == 0  # le cloud n'est jamais construit sans clé
     assert any("REPONSE-LOCALE" in t for t in _tokens(replies))  # repli local
-    joined = " ".join(_tokens(replies)).lower()
-    assert "cloud" in joined and ("clé" in joined or "local" in joined)
+    [(level, text)] = _notices(replies)
+    assert level == "warning"
+    assert "cloud" in text and "clé" in text and "local" in text
 
 
 def test_use_cloud_sans_routeur_replie_local(audit: AuditLog) -> None:
@@ -730,7 +777,8 @@ def test_use_cloud_sans_routeur_replie_local(audit: AuditLog) -> None:
     orch.handle({"id": "m1", "content": "q", "use_cloud": True}, replies.append)
 
     assert any("REPONSE-LOCALE" in t for t in _tokens(replies))
-    assert any("cloud" in t.lower() for t in _tokens(replies))  # notice de repli
+    [(level, text)] = _notices(replies)  # notice de repli
+    assert level == "warning" and "cloud" in text
 
 
 def test_envoi_cloud_journalise_le_volume_sans_le_contenu(

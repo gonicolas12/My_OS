@@ -16,15 +16,12 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 QtCore = pytest.importorskip("PySide6.QtCore")
+QtGui = pytest.importorskip("PySide6.QtGui")
 QtTest = pytest.importorskip("PySide6.QtTest")
 QtWidgets = pytest.importorskip("PySide6.QtWidgets")
 
+from ui.chat_view import RichText
 from ui.confirm_dialog import ConfirmDialog
-
-
-@pytest.fixture(scope="module")
-def app() -> object:
-    return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 
 def _payload(level: int, scopes: list[str], elevation: bool = False) -> dict:
@@ -92,3 +89,27 @@ def test_polkit_annonce_seulement_si_l_outil_s_eleve(app: object) -> None:
         "privilèges élevés"
         in ConfirmDialog(_payload(1, ["session"], True)).windowTitle()
     )
+
+
+def test_chemin_long_jamais_tronque(app: object) -> None:
+    # Constat du labo : un move_file aux chemins longs écrasait la colonne des
+    # libellés (une lettre par ligne) et coupait les arguments à droite, alors que
+    # l'utilisateur doit voir le chemin complet de ce qu'il approuve.
+    long_path = "/home/myos/" + "Dossier-au-nom-tres-long/" * 6 + "vacances-plage.jpg"
+    payload = _payload(1, ["this_folder", "session"])
+    payload["tool"] = "move_file"
+    payload["args"] = {"src": long_path, "dst": long_path.replace("Dossier", "IMG")}
+    dialog = ConfirmDialog(payload)
+    dialog.show()
+    QtWidgets.QApplication.processEvents()
+    details = dialog.findChild(RichText, "confirmText")
+    document = details.document()
+    assert document.idealWidth() <= details.viewport().width() + 1
+    assert long_path in document.toPlainText()
+    table = next(
+        f for f in document.rootFrame().childFrames() if isinstance(f, QtGui.QTextTable)
+    )
+    for row in range(table.rows()):
+        label = table.cellAt(row, 0).firstCursorPosition().block()
+        assert label.layout().lineCount() == 1, label.text()
+    dialog.close()

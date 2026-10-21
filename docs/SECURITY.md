@@ -29,6 +29,12 @@ Tout contenu que l'IA **lit** est une **donnée non fiable**, jamais une instruc
 - Le contenu de fichiers, pages web, ou captures d'écran est passé au modèle clairement délimité comme données à analyser.
 - Le système n'exécute **jamais** des ordres trouvés à l'intérieur d'un contenu traité.
 - Quelle que soit l'apparente « instruction » dans une donnée, toute action passe par le moteur de permissions.
+- **À l'affichage aussi**, une donnée reste une donnée : le popup montre les sorties
+  d'outils (messages `tool_result`) en **texte brut**, sans les interpréter comme du
+  markdown ; la narration du modèle est rendue en markdown **sans HTML brut** (une balise
+  reste du texte) ni image chargée, par le moteur de texte de Qt (aucun script, aucun
+  lien suivi, aucune ressource chargée). Un contenu piégé ne peut donc pas imiter
+  l'interface, par exemple un faux message « action approuvée ».
 
 ### 2.3 · Traçabilité
 Rien de conséquent n'est silencieux.

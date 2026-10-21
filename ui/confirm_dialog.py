@@ -18,6 +18,11 @@ qu'il approuve.
 
 La portée *this_file* est volontairement absente du jalon 2 (rarement utile
 en pratique pour les outils fichiers ; pourra être ajoutée plus tard).
+
+Présentation : pastille du niveau (orange au niveau 1, rouge au niveau 2), détail de
+l'action dans une carte, « Refuser » à gauche (bouton par défaut, focus), les
+approbations à droite (« Une fois » en orange, en rouge au niveau 2). L'ordre de
+tabulation reste Refuser → Une fois → Pour ce dossier → Pour cette session.
 """
 
 from __future__ import annotations
@@ -29,15 +34,25 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import (
     QDialog,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
 
-_LEVEL_COLOR = {1: "#ff8c00", 2: "#ff4444"}
+from ui.chat_view import RichText
+from ui.icons import logo_icon
+from ui.styles import build_stylesheet
+
+_LEVEL_BADGE = {1: "NIVEAU 1 · CONFIRMATION", 2: "NIVEAU 2 · CONFIRMATION RENFORCÉE"}
+# Libellés sur une ligne ; valeurs qui se replient (jamais tronquées) : l'utilisateur
+# doit voir le chemin COMPLET de ce qu'il approuve, même très long.
+_LABEL_CELL = (
+    '<td style="color:#a3a3a3; padding-right:14px; white-space:nowrap" valign="top">'
+)
+_VALUE_CELL = '<td style="white-space:pre-wrap">'
 
 
 class ConfirmDialog(QDialog):
@@ -51,6 +66,11 @@ class ConfirmDialog(QDialog):
         # Même couche que le popup (WindowStaysOnTopHint) : sans ce drapeau, xfwm
         # et consorts ouvrent la confirmation SOUS le popup, donc invisible.
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        self.setObjectName("confirmDialog")
+        self.setWindowIcon(logo_icon())
+        if parent is None:
+            # Ouvert seul (tests, outils) : le thème ne vient pas d'un parent.
+            self.setStyleSheet(build_stylesheet())
         self._build_ui()
 
     def showEvent(self, event: QShowEvent) -> None:
@@ -66,7 +86,7 @@ class ConfirmDialog(QDialog):
         """``(decision, scope)`` choisi. Si la fenêtre est fermée → ``('deny', None)``."""
         return self._response or ("deny", None)
 
-    # pylint: disable-next=too-many-locals
+    # pylint: disable-next=too-many-locals,too-many-statements
     def _build_ui(self) -> None:
         risk_level = int(self._payload.get("risk_level", 1))
         tool = str(self._payload.get("tool", ""))
@@ -83,56 +103,81 @@ class ConfirmDialog(QDialog):
             title += " — privilèges élevés"
         self.setWindowTitle(title)
         self.setModal(True)
-        self.setMinimumWidth(480)
+        self.setMinimumWidth(520)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 18, 20, 16)
+        layout.setSpacing(10)
 
-        level_label = QLabel(f"Niveau de risque {risk_level}")
-        color = _LEVEL_COLOR.get(risk_level, "#cccccc")
-        level_label.setStyleSheet(
-            f"color: {color}; font-weight: bold; font-size: 15px;"
-        )
-        layout.addWidget(level_label)
+        badge_row = QHBoxLayout()
+        level_label = QLabel(_LEVEL_BADGE.get(risk_level, f"NIVEAU {risk_level}"))
+        level_label.setObjectName("riskBadge")
+        level_label.setProperty("level", str(min(max(risk_level, 1), 2)))
+        badge_row.addWidget(level_label)
+        badge_row.addStretch()
+        layout.addLayout(badge_row)
 
-        details = QTextBrowser()
-        details.setMaximumHeight(180)
-        details.setOpenExternalLinks(False)
+        heading = QLabel(f"My_OS demande votre accord pour « {tool} »")
+        heading.setObjectName("dialogTitle")
+        heading.setTextFormat(Qt.TextFormat.PlainText)
+        heading.setWordWrap(True)
+        layout.addWidget(heading)
+
+        # Détail en texte échappé, dans une carte à hauteur ajustée (défilement
+        # interne au-delà) ; aucun lien suivi, aucune ressource chargée.
+        card = QFrame()
+        card.setObjectName("confirmDetails")
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(10, 8, 10, 8)
+        details = RichText(object_name="confirmText", max_height=240)
+        card_layout.addWidget(details)
         args_str = json.dumps(args, ensure_ascii=False, indent=2)
         details.setHtml(
-            f"<p><b>Outil :</b> {html.escape(tool)}</p>"
-            f"<p><b>Résumé :</b> {html.escape(summary)}</p>"
-            f"<p><b>Arguments :</b></p>"
-            f"<pre>{html.escape(args_str)}</pre>"
+            '<table cellspacing="0" cellpadding="4">'
+            f"<tr>{_LABEL_CELL}Outil</td>"
+            f'<td style="font-family:monospace">{html.escape(tool)}</td></tr>'
+            f"<tr>{_LABEL_CELL}Action</td>{_VALUE_CELL}{html.escape(summary)}</td></tr>"
+            f"<tr>{_LABEL_CELL}Arguments</td>"
+            f'<td style="white-space:pre-wrap; font-family:monospace">'
+            f"{html.escape(args_str)}</td></tr>"
+            "</table>"
         )
-        layout.addWidget(details)
+        layout.addWidget(card)
 
         if requires_elevation:
             warning = QLabel(
                 "⚠ Action sensible : nécessite une élévation de privilèges "
                 "via polkit (mot de passe administrateur) lors de l'exécution."
             )
+            warning.setObjectName("elevationWarning")
             warning.setWordWrap(True)
-            warning.setStyleSheet("color: #ff8c00;")
             layout.addWidget(warning)
 
         if risk_level >= 2:
             reinforced = QLabel(
                 "Confirmation renforcée : cette action est redemandée à chaque fois."
             )
+            reinforced.setObjectName("dialogHint")
             reinforced.setWordWrap(True)
             layout.addWidget(reinforced)
 
+        layout.addSpacing(4)
         button_row = QHBoxLayout()
+        button_row.setSpacing(8)
 
         deny_btn = QPushButton("Refuser")
+        deny_btn.setObjectName("denyButton")
         deny_btn.clicked.connect(lambda: self._respond("deny", None))
         # Entrée = Refuser : la fenêtre peut s'ouvrir pendant la frappe, une
         # approbation doit toujours être un choix explicite.
         deny_btn.setDefault(True)
         button_row.addWidget(deny_btn)
+        button_row.addStretch()
         self._deny_btn = deny_btn
 
         once_btn = QPushButton("Une fois")
+        once_btn.setObjectName("approveButton")
+        once_btn.setProperty("danger", "true" if risk_level >= 2 else "false")
         once_btn.clicked.connect(lambda: self._respond("approve_once", None))
         button_row.addWidget(once_btn)
 

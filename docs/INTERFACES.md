@@ -25,14 +25,32 @@ Communication sur une **socket Unix locale**. Le daemon est le **serveur** (cré
 ### Messages daemon → popup (streaming)
 ```json
 { "type": "token", "id": "uuid", "text": "fragment de réponse" }
+{ "type": "tool_result", "id": "uuid", "tool": "list_processes", "status": "ok", "text": "sortie de l'outil" }
+{ "type": "notice", "id": "uuid", "level": "info", "text": "☁ Requête envoyée au cloud (Claude)." }
 { "type": "confirmation_needed", "id": "uuid", "request_id": "uuid-action", "tool": "delete_file", "args": {...}, "risk_level": 2, "summary": "...", "requires_elevation": false, "allowed_scopes": [] }
 { "type": "done", "id": "uuid" }
 { "type": "error", "id": "uuid", "message": "..." }
 ```
 
-Le résultat de chaque outil (succès, refus, blocage, erreur) arrive dans le flux de
-`token`, sous forme de bloc citation markdown : il n'y a pas de message dédié aux appels
-d'outils (l'ancien `tool_request`, prévu au jalon 1, n'a jamais été émis).
+`token` ne porte que la narration du modèle (markdown). Le résultat de chaque appel
+d'outil arrive dans un message **`tool_result`** dédié, émis dans l'ordre du flux (entre
+deux narrations) :
+
+| `status` | Cas |
+|----------|-----|
+| `ok` | outil exécuté, succès |
+| `error` | outil exécuté mais en échec (`ToolResult.success=False` ou exception) |
+| `denied` | refusé par l'utilisateur à la confirmation |
+| `blocked` | blocklist ou niveau 3, ou outil inconnu |
+
+`text` est **exactement** le texte réinjecté au modèle (ex. `Bloqué : …`, `Refusé par
+l'utilisateur : …`). C'est une **DONNÉE** : le popup l'affiche en texte brut, sans
+l'interpréter comme du markdown (une sortie d'outil ne met jamais en forme l'interface).
+
+`notice` signale un événement du daemon à afficher à part dans la conversation, hors
+narration : envoi au cloud (`info`), repli local faute de clé ou limite d'étapes atteinte
+(`warning`). Le `text` est en texte brut. Un message `notice`, `tool_result` ou `token`
+dont l'`id` ne correspond à aucune requête en cours (ex. après `reset`) est ignoré.
 
 `allowed_scopes` liste les portées de grant que le popup peut proposer, calculées
 par le daemon (`policy_engine.grantable_scopes`) : `[]` au **niveau 2** (confirmation
@@ -66,7 +84,7 @@ avec le daemon.
 ### Messages de contrôle daemon → popup
 Le raccourci global est capté par le daemon ; c'est lui qui ordonne au popup (résident, caché) de s'afficher. Ce message de contrôle n'est pas lié à une requête, donc sans champ `id`.
 ```json
-{ "type": "show" }   // le popup s'affiche centré, au-dessus de tout, et prend le focus
+{ "type": "show" }   // le popup s'affiche au-dessus de tout et prend le focus
 ```
 La fermeture (Échap) est gérée localement par le popup (il se cache) ; aucun message n'est requis vers le daemon.
 
@@ -228,7 +246,7 @@ cloud n'a **aucun droit supplémentaire** par rapport au local.
 class ClaudeClient:                       # implémente le protocole Model (§6.5)
     name = "claude"
     def __init__(self, *, api_key: str | None = None,
-                 model: str = "claude-sonnet-4-6",
+                 model: str = "claude-sonnet-5-5",
                  max_tokens: int = 4096,
                  client=None): ...         # `anthropic` importé paresseusement
     def respond(self, messages, on_token=None) -> Plan: ...  # streaming via on_token
@@ -236,7 +254,7 @@ class ClaudeClient:                       # implémente le protocole Model (§6.
 class CloudUnavailable(RuntimeError): ...  # cloud demandé mais pas de clé
 
 class CloudRouter:                         # sélecteur de backend cloud (lazy)
-    def __init__(self, *, model: str = "claude-sonnet-4-6",
+    def __init__(self, *, model: str = "claude-sonnet-5-5",
                  client_factory=None): ...  # client_factory injectable (tests)
     def is_available(self) -> bool: ...     # = secrets.has_api_key()
     def get_cloud_model(self) -> Model: ... # construit/cache le ClaudeClient ;
@@ -498,9 +516,10 @@ raccourci.
 
 ### 9.3 · Présentation du popup (`ui/wayland_layer.py`)
 
-Sous X11, le popup garde son comportement actuel : `FramelessWindowHint |
-WindowStaysOnTopHint | Tool`, centrage par `move()`, `raise_()`, focus. Ces
-mécanismes **n'ont pas d'effet sous Wayland** (pas de positionnement global ni
+Sous X11, le popup est une fenêtre `FramelessWindowHint | WindowStaysOnTopHint |
+Tool` : centré par `move()` à la première ouverture, puis rouvert là où l'utilisateur
+l'a laissé (géométrie mémorisée), `raise_()`, focus. Ces mécanismes **n'ont pas
+d'effet sous Wayland** (pas de positionnement global ni
 d'always-on-top côté client). Un helper isole la logique testable :
 
 ```python
@@ -516,9 +535,9 @@ def is_wayland(session_type: str) -> bool: ...
 
 `main()` du popup appelle `prepare_layer_shell(detect_session_type())` **avant**
 de créer la `QApplication`. Le `Popup` reçoit un `session_type` (optionnel, détecté
-par défaut) : `_show_centered` n'applique le `move()` de centrage que sous X11 ;
-sous Wayland il se contente de `show()`/`raise_()`/focus et laisse le compositeur
-(layer-shell) placer la surface. **Repli/diagnostic** : si le plugin layer-shell
+par défaut) : `present()` n'applique le placement (`move()`, géométrie mémorisée) que
+sous X11 ; sous Wayland il se contente de `show()`/`raise_()`/focus et laisse le
+compositeur (layer-shell) placer la surface. **Repli/diagnostic** : si le plugin layer-shell
 est absent, Qt retombe sur `xdg-shell` (fenêtre normale, centrage approximatif par
 le compositeur) ; un avertissement est journalisé. On n'annonce pas un centrage
 overlay garanti sous Wayland.
