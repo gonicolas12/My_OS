@@ -70,6 +70,7 @@ Rien de conséquent n'est silencieux.
 - Le mode cloud est **opt-in**, activé explicitement par l'utilisateur (pas par défaut, pas par le modèle).
 - Activation visible : un indicateur clair signale quand une requête part vers le cloud.
 - Chaque envoi cloud est journalisé (quoi/quand, sans secret ni contenu).
+- En local, Ollama lui-même ne sort pas : réglé en local seul (`OLLAMA_NO_CLOUD=1`, drop-in de l'ISO), il ne contacte ollama.com que pour télécharger un modèle, et non plus au démarrage puis toutes les 4 h (vérifié dans son journal, octobre 2026).
 - À terme : confirmation explicite avant envoi de données sensibles identifiées.
 
 **Mise en œuvre (jalon 4).**

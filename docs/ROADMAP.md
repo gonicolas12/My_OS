@@ -92,6 +92,8 @@ chacun stable et testé avant le suivant.
   de documents de 12 et 28 Ko, 13 demandes de la sonde du modèle.
 - [x] Prompt lu par lots de 256 tokens : une nouvelle conversation ne relit que ~250 tokens
   du prompt système au lieu de ~1 000 (médiane ~10 s au lieu de ~30 s sans GPU, en VM).
+- [x] Ollama en local seul (`OLLAMA_NO_CLOUD=1` sur l'ISO) : plus d'appels à ollama.com au
+  démarrage ni toutes les 4 h, seulement pour télécharger un modèle.
 - [x] Carte graphique sur l'ISO : backend Vulkan d'Ollama et pilotes Vulkan libres (AMD,
   Intel, NVIDIA via NVK), +18 Mo d'ISO. Validé en VM sans GPU (rien ne change sur
   processeur) et sur un périphérique Vulkan logiciel (modèle chargé en entier dessus,
