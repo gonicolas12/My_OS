@@ -90,6 +90,8 @@ chacun stable et testé avant le suivant.
   la fenêtre : le prompt système n'est plus coupé et les réponses ne s'arrêtent plus net
   au fil d'une conversation. Validé en VM : 8 demandes à la suite sans `Ctrl+L`, résumés
   de documents de 12 et 28 Ko, 13 demandes de la sonde du modèle.
+- [x] Prompt lu par lots de 256 tokens : une nouvelle conversation ne relit que ~250 tokens
+  du prompt système au lieu de ~1 000 (médiane ~10 s au lieu de ~30 s sans GPU, en VM).
 - [x] Carte graphique sur l'ISO : backend Vulkan d'Ollama et pilotes Vulkan libres (AMD,
   Intel, NVIDIA via NVK), +18 Mo d'ISO. Validé en VM sans GPU (rien ne change sur
   processeur) et sur un périphérique Vulkan logiciel (modèle chargé en entier dessus,
@@ -135,13 +137,12 @@ Plus modestes, et directement issues de l'usage réel :
   un refus, il lui arrive aussi de reproposer la même action, et rarement d'affirmer
   l'avoir faite (vu une fois en octobre 2026, la carte de l'outil affichant bien le
   refus). À cadrer dans le prompt (la fenêtre est la seule confirmation nécessaire).
-- **Temps de réponse sans GPU** : de 20 s à près de 2 min par requête en VM 8 cœurs.
-  Une bonne part vient du prompt système et des schémas d'outils (~2 430 tokens) : qwen3.5
-  est hybride, llama.cpp ne reprend un prompt qu'à un point de sauvegarde, posé 1 024
-  tokens avant la fin du précédent avec la fenêtre de 16 384 (512 avec 4 096). Chaque
-  nouvelle conversation en relit donc ~1 000 tokens ; une conversation qui se poursuit
-  ne relit que ses nouveaux messages. Pistes : prompt et schémas plus courts, modèle plus
-  petit par défaut sur les machines modestes.
+- **Temps de réponse sans GPU** : ~10 s par demande neuve en VM 8 cœurs depuis les lots
+  de 256 tokens, mais près d'une minute après 5 min d'inactivité : Ollama décharge alors
+  le modèle, et la requête suivante relit tout le prompt système et les schémas d'outils
+  (~2 430 tokens). Pistes : prompt et schémas plus courts, modèle gardé chargé plus
+  longtemps (`keep_alive`, au prix de la mémoire), modèle plus petit par défaut sur les
+  machines modestes.
 
 ---
 

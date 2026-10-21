@@ -108,11 +108,11 @@ La **fenêtre de contexte** (`num_ctx`, en tokens) est envoyée à chaque requê
 système et les outils en prennent ~2 400 ; My_OS n'envoie au modèle que la part de
 l'historique qui tient dans le reste : les plus vieux échanges partent d'abord, et chaque
 résultat d'outil est plafonné au quart de la fenêtre (un long fichier n'est lu qu'en
-partie, et le modèle le sait). Chaque nouvelle conversation relit ~1 000 tokens du prompt
-système (une conversation qui se poursuit ne relit que ses nouveaux messages) : vite fait
-avec un GPU, mais sans GPU la première réponse prend ~35 s (médiane en VM 8 cœurs).
-`num_ctx: 4096` n'en relit que ~500 (~17 s), au prix d'une mémoire de conversation
-presque nulle.
+partie, et le modèle le sait). Le prompt est lu par lots de 256 tokens : une nouvelle
+conversation ne relit que ~250 tokens du prompt système, quelle que soit la fenêtre, et
+une conversation qui se poursuit ne lit que ses nouveaux messages (sans GPU, ~10 s par
+demande neuve en VM 8 cœurs). `num_ctx: 4096` économise 200 Mio, au prix d'une mémoire
+de conversation presque nulle.
 
 Sans cette config, My_OS utilise un **stub** à base de règles (pratique pour tester
 l'UI et les permissions sans Ollama).

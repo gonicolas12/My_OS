@@ -39,8 +39,8 @@ model:
   # prompt système et les outils en prennent ~2 400 ; l'historique envoyé au modèle
   # est ajusté à ce qui reste, résultats d'outils plafonnés au quart de la fenêtre.
   # 16384 : conversations longues et fichiers moyens lus en entier, pour 272 Mio de
-  # cache K/V en 8 bits. 4096 : nouvelle conversation plus rapide sans GPU (~500
-  # tokens de moins à relire), mais très peu de mémoire de conversation.
+  # cache K/V en 8 bits. 4096 : 204 Mio de moins, mais très peu de mémoire de
+  # conversation et des résultats d'outils coupés plus tôt.
   num_ctx: 16384
   # Adresse d'Ollama. Laissée commentée : $OLLAMA_HOST, sinon 127.0.0.1:11434.
   # « localhost » y devient 127.0.0.1 (Ollama n'écoute pas en IPv6, ::1).

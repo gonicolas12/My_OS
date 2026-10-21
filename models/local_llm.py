@@ -137,6 +137,14 @@ DEFAULT_MODEL = "qwen3.5:4b"
 # le prompt système et les schémas d'outils en prennent déjà ~2 430.
 DEFAULT_NUM_CTX = 16384
 
+# Prompt lu par lots de 256 tokens. qwen3.5 étant hybride, llama.cpp ne reprend un
+# prompt qu'à un point de sauvegarde posé un lot avant la fin du précédent : une
+# nouvelle conversation relit ~250 tokens du prompt système, au lieu de ~1 000 avec
+# les lots de 1 024 qu'Ollama prend dès 8 192 tokens de fenêtre (médiane 10 s au lieu
+# de 30 s sans GPU, VM 8 cœurs). Mesuré en alternance : un long prompt ne se lit pas
+# plus lentement.
+_NUM_BATCH = 256
+
 # Taille estimée sans tokenizer : ~3,5 caractères par token mesurés sur le prompt
 # de My_OS (français, schémas JSON) ; 3 garde une marge.
 _CHARS_PER_TOKEN = 3
@@ -572,7 +580,7 @@ class OllamaClient:  # pylint: disable=too-many-instance-attributes
         self._client = client if client is not None else _make_ollama_client(host)
         # Prompt de base + note « local » + contexte réel de la machine, une fois.
         self._system_prompt = BASE_SYSTEM_PROMPT + _LOCAL_NOTE + machine_context()
-        self._options = {"num_ctx": num_ctx}
+        self._options = {"num_ctx": num_ctx, "num_batch": _NUM_BATCH}
         # Part de la fenêtre laissée à l'historique : ni le prompt système et les
         # outils, envoyés à chaque requête, ni la place gardée pour la réponse.
         fixed = _estimate_tokens(self._system_prompt) + _estimate_tokens(
