@@ -39,6 +39,17 @@ libpulse
 # --- IA locale : démon/CLI Ollama (le modèle est récupéré au 1er boot) ---
 ollama
 
+# --- Carte graphique pour le modèle local : backend Vulkan d'Ollama + pilotes
+# Vulkan libres de Mesa (AMD, Intel, NVIDIA via NVK). Ollama prend la carte
+# graphique dédiée quand il y en a une, sinon le processeur. Le paquet `ollama`
+# seul n'a que des backends processeur. CUDA (~1 Gio) et ROCm (~3 Gio) restent hors
+# de l'ISO. vulkaninfo (vulkan-tools) sert au diagnostic.
+ollama-vulkan
+vulkan-radeon
+vulkan-intel
+vulkan-nouveau
+vulkan-tools
+
 # --- Python + bindings système (réutilisés par le venv au 1er boot) ---
 python
 python-pip

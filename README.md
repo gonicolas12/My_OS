@@ -155,7 +155,8 @@ Une ISO bootable (base Arch + Xfce/X11) embarque My_OS prêt à l'emploi :
 [archiso](https://wiki.archlinux.org/title/Archiso) et le script de build sont dans
 [`packaging/`](packaging/) (`sudo ./packaging/build_iso.sh`, sur un hôte Arch). Au 1er boot, les dépendances et
 le modèle local sont récupérés (réseau requis). Prévoir **≥ 12 Go de RAM pour le modèle
-local en live** (≥ 4 Go sinon). Sur une clé USB : [Ventoy](https://www.ventoy.net) ou Rufus
+local en live** (≥ 4 Go sinon). Le modèle utilise une carte graphique dédiée AMD, Intel
+ou NVIDIA récente via Vulkan si elle est présente, sinon le processeur. Sur une clé USB : [Ventoy](https://www.ventoy.net) ou Rufus
 en mode DD, Secure Boot désactivé ([détails](docs/INSTALLATION.md)). Voir aussi
 [packaging/README.md](packaging/README.md).
 
@@ -173,7 +174,9 @@ ollama pull qwen3.5:4b          # modèle local recommandé (≥ 8 Go RAM)
 ```
 
 Sans GPU, une réponse du modèle 4B prend de quelques secondes à plus d'une minute selon
-la machine.
+la machine. Avec une carte graphique, installez le backend d'Ollama qui lui correspond
+(`ollama-cuda`, `ollama-rocm` ou `ollama-vulkan`, cf.
+[docs/INSTALLATION.md §2.3](docs/INSTALLATION.md)).
 
 Pour une installation **résidente** (service `systemd` utilisateur, autostart), suivre
 [docs/INSTALLATION.md](docs/INSTALLATION.md). **Notes X11/Wayland** : X11 fonctionne tel

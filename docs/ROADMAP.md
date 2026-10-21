@@ -90,10 +90,15 @@ chacun stable et testé avant le suivant.
   la fenêtre : le prompt système n'est plus coupé et les réponses ne s'arrêtent plus net
   au fil d'une conversation. Validé en VM : 8 demandes à la suite sans `Ctrl+L`, résumés
   de documents de 12 et 28 Ko, 13 demandes de la sonde du modèle.
+- [x] Carte graphique sur l'ISO : backend Vulkan d'Ollama et pilotes Vulkan libres (AMD,
+  Intel, NVIDIA via NVK), +18 Mo d'ISO. Validé en VM sans GPU (rien ne change sur
+  processeur) et sur un périphérique Vulkan logiciel (modèle chargé en entier dessus,
+  contexte en 8 bits compris, réponse juste).
 
 ### Encore à éprouver
 - [ ] Un vrai PC (pilotes Wi-Fi, rétroéclairage, cartes graphiques ; son et Wi-Fi ont été
-  validés en VM avec du matériel simulé). Le modèle n'a été mesuré que sur processeur.
+  validés en VM avec du matériel simulé). Le modèle sur une vraie carte graphique reste à
+  mesurer.
 - [ ] Le mode cloud avec une vraie clé API.
 
 ---
@@ -137,10 +142,6 @@ Plus modestes, et directement issues de l'usage réel :
   nouvelle conversation en relit donc ~1 000 tokens ; une conversation qui se poursuit
   ne relit que ses nouveaux messages. Pistes : prompt et schémas plus courts, modèle plus
   petit par défaut sur les machines modestes.
-- **GPU sur l'ISO** : l'ISO n'embarque que les backends processeur d'Ollama ; un PC avec
-  carte graphique y fait donc tourner le modèle sur le processeur. Piste : `ollama-vulkan`
-  et les pilotes Vulkan libres (`vulkan-radeon`, `vulkan-intel`, `vulkan-nouveau`), ~120 Mio
-  installés en tout ; CUDA et ROCm pèsent 1 et 3 Gio.
 
 ---
 
