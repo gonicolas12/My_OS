@@ -89,6 +89,8 @@ Qwen via Ollama. Backend par défaut. Repris quasi tel quel de My_AI. Confidenti
 
 Deux réglages viennent aussi de My_AI. Ollama est joint sur `127.0.0.1` : un « localhost » configuré y est ramené, car il passerait d'abord par l'IPv6 (`::1`), où Ollama n'écoute pas. Le contexte du modèle (cache K/V) est en 8 bits, deux fois moins de mémoire. C'est un réglage du serveur Ollama, pas du daemon : l'ISO le pose par un drop-in systemd du service `ollama` (`packaging/archiso/airootfs/etc/systemd/system/ollama.service.d/10-myos.conf`), à copier à la main sur une Arch existante (`INSTALLATION.md §2.3`).
 
+La fenêtre de contexte (`model.num_ctx`, 16 384 tokens par défaut) est la même à chaque requête : Ollama recharge le modèle quand elle change. Le client n'envoie que la part de l'historique qui y tient. Chaque résultat d'outil est plafonné au quart de la fenêtre ; au-delà du budget, les plus vieux tours partent d'un bloc, jusqu'à la moitié du budget, pour que le début de l'envoi reste stable et qu'Ollama reprenne ce qu'il a déjà lu. Ollama ne coupe donc plus jamais le début du prompt, où sont les règles et les outils.
+
 ### 4.2 · Routeur cloud (`models/cloud_router.py`)
 Aiguille une requête vers le backend local ou cloud (Claude via la lib `anthropic`). Le cloud est **opt-in**, activé par requête. Le routeur :
 - vérifie qu'une clé API est présente (via `models/secrets.py`) ;
