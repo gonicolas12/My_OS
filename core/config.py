@@ -72,6 +72,7 @@ class ModelConfig:
     name: str = "qwen3.5:4b"  # modèle Ollama si backend="ollama"
     host: str | None = None  # URL HTTP Ollama (None = $OLLAMA_HOST ou 127.0.0.1)
     think: bool = False  # raisonnement natif du modèle (latence ↑ ; OFF = réactif)
+    num_ctx: int = 16384  # fenêtre de contexte du modèle local, en tokens
     cloud_model: str = "claude-sonnet-5-5"  # modèle Claude si requête routée cloud
 
 
@@ -138,7 +139,7 @@ def load_config(path: Path | None = None) -> Config:
     ui = UIConfig(**{k: v for k, v in ui_raw.items() if k in allowed_ui})
 
     model_raw = data.get("model") or {}
-    allowed_model = {"backend", "name", "host", "think", "cloud_model"}
+    allowed_model = {"backend", "name", "host", "think", "num_ctx", "cloud_model"}
     model = ModelConfig(**{k: v for k, v in model_raw.items() if k in allowed_model})
 
     return Config(

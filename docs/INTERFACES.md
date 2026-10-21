@@ -383,6 +383,13 @@ local (`models.local_llm.OllamaClient`, Ollama) **et** par le cloud
 selon `use_cloud` (cf. §5.3), sans rien changer à la boucle agentique ni à la
 mémoire conversationnelle.
 
+**Fenêtre de contexte du backend local.** `OllamaClient` reçoit l'historique complet
+mais n'en transmet que la part qui tient dans sa fenêtre (`model.num_ctx`) : résultats
+d'outils plafonnés au quart de la fenêtre, plus vieux tours retirés d'un bloc au-delà
+du budget, plus anciens résultats de la requête en cours remplacés par une mention s'ils
+ne tiennent plus. L'historique du daemon n'est pas modifié ; le backend cloud le reçoit
+tel quel (§6).
+
 L'orchestrator dépend aussi d'un fournisseur de confirmation injectable
 (pour découpler l'attente bloquante du transport IPC, et permettre les tests) :
 

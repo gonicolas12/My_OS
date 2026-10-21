@@ -22,6 +22,7 @@ côté orchestrator quelle que soit la « décision » du modèle.
 from __future__ import annotations
 
 import getpass
+import json
 import os
 import re
 from typing import TYPE_CHECKING, Any
@@ -130,6 +131,50 @@ def _to_ollama(messages: list[dict]) -> list[dict]:
 
 
 DEFAULT_MODEL = "qwen3.5:4b"
+
+# Fenêtre de contexte demandée à Ollama, la même à chaque requête (il recharge le
+# modèle quand elle change). Celle d'Ollama par défaut, 4 096 tokens, déborde vite :
+# le prompt système et les schémas d'outils en prennent déjà ~2 430.
+DEFAULT_NUM_CTX = 16384
+
+# Taille estimée sans tokenizer : ~3,5 caractères par token mesurés sur le prompt
+# de My_OS (français, schémas JSON) ; 3 garde une marge.
+_CHARS_PER_TOKEN = 3
+# Balises du gabarit de chat autour de chaque message (rôle, fin de tour).
+_MESSAGE_OVERHEAD = 8
+# Remplace un ancien résultat d'outil de la requête en cours qui ne tient plus.
+_ELIDED_RESULT = (
+    "[résultat déjà exploité, retiré pour tenir dans la fenêtre de contexte]"
+)
+
+
+def _estimate_tokens(text: str) -> int:
+    """Nombre de tokens d'un texte, estimé par excès (cf. ``_CHARS_PER_TOKEN``)."""
+    return len(text) // _CHARS_PER_TOKEN + 1
+
+
+def _message_tokens(message: dict) -> int:
+    """Tokens estimés d'un message de l'historique, appels d'outils compris."""
+    tokens = _estimate_tokens(str(message.get("content", ""))) + _MESSAGE_OVERHEAD
+    for call in message.get("tool_calls") or []:
+        tokens += _estimate_tokens(
+            call.tool + json.dumps(call.args, ensure_ascii=False)
+        )
+    return tokens
+
+
+def _cap_tool_output(message: dict, max_chars: int) -> dict:
+    """Le message tel qu'envoyé : un résultat d'outil garde au plus ``max_chars``
+    caractères, et la coupure est signalée au modèle."""
+    content = str(message.get("content", ""))
+    if message.get("role") != "tool" or len(content) <= max_chars:
+        return message
+    note = (
+        f"\n[... résultat tronqué pour la fenêtre de contexte : {max_chars} "
+        f"caractères sur {len(content)} ...]"
+    )
+    return {**message, "content": content[:max_chars] + note}
+
 
 # Prompt système de BASE, neutre vis-à-vis du backend (local ou cloud) : il
 # oriente le modèle mais ne lui confère AUCUNE autorité — toute action passe
@@ -509,23 +554,76 @@ ALL_TOOLS_SCHEMA: list[dict[str, Any]] = [
 ]
 
 
-class OllamaClient:
+class OllamaClient:  # pylint: disable=too-many-instance-attributes
     """Implémentation :class:`daemon.orchestrator.Model` via Ollama HTTP local."""
 
     name = "ollama"
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         model: str = DEFAULT_MODEL,
         host: str | None = None,
         client: ollama.Client | None = None,
         think: bool = False,
+        num_ctx: int = DEFAULT_NUM_CTX,
     ) -> None:
         self._model = model
         self._think = think
         self._client = client if client is not None else _make_ollama_client(host)
         # Prompt de base + note « local » + contexte réel de la machine, une fois.
         self._system_prompt = BASE_SYSTEM_PROMPT + _LOCAL_NOTE + machine_context()
+        self._options = {"num_ctx": num_ctx}
+        # Part de la fenêtre laissée à l'historique : ni le prompt système et les
+        # outils, envoyés à chaque requête, ni la place gardée pour la réponse.
+        fixed = _estimate_tokens(self._system_prompt) + _estimate_tokens(
+            json.dumps(ALL_TOOLS_SCHEMA, ensure_ascii=False)
+        )
+        answer = min(max(num_ctx // 8, 512), 2048)
+        self._budget = max(num_ctx - fixed - answer, 0)
+        # Un résultat d'outil : au plus un quart de la fenêtre (comme les documents
+        # dans My_AI), et jamais plus de la moitié du budget.
+        self._tool_max_chars = min(num_ctx // 4, self._budget // 2) * _CHARS_PER_TOKEN
+        # Premier message de l'historique encore envoyé (cf. _fit_to_window).
+        self._first_sent: dict | None = None
+
+    def _fit_to_window(self, messages: list[dict]) -> list[dict]:
+        """La part de l'historique envoyée au modèle : celle qui tient dans sa fenêtre.
+
+        Sans elle, Ollama coupe lui-même le DÉBUT d'un prompt trop long (prompt
+        système, règles et outils compris) et la réponse s'arrête net quand la
+        fenêtre est pleine. Ici :
+
+        - chaque résultat d'outil est plafonné, coupure signalée au modèle ;
+        - au-delà du budget, les plus anciens tours partent en entier, jusqu'à la
+          moitié du budget : le début de ce qui est envoyé reste ensuite le même
+          d'une requête à l'autre, et Ollama reprend ce qu'il a déjà lu au lieu de
+          tout relire ;
+        - si la requête en cours dépasse seule le budget, ses plus anciens
+          résultats d'outils sont remplacés par une mention (le dernier reste).
+
+        L'historique du daemon n'est jamais modifié : seul l'envoi est ajusté.
+        """
+        sent = [_cap_tool_output(m, self._tool_max_chars) for m in messages]
+        sizes = [_message_tokens(m) for m in sent]
+        turns = [i for i, m in enumerate(messages) if m.get("role") == "user"]
+        current = turns[-1] if turns else 0
+        start = next((i for i, m in enumerate(messages) if m is self._first_sent), 0)
+        if sum(sizes[start:]) > self._budget:
+            for index in (i for i in turns if start < i <= current):
+                start = index
+                if sum(sizes[start:]) <= self._budget // 2:
+                    break
+        self._first_sent = messages[start] if start < len(messages) else None
+
+        kept, total = sent[start:], sum(sizes[start:])
+        tools = [i for i, m in enumerate(kept) if m.get("role") == "tool"]
+        for i in tools[:-1]:
+            if total <= self._budget:
+                break
+            elided = {**kept[i], "content": _ELIDED_RESULT}
+            total -= _message_tokens(kept[i]) - _message_tokens(elided)
+            kept[i] = elided
+        return kept
 
     def respond(
         self, messages: list[dict], on_token: TokenCallback | None = None
@@ -533,19 +631,21 @@ class OllamaClient:
         """Soumet l'historique au modèle en streaming et le convertit en :class:`Plan`.
 
         Le system prompt est préfixé à chaque appel ; l'historique générique
-        (user/assistant/tool) est traduit au format Ollama. Le texte est diffusé
-        fragment par fragment via ``on_token`` ; les appels d'outils sont
-        accumulés (Ollama les fournit généralement dans le dernier fragment).
+        (user/assistant/tool), ajusté à la fenêtre de contexte, est traduit au
+        format Ollama. Le texte est diffusé fragment par fragment via ``on_token`` ;
+        les appels d'outils sont accumulés (Ollama les fournit généralement dans le
+        dernier fragment).
         """
         stream = self._client.chat(
             model=self._model,
             messages=[
                 {"role": "system", "content": self._system_prompt},
-                *_to_ollama(messages),
+                *_to_ollama(self._fit_to_window(messages)),
             ],
             tools=ALL_TOOLS_SCHEMA,
             stream=True,
             think=self._think,
+            options=self._options,
         )
         narration_parts: list[str] = []
         tool_calls: list[ToolCall] = []

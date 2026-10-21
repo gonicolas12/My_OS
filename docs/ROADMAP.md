@@ -82,9 +82,18 @@ chacun stable et testé avant le suivant.
 - [x] État du service visible (local, cloud, hors ligne) : une demande envoyée sans
   daemon le signale au lieu d'attendre indéfiniment.
 
+### Après la v1.1 — modèle local (octobre 2026)
+- [x] Ollama joint sur `127.0.0.1` : un « localhost » configuré y est ramené.
+- [x] Contexte du modèle (cache K/V) en 8 bits sur l'ISO, par un drop-in systemd du
+  service `ollama` : deux fois moins de mémoire, mêmes outils choisis.
+- [x] Fenêtre de contexte de 16 384 tokens (`model.num_ctx`), historique envoyé ajusté à
+  la fenêtre : le prompt système n'est plus coupé et les réponses ne s'arrêtent plus net
+  au fil d'une conversation. Validé en VM : 8 demandes à la suite sans `Ctrl+L`, résumés
+  de documents de 12 et 28 Ko, 13 demandes de la sonde du modèle.
+
 ### Encore à éprouver
 - [ ] Un vrai PC (pilotes Wi-Fi, rétroéclairage, cartes graphiques ; son et Wi-Fi ont été
-  validés en VM avec du matériel simulé).
+  validés en VM avec du matériel simulé). Le modèle n'a été mesuré que sur processeur.
 - [ ] Le mode cloud avec une vraie clé API.
 
 ---
@@ -123,18 +132,15 @@ Plus modestes, et directement issues de l'usage réel :
   refus). À cadrer dans le prompt (la fenêtre est la seule confirmation nécessaire).
 - **Temps de réponse sans GPU** : de 20 s à près de 2 min par requête en VM 8 cœurs.
   Une bonne part vient du prompt système et des schémas d'outils (~2 430 tokens) : qwen3.5
-  est hybride, llama.cpp ne reprend un prompt qu'à un point de sauvegarde posé 512 tokens
-  avant la fin du précédent, et chaque nouvelle conversation en relit donc ~500 (10 à 25 s
-  en VM). Pistes : prompt et schémas plus courts, modèle plus petit par défaut sur les
-  machines modestes.
-- **Fenêtre de contexte** : My_OS garde celle d'Ollama par défaut, 4 096 tokens, dont le
-  prompt système et les outils prennent ~2 430. Mesuré en VM : sans `Ctrl+L`, la 7ᵉ
-  demande d'une conversation la remplit (réponse coupée, premiers échanges oubliés), et un
-  fichier de 12 Ko lu par `read_file` la dépasse : Ollama coupe alors le début du prompt,
-  règles et outils compris. Avec le contexte en 8 bits, 8 192 tokens tiennent dans la
-  mémoire des 4 096 d'avant (136 Mio), mais à 8 192 comme à 16 384 le point de sauvegarde
-  recule à 1 024 tokens : sans GPU, une nouvelle conversation prend 35 s au lieu de 17
-  en VM. À arbitrer avec un historique borné en tokens et des sorties d'outils plafonnées.
+  est hybride, llama.cpp ne reprend un prompt qu'à un point de sauvegarde, posé 1 024
+  tokens avant la fin du précédent avec la fenêtre de 16 384 (512 avec 4 096). Chaque
+  nouvelle conversation en relit donc ~1 000 tokens ; une conversation qui se poursuit
+  ne relit que ses nouveaux messages. Pistes : prompt et schémas plus courts, modèle plus
+  petit par défaut sur les machines modestes.
+- **GPU sur l'ISO** : l'ISO n'embarque que les backends processeur d'Ollama ; un PC avec
+  carte graphique y fait donc tourner le modèle sur le processeur. Piste : `ollama-vulkan`
+  et les pilotes Vulkan libres (`vulkan-radeon`, `vulkan-intel`, `vulkan-nouveau`), ~120 Mio
+  installés en tout ; CUDA et ROCm pèsent 1 et 3 Gio.
 
 ---
 

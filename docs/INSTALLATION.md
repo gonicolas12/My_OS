@@ -71,13 +71,12 @@ sudo install -Dm644 packaging/archiso/airootfs/etc/systemd/system/ollama.service
 sudo systemctl daemon-reload && sudo systemctl restart ollama
 ```
 
-> Mesuré en VM (Ollama 0.40.6, fenêtre de 4 096 tokens, sans GPU) : cache de 128 à
-> 68 Mio, mêmes outils choisis sur 12 demandes, même vitesse. qwen3.5 n'a de cache K/V que
-> sur 8 de ses 32 couches : le gain grandit avec la fenêtre. Le cache en 8 bits exige la
-> flash attention, qu'Ollama active seul : ne posez pas `OLLAMA_FLASH_ATTENTION=0` à côté,
-> le modèle ne se chargerait plus. Le réglage vaut pour tous les modèles de cet Ollama ;
-> supprimez le fichier pour l'annuler. Avec `ollama serve` lancé à la main :
-> `OLLAMA_KV_CACHE_TYPE=q8_0 ollama serve`.
+> Mesuré en VM (Ollama 0.40.6, sans GPU) : avec la fenêtre de 16 384 tokens de My_OS,
+> cache de 512 à 272 Mio ; mêmes outils choisis sur 12 demandes et même vitesse (comparés
+> avec une fenêtre de 4 096). Le cache en 8 bits exige la flash attention, qu'Ollama active
+> seul : ne posez pas `OLLAMA_FLASH_ATTENTION=0` à côté, le modèle ne se chargerait plus.
+> Le réglage vaut pour tous les modèles de cet Ollama ; supprimez le fichier pour
+> l'annuler. Avec `ollama serve` lancé à la main : `OLLAMA_KV_CACHE_TYPE=q8_0 ollama serve`.
 
 > Sans GPU, une réponse du modèle 4B prend de quelques secondes à plus d'une minute
 > selon la machine (mesuré en VM, 8 cœurs, sans GPU : 20 s à 1 min 50 ; la première
@@ -89,7 +88,18 @@ Activez le backend Ollama dans `config.local.yaml` (non versionné) :
 model:
   backend: ollama
   name: qwen3.5:4b
+  num_ctx: 16384   # fenêtre de contexte (défaut)
 ```
+
+La **fenêtre de contexte** (`num_ctx`, en tokens) est envoyée à chaque requête. Le prompt
+système et les outils en prennent ~2 400 ; My_OS n'envoie au modèle que la part de
+l'historique qui tient dans le reste : les plus vieux échanges partent d'abord, et chaque
+résultat d'outil est plafonné au quart de la fenêtre (un long fichier n'est lu qu'en
+partie, et le modèle le sait). Chaque nouvelle conversation relit ~1 000 tokens du prompt
+système (une conversation qui se poursuit ne relit que ses nouveaux messages) : vite fait
+avec un GPU, mais sans GPU la première réponse prend ~35 s (médiane en VM 8 cœurs).
+`num_ctx: 4096` n'en relit que ~500 (~17 s), au prix d'une mémoire de conversation
+presque nulle.
 
 Sans cette config, My_OS utilise un **stub** à base de règles (pratique pour tester
 l'UI et les permissions sans Ollama).
