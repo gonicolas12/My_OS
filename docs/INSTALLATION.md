@@ -75,8 +75,10 @@ Après une requête, `ollama ps` affiche `100% GPU` dans sa colonne PROCESSOR. L
 embarque la voie Vulkan.
 
 Comme sur l'ISO, passez le **contexte du modèle en 8 bits** (cache K/V) : deux fois moins
-de mémoire pour les mêmes réponses. Le réglage est un drop-in systemd du service
-`ollama`, fourni dans le dépôt :
+de mémoire pour les mêmes réponses. Le même réglage met Ollama **en local seul**
+(`OLLAMA_NO_CLOUD=1`) : il ne contacte plus ollama.com qu'au téléchargement d'un modèle,
+alors qu'il le fait sinon au démarrage puis toutes les 4 h. C'est un drop-in systemd du
+service `ollama`, fourni dans le dépôt :
 
 ```bash
 sudo install -Dm644 packaging/archiso/airootfs/etc/systemd/system/ollama.service.d/10-myos.conf \
@@ -88,8 +90,10 @@ sudo systemctl daemon-reload && sudo systemctl restart ollama
 > cache de 512 à 272 Mio ; mêmes outils choisis sur 12 demandes et même vitesse (comparés
 > avec une fenêtre de 4 096). Le cache en 8 bits exige la flash attention, qu'Ollama active
 > seul : ne posez pas `OLLAMA_FLASH_ATTENTION=0` à côté, le modèle ne se chargerait plus.
-> Le réglage vaut pour tous les modèles de cet Ollama ; supprimez le fichier pour
-> l'annuler. Avec `ollama serve` lancé à la main : `OLLAMA_KV_CACHE_TYPE=q8_0 ollama serve`.
+> Ces réglages valent pour tous les modèles de cet Ollama ; le local seul coupe les modèles
+> cloud et la recherche web d'Ollama, que My_OS n'utilise pas. Supprimez le fichier pour
+> les annuler. Avec `ollama serve` lancé à la main :
+> `OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_NO_CLOUD=1 ollama serve`.
 
 > Sans GPU, une réponse du modèle 4B prend de quelques secondes à plus d'une minute
 > selon la machine (mesuré en VM, 8 cœurs, sans GPU : 20 s à 1 min 50 ; la première
@@ -102,6 +106,7 @@ model:
   backend: ollama
   name: qwen3.5:4b
   num_ctx: 16384   # fenêtre de contexte (défaut)
+  keep_alive: 1h   # modèle gardé chargé après une requête (défaut)
 ```
 
 La **fenêtre de contexte** (`num_ctx`, en tokens) est envoyée à chaque requête. Le prompt
@@ -113,6 +118,11 @@ conversation ne relit que ~250 tokens du prompt système, quelle que soit la fen
 une conversation qui se poursuit ne lit que ses nouveaux messages (sans GPU, ~10 s par
 demande neuve en VM 8 cœurs). `num_ctx: 4096` économise 200 Mio, au prix d'une mémoire
 de conversation presque nulle.
+
+Ollama décharge le modèle après une période sans requête ; My_OS lui demande de le garder
+**1 h** (`keep_alive`) au lieu des 5 min par défaut. Rechargé, le modèle relit tout le
+prompt système, soit près d'une minute sans GPU ; gardé, il occupe sa mémoire (~3,5 Go, ou
+la VRAM). `keep_alive: -1` le garde toujours, `30m` moins longtemps.
 
 Sans cette config, My_OS utilise un **stub** à base de règles (pratique pour tester
 l'UI et les permissions sans Ollama).

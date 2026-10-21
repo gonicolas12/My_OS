@@ -88,13 +88,13 @@ source réutilisable.
 
 ```
                     ┌─────────────────────────────┐
-   Raccourci  ──▶   │   Popup My_OS (Qt/PySide6)  │
+   Raccourci  ───>  │   Popup My_OS (Qt/PySide6)  │
    clavier global   │   « Tapez votre message… »  │
                     └──────────────┬──────────────┘
                                    │  IPC (socket Unix)
                     ┌──────────────▼──────────────┐
-                    │      Daemon myosd            │
-                    │   (orchestrateur résident)   │
+                    │      Daemon myosd           │
+                    │   (orchestrateur résident)  │
                     └──────────────┬──────────────┘
                                    │
               ┌────────────────────┼────────────────────┐
