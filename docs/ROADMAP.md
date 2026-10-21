@@ -82,7 +82,10 @@ chacun stable et testé avant le suivant.
 - [x] État du service visible (local, cloud, hors ligne) : une demande envoyée sans
   daemon le signale au lieu d'attendre indéfiniment.
 
-### Après la v1.1 — modèle local (octobre 2026)
+### v1.2 — modèle local (octobre 2026)
+- [x] ISO publiée : [release `v1.2`](https://github.com/gonicolas12/My_OS/releases/tag/v1.2)
+  (paquets figés sur l'instantané Arch Linux Archive du 2026-10-20), avec sa somme
+  SHA-256 ; validée en VM (modèle local, 42 scénarios de permissions, interface).
 - [x] Ollama joint sur `127.0.0.1` : un « localhost » configuré y est ramené.
 - [x] Contexte du modèle (cache K/V) en 8 bits sur l'ISO, par un drop-in systemd du
   service `ollama` : deux fois moins de mémoire, mêmes outils choisis.
