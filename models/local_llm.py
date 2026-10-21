@@ -145,6 +145,11 @@ DEFAULT_NUM_CTX = 16384
 # plus lentement.
 _NUM_BATCH = 256
 
+# Durée pendant laquelle Ollama garde le modèle chargé après une requête. Son défaut,
+# 5 min, le décharge entre deux usages espacés : la requête suivante relit alors tout
+# le prompt système et les outils (~2 430 tokens, près d'une minute sans GPU).
+DEFAULT_KEEP_ALIVE = "1h"
+
 # Taille estimée sans tokenizer : ~3,5 caractères par token mesurés sur le prompt
 # de My_OS (français, schémas JSON) ; 3 garde une marge.
 _CHARS_PER_TOKEN = 3
@@ -574,9 +579,11 @@ class OllamaClient:  # pylint: disable=too-many-instance-attributes
         client: ollama.Client | None = None,
         think: bool = False,
         num_ctx: int = DEFAULT_NUM_CTX,
+        keep_alive: str | int = DEFAULT_KEEP_ALIVE,
     ) -> None:
         self._model = model
         self._think = think
+        self._keep_alive = keep_alive
         self._client = client if client is not None else _make_ollama_client(host)
         # Prompt de base + note « local » + contexte réel de la machine, une fois.
         self._system_prompt = BASE_SYSTEM_PROMPT + _LOCAL_NOTE + machine_context()
@@ -654,6 +661,7 @@ class OllamaClient:  # pylint: disable=too-many-instance-attributes
             stream=True,
             think=self._think,
             options=self._options,
+            keep_alive=self._keep_alive,
         )
         narration_parts: list[str] = []
         tool_calls: list[ToolCall] = []

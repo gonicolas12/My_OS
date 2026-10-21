@@ -69,9 +69,10 @@ def _build_model(model_config: ModelConfig) -> Model:
         from models.local_llm import OllamaClient  # pylint: disable=import-outside-toplevel
 
         _log.info(
-            "Modèle : Ollama (%s, fenêtre de %d tokens, raisonnement %s)",
+            "Modèle : Ollama (%s, fenêtre de %d tokens, gardé chargé %s, raisonnement %s)",
             model_config.name,
             model_config.num_ctx,
+            model_config.keep_alive,
             "activé" if model_config.think else "désactivé",
         )
         return OllamaClient(
@@ -79,6 +80,7 @@ def _build_model(model_config: ModelConfig) -> Model:
             host=model_config.host,
             think=model_config.think,
             num_ctx=model_config.num_ctx,
+            keep_alive=model_config.keep_alive,
         )
     if backend != "stub":
         _log.warning(

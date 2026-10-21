@@ -58,6 +58,15 @@ def test_load_config_fenetre_de_contexte(tmp_path: Path) -> None:
     assert load_config(tmp_path / "absent.yaml").model.num_ctx == 16384
 
 
+def test_load_config_duree_de_chargement_du_modele(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text("model:\n  keep_alive: 30m\n", encoding="utf-8")
+    assert load_config(path).model.keep_alive == "30m"
+    path.write_text("model:\n  keep_alive: -1\n", encoding="utf-8")
+    assert load_config(path).model.keep_alive == -1
+    assert load_config(tmp_path / "absent.yaml").model.keep_alive == "1h"
+
+
 def test_load_config_ignore_les_cles_inconnues(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     path.write_text("model:\n  backend: ollama\n  inconnu: 42\n", encoding="utf-8")

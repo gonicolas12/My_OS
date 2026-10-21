@@ -92,6 +92,8 @@ chacun stable et testé avant le suivant.
   de documents de 12 et 28 Ko, 13 demandes de la sonde du modèle.
 - [x] Prompt lu par lots de 256 tokens : une nouvelle conversation ne relit que ~250 tokens
   du prompt système au lieu de ~1 000 (médiane ~10 s au lieu de ~30 s sans GPU, en VM).
+- [x] Modèle gardé chargé 1 h après une requête (`model.keep_alive`, 5 min chez Ollama) :
+  plus de relecture complète du prompt système après une courte pause.
 - [x] Ollama en local seul (`OLLAMA_NO_CLOUD=1` sur l'ISO) : plus d'appels à ollama.com au
   démarrage ni toutes les 4 h, seulement pour télécharger un modèle.
 - [x] Carte graphique sur l'ISO : backend Vulkan d'Ollama et pilotes Vulkan libres (AMD,
@@ -140,10 +142,10 @@ Plus modestes, et directement issues de l'usage réel :
   l'avoir faite (vu une fois en octobre 2026, la carte de l'outil affichant bien le
   refus). À cadrer dans le prompt (la fenêtre est la seule confirmation nécessaire).
 - **Temps de réponse sans GPU** : ~10 s par demande neuve en VM 8 cœurs depuis les lots
-  de 256 tokens, mais près d'une minute après 5 min d'inactivité : Ollama décharge alors
-  le modèle, et la requête suivante relit tout le prompt système et les schémas d'outils
-  (~2 430 tokens). Pistes : prompt et schémas plus courts, modèle gardé chargé plus
-  longtemps (`keep_alive`, au prix de la mémoire), modèle plus petit par défaut sur les
+  de 256 tokens, mais près d'une minute quand le modèle doit être chargé (première
+  requête de la session, ou après 1 h sans requête) : il relit alors tout le prompt
+  système et les schémas d'outils (~2 430 tokens). Pistes : prompt et schémas plus
+  courts, modèle préchargé à l'ouverture de session, modèle plus petit par défaut sur les
   machines modestes.
 
 ---

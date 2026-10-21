@@ -146,6 +146,16 @@ def test_fenetre_de_contexte_envoyee_a_chaque_requete() -> None:
     assert fake.last_kwargs["options"]["num_ctx"] == 8192
 
 
+def test_modele_garde_charge_une_heure_par_defaut() -> None:
+    # Avec les 5 min d'Ollama, une requête après une pause relisait tout le prompt
+    # système (près d'une minute sans GPU).
+    fake = _FakeClient([_chunk(content="ok")])
+    OllamaClient(client=fake).respond(_history("ping"))
+    assert fake.last_kwargs["keep_alive"] == "1h"
+    OllamaClient(client=fake, keep_alive=-1).respond(_history("ping"))
+    assert fake.last_kwargs["keep_alive"] == -1
+
+
 @pytest.mark.parametrize("num_ctx", [4096, 16384])
 def test_prompt_lu_par_lots_de_256_tokens(num_ctx: int) -> None:
     # Ollama passe à des lots de 1 024 dès 8 192 tokens de fenêtre ; llama.cpp
@@ -170,9 +180,10 @@ def test_daemon_transmet_la_fenetre_de_la_config(monkeypatch) -> None:
             return [_chunk(content="ok")]
 
     monkeypatch.setitem(sys.modules, "ollama", SimpleNamespace(Client=_Client))
-    model = _build_model(ModelConfig(backend="ollama", num_ctx=8192))
+    model = _build_model(ModelConfig(backend="ollama", num_ctx=8192, keep_alive="30m"))
     model.respond(_history("ping"))
     assert received["options"]["num_ctx"] == 8192
+    assert received["keep_alive"] == "30m"
 
 
 def test_historique_court_envoye_en_entier() -> None:

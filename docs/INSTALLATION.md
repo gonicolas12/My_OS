@@ -106,6 +106,7 @@ model:
   backend: ollama
   name: qwen3.5:4b
   num_ctx: 16384   # fenêtre de contexte (défaut)
+  keep_alive: 1h   # modèle gardé chargé après une requête (défaut)
 ```
 
 La **fenêtre de contexte** (`num_ctx`, en tokens) est envoyée à chaque requête. Le prompt
@@ -117,6 +118,11 @@ conversation ne relit que ~250 tokens du prompt système, quelle que soit la fen
 une conversation qui se poursuit ne lit que ses nouveaux messages (sans GPU, ~10 s par
 demande neuve en VM 8 cœurs). `num_ctx: 4096` économise 200 Mio, au prix d'une mémoire
 de conversation presque nulle.
+
+Ollama décharge le modèle après une période sans requête ; My_OS lui demande de le garder
+**1 h** (`keep_alive`) au lieu des 5 min par défaut. Rechargé, le modèle relit tout le
+prompt système, soit près d'une minute sans GPU ; gardé, il occupe sa mémoire (~3,5 Go, ou
+la VRAM). `keep_alive: -1` le garde toujours, `30m` moins longtemps.
 
 Sans cette config, My_OS utilise un **stub** à base de règles (pratique pour tester
 l'UI et les permissions sans Ollama).
