@@ -17,6 +17,7 @@ d'[archiso](https://wiki.archlinux.org/title/Archiso).
 | **Base** | dérivée de `releng` (overlay) | kernel, `mkinitcpio`, bootloaders et `pacman.conf` restent ceux, à jour, d'archiso ; aucune config bootloader maintenue à la main. |
 | **Compositeur** | **Xfce / X11** | chemin **nominal** pleinement supporté (le port Wayland reste expérimental, cf. §5). Robuste pour une première ISO. |
 | **Modèle local** | **téléchargé au 1er boot** (`ollama pull qwen3.5:4b`) | ISO légère ; reste *local et privé* à l'usage. Compromis : **réseau requis au 1er démarrage**. Alternative « modèle embarqué » (ISO lourde, hors-ligne) : cf. §6. |
+| **Contexte du modèle** | **8 bits** (`OLLAMA_KV_CACHE_TYPE=q8_0`, drop-in systemd du service `ollama`) | deux fois moins de mémoire pour la même fenêtre ; mêmes outils choisis et même vitesse, mesurés en VM sur Ollama 0.40.6. Exige la flash attention, qu'Ollama active seul (ne pas poser `OLLAMA_FLASH_ATTENTION=0`). |
 | **Dépendances Python** | venv `--system-site-packages` au 1er boot | les paquets système (`pyside6`, `python-dbus`, `python-gobject`…) viennent de pacman ; seul le **PyPI-only** (`pynput`, `anthropic`, `ollama`) passe par `pip`. |
 | **Utilisateur** | `myos`, **non-root**, créé au 1er boot | le daemon ne tourne **jamais** en root (cf. [SECURITY.md](../docs/SECURITY.md) menace 3). Élévation ponctuelle via polkit/`pkexec`. |
 | **Autologin** | LightDM → session Xfce de `myos` | démo immédiate ; le service utilisateur `myosd` et le popup démarrent dans la session. |
@@ -43,6 +44,7 @@ packaging/
         ├── etc/sudoers.d/10-myos-wheel               # wheel admin (polkit reste la voie d'élévation)
         ├── etc/systemd/system/myos-prepare.service   # crée l'utilisateur au 1er boot
         ├── etc/systemd/system/myos-pacman-sync.service  # resynchronise les bases pacman
+        ├── etc/systemd/system/ollama.service.d/10-myos.conf  # Ollama : contexte du modèle en 8 bits
         ├── etc/skel/.xprofile                        # init session : firstrun + démarre myosd
         ├── etc/skel/.config/autostart/…              # autostart du popup résident
         ├── etc/skel/.config/systemd/user/myosd.service  # service UTILISATEUR (ISO)
@@ -142,6 +144,8 @@ vérifier au boot :
 3. **Ctrl+Alt+Espace** ouvre le popup, centré et au-dessus de tout.
 4. Une requête simple (« liste mon dossier home ») fonctionne en local.
 5. Une action sensible déclenche bien une **confirmation** (polkit pour l'élévation).
+6. Contexte du modèle en 8 bits : après une requête,
+   `journalctl -u ollama | grep "K (q8_0)"` affiche la taille du cache.
 
 ---
 

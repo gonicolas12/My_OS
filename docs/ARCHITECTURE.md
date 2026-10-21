@@ -87,6 +87,8 @@ Voir `SECURITY.md §4` pour les règles. Modules :
 ### 4.1 · Modèle local (`models/local_llm.py`)
 Qwen via Ollama. Backend par défaut. Repris quasi tel quel de My_AI. Confidentialité totale : rien ne sort de la machine.
 
+Deux réglages viennent aussi de My_AI. Ollama est joint sur `127.0.0.1` : un « localhost » configuré y est ramené, car il passerait d'abord par l'IPv6 (`::1`), où Ollama n'écoute pas. Le contexte du modèle (cache K/V) est en 8 bits, deux fois moins de mémoire. C'est un réglage du serveur Ollama, pas du daemon : l'ISO le pose par un drop-in systemd du service `ollama` (`packaging/archiso/airootfs/etc/systemd/system/ollama.service.d/10-myos.conf`), à copier à la main sur une Arch existante (`INSTALLATION.md §2.3`).
+
 ### 4.2 · Routeur cloud (`models/cloud_router.py`)
 Aiguille une requête vers le backend local ou cloud (Claude via la lib `anthropic`). Le cloud est **opt-in**, activé par requête. Le routeur :
 - vérifie qu'une clé API est présente (via `models/secrets.py`) ;

@@ -61,6 +61,24 @@ sudo systemctl enable --now ollama  # ou `ollama serve` dans un terminal
 ollama pull qwen3.5:4b              # ~3,3 Go ; recommandé ≥ 8 Go de RAM
 ```
 
+Comme sur l'ISO, passez le **contexte du modèle en 8 bits** (cache K/V) : deux fois moins
+de mémoire pour les mêmes réponses. Le réglage est un drop-in systemd du service
+`ollama`, fourni dans le dépôt :
+
+```bash
+sudo install -Dm644 packaging/archiso/airootfs/etc/systemd/system/ollama.service.d/10-myos.conf \
+    /etc/systemd/system/ollama.service.d/10-myos.conf
+sudo systemctl daemon-reload && sudo systemctl restart ollama
+```
+
+> Mesuré en VM (Ollama 0.40.6, fenêtre de 4 096 tokens, sans GPU) : cache de 128 à
+> 68 Mio, mêmes outils choisis sur 12 demandes, même vitesse. qwen3.5 n'a de cache K/V que
+> sur 8 de ses 32 couches : le gain grandit avec la fenêtre. Le cache en 8 bits exige la
+> flash attention, qu'Ollama active seul : ne posez pas `OLLAMA_FLASH_ATTENTION=0` à côté,
+> le modèle ne se chargerait plus. Le réglage vaut pour tous les modèles de cet Ollama ;
+> supprimez le fichier pour l'annuler. Avec `ollama serve` lancé à la main :
+> `OLLAMA_KV_CACHE_TYPE=q8_0 ollama serve`.
+
 > Sans GPU, une réponse du modèle 4B prend de quelques secondes à plus d'une minute
 > selon la machine (mesuré en VM, 8 cœurs, sans GPU : 20 s à 1 min 50 ; la première
 > requête charge le modèle en mémoire).
@@ -199,6 +217,10 @@ Procédure détaillée, décisions et limites : **[packaging/README.md](../packa
   Secret Service n'est pas démarré (`gnome-keyring`). My_OS replie alors en **local**.
 - **Le modèle ne répond pas** : vérifiez `ollama serve` et `ollama list` (le modèle
   `qwen3.5:4b` doit être présent).
+- **Le modèle ne se charge plus** (« quantized V cache requires flash_attn to be
+  enabled » dans `journalctl -u ollama`) : `OLLAMA_FLASH_ATTENTION=0` est posé alors que
+  le contexte est en 8 bits (`OLLAMA_KV_CACHE_TYPE=q8_0`). Retirez l'un des deux ;
+  `systemctl cat ollama` montre où chacun est posé.
 - **Élévation refusée** : un agent polkit doit tourner dans la session (Xfce lance
   `polkit-gnome`). Sinon, installez/lancez un agent d'authentification polkit.
   Un « Request dismissed » signifie simplement que la fenêtre polkit a été annulée.
