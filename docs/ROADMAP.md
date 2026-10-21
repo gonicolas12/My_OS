@@ -118,10 +118,23 @@ Plus modestes, et directement issues de l'usage réel :
 - **Messages polkit traduits** (« Request dismissed » s'affiche tel quel).
 - **Confirmations en double** : le modèle demande parfois « Voulez-vous vraiment… ? »
   en texte avant d'appeler l'outil, puis la fenêtre de confirmation redemande ; après
-  un refus, il lui arrive aussi de reproposer la même action. À cadrer dans le prompt
-  (la fenêtre est la seule confirmation nécessaire).
-- **Temps de réponse sans GPU** : de 20 s à près de 2 min par requête en VM 8 cœurs ;
-  piste : modèle plus petit par défaut sur les machines modestes.
+  un refus, il lui arrive aussi de reproposer la même action, et rarement d'affirmer
+  l'avoir faite (vu une fois en octobre 2026, la carte de l'outil affichant bien le
+  refus). À cadrer dans le prompt (la fenêtre est la seule confirmation nécessaire).
+- **Temps de réponse sans GPU** : de 20 s à près de 2 min par requête en VM 8 cœurs.
+  Une bonne part vient du prompt système et des schémas d'outils (~2 430 tokens) : qwen3.5
+  est hybride, llama.cpp ne reprend un prompt qu'à un point de sauvegarde posé 512 tokens
+  avant la fin du précédent, et chaque nouvelle conversation en relit donc ~500 (10 à 25 s
+  en VM). Pistes : prompt et schémas plus courts, modèle plus petit par défaut sur les
+  machines modestes.
+- **Fenêtre de contexte** : My_OS garde celle d'Ollama par défaut, 4 096 tokens, dont le
+  prompt système et les outils prennent ~2 430. Mesuré en VM : sans `Ctrl+L`, la 7ᵉ
+  demande d'une conversation la remplit (réponse coupée, premiers échanges oubliés), et un
+  fichier de 12 Ko lu par `read_file` la dépasse : Ollama coupe alors le début du prompt,
+  règles et outils compris. Avec le contexte en 8 bits, 8 192 tokens tiennent dans la
+  mémoire des 4 096 d'avant (136 Mio), mais à 8 192 comme à 16 384 le point de sauvegarde
+  recule à 1 024 tokens : sans GPU, une nouvelle conversation prend 35 s au lieu de 17
+  en VM. À arbitrer avec un historique borné en tokens et des sorties d'outils plafonnées.
 
 ---
 
