@@ -141,9 +141,19 @@ def test_fenetre_de_contexte_envoyee_a_chaque_requete() -> None:
     # Toujours la même : Ollama recharge le modèle quand elle change.
     fake = _FakeClient([_chunk(content="ok")])
     OllamaClient(client=fake).respond(_history("ping"))
-    assert fake.last_kwargs["options"] == {"num_ctx": DEFAULT_NUM_CTX}
+    assert fake.last_kwargs["options"]["num_ctx"] == DEFAULT_NUM_CTX
     OllamaClient(client=fake, num_ctx=8192).respond(_history("ping"))
-    assert fake.last_kwargs["options"] == {"num_ctx": 8192}
+    assert fake.last_kwargs["options"]["num_ctx"] == 8192
+
+
+@pytest.mark.parametrize("num_ctx", [4096, 16384])
+def test_prompt_lu_par_lots_de_256_tokens(num_ctx: int) -> None:
+    # Ollama passe à des lots de 1 024 dès 8 192 tokens de fenêtre ; llama.cpp
+    # reprenant un prompt un lot avant la fin du précédent, une nouvelle
+    # conversation relirait alors ~1 000 tokens du prompt système au lieu de ~250.
+    fake = _FakeClient([_chunk(content="ok")])
+    OllamaClient(client=fake, num_ctx=num_ctx).respond(_history("ping"))
+    assert fake.last_kwargs["options"]["num_batch"] == 256
 
 
 def test_daemon_transmet_la_fenetre_de_la_config(monkeypatch) -> None:
@@ -162,7 +172,7 @@ def test_daemon_transmet_la_fenetre_de_la_config(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "ollama", SimpleNamespace(Client=_Client))
     model = _build_model(ModelConfig(backend="ollama", num_ctx=8192))
     model.respond(_history("ping"))
-    assert received["options"] == {"num_ctx": 8192}
+    assert received["options"]["num_ctx"] == 8192
 
 
 def test_historique_court_envoye_en_entier() -> None:
@@ -425,8 +435,6 @@ def test_arguments_none_devient_dict_vide() -> None:
 def test_historique_est_traduit_au_format_ollama() -> None:
     # L'historique générique (user/assistant/tool) est passé après le system,
     # avec les tool_calls reconstruits (cohérence du template de chat Qwen).
-    from daemon.orchestrator import ToolCall
-
     fake = _FakeClient([_chunk(content="ok")])
     history = [
         {"role": "user", "content": "liste /tmp"},
