@@ -2,7 +2,8 @@
 
 Backend **factice** injecté → on teste la logique d'outil (validation, bornage,
 messages) sans toucher à D-Bus, pactl ni au matériel. Couvre aussi la
-propagation d'erreur backend et l'absence d'élévation.
+propagation d'erreur backend et l'absence d'élévation, et le rejeu de ``pactl``
+pendant le démarrage du serveur son (commande et horloge simulées).
 """
 
 # Comparer explicitement avec [] (aucun appel backend) est plus parlant en test.
@@ -11,6 +12,7 @@ from __future__ import annotations
 
 import pytest
 
+from core.elevation import CommandResult
 from tools.system_settings import (
     SETTINGS_TOOLS,
     SetBrightness,
@@ -121,6 +123,83 @@ def test_set_mute_valeur_invalide_echoue(bad: object) -> None:
     result = SetMute(backend).run({"muted": bad})
     assert result.success is False
     assert backend.mute == []
+
+
+# --- pactl : serveur son qui démarre (backend de production, commande simulée) ---
+
+
+class _Clock:
+    """Horloge factice : ``sleep`` avance ``monotonic`` sans attendre."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.sleeps: list[float] = []
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
+def _pactl_double(
+    monkeypatch: pytest.MonkeyPatch,
+    failures: int,
+    code: int = 1,
+    error: str = "Failed to get sink information: No such entity",
+) -> tuple[list[list[str]], _Clock]:
+    """``run_command`` simulé : ``failures`` échecs puis succès. Renvoie (appels, horloge)."""
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs: object) -> CommandResult:
+        calls.append(argv)
+        if len(calls) <= failures:
+            return CommandResult(returncode=code, stdout="", stderr=error)
+        return CommandResult(returncode=0, stdout="", stderr="")
+
+    clock = _Clock()
+    monkeypatch.setattr("core.elevation.run_command", fake_run)
+    monkeypatch.setattr("tools.system_settings.time", clock)
+    return calls, clock
+
+
+def test_pactl_rejoue_tant_que_la_sortie_audio_n_existe_pas(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Vu en VM (ISO v1.3) : PipeWire démarre à la demande ; la 1re commande de la
+    # session échouait (« No such entity ») avant que la sortie audio n'existe.
+    calls, clock = _pactl_double(monkeypatch, failures=3)
+    assert SetVolume().run({"percent": 30}).success is True
+    assert calls == [["pactl", "set-sink-volume", "@DEFAULT_SINK@", "30%"]] * 4
+    assert clock.sleeps == [0.1] * 3
+
+
+def test_set_mute_rejoue_aussi(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls, _clock = _pactl_double(monkeypatch, failures=1)
+    assert SetMute().run({"muted": True}).success is True
+    assert calls == [["pactl", "set-sink-mute", "@DEFAULT_SINK@", "1"]] * 2
+
+
+def test_pactl_echec_persistant_remonte_apres_le_delai(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls, clock = _pactl_double(monkeypatch, failures=10_000)
+    result = SetVolume().run({"percent": 30})
+    assert result.success is False
+    assert "No such entity" in result.output
+    assert 5.0 <= clock.now <= 5.1 + 1e-9
+    assert len(calls) == len(clock.sleeps) + 1
+
+
+@pytest.mark.parametrize("code", [124, 127])
+def test_pactl_introuvable_ou_bloque_echoue_aussitot(
+    monkeypatch: pytest.MonkeyPatch, code: int
+) -> None:
+    calls, clock = _pactl_double(monkeypatch, failures=1, code=code, error="pactl ?")
+    assert SetVolume().run({"percent": 30}).success is False
+    assert len(calls) == 1
+    assert clock.sleeps == []
 
 
 # --- wifi ---
