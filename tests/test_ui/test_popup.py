@@ -220,6 +220,53 @@ def test_cloud_avec_cle_affiche_bandeau_et_pastille(
     assert _client(popup).sent[-1]["use_cloud"] is True
 
 
+def test_saisie_de_cle_au_dessus_du_popup(popup: Popup, monkeypatch: object) -> None:
+    # Vu en VM (ISO v1.2, xfwm4) : sans le drapeau, la saisie de la clé, modale,
+    # s'ouvrait SOUS le popup « toujours au-dessus » et le bloquait sans être visible.
+    flags: list[object] = []
+
+    class Saisie(QtWidgets.QInputDialog):
+        def exec(self) -> int:
+            flags.append(self.windowFlags())
+            return 0  # Annuler
+
+    monkeypatch.setattr("ui.popup.QInputDialog", Saisie)
+    assert popup._prompt_api_key() is False
+    assert flags[0] & QtCore.Qt.WindowType.WindowStaysOnTopHint
+
+
+def test_echec_d_enregistrement_signale_au_dessus_du_popup(
+    popup: Popup, monkeypatch: object
+) -> None:
+    flags: list[object] = []
+
+    class Saisie(QtWidgets.QInputDialog):
+        def exec(self) -> int:
+            self.setTextValue("sk-ant-test")
+            return 1  # Enregistrer
+
+    class Alerte(QtWidgets.QMessageBox):
+        def exec(self) -> int:
+            flags.append(self.windowFlags())
+            return 0
+
+        @staticmethod
+        def warning(*_args: object) -> object:
+            # Raccourci statique : aucun drapeau réglable, l'alerte s'ouvrirait sous le
+            # popup (et bloquerait ce test, faute de clic). Noté sans drapeau.
+            flags.append(QtCore.Qt.WindowType.Widget)
+            return QtWidgets.QMessageBox.StandardButton.Ok
+
+    def trousseau_absent(_key: str) -> None:
+        raise RuntimeError("aucun trousseau")
+
+    monkeypatch.setattr("ui.popup.QInputDialog", Saisie)
+    monkeypatch.setattr("ui.popup.QMessageBox", Alerte)
+    monkeypatch.setattr("ui.popup.secrets.set_api_key", trousseau_absent)
+    assert popup._prompt_api_key() is False
+    assert flags[0] & QtCore.Qt.WindowType.WindowStaysOnTopHint
+
+
 def _shortcut(popup: Popup, key: object) -> object:
     wanted = QtGui.QKeySequence(key)
     return next(s for s in popup.findChildren(QtGui.QShortcut) if s.key() == wanted)
