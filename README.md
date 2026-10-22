@@ -98,7 +98,7 @@ source réutilisable.
                     └──────────────┬──────────────┘
                                    │
               ┌────────────────────┼────────────────────┐
-              ▼                    ▼                     ▼
+              ▼                    ▼                    ▼
       ┌───────────────┐   ┌────────────────┐   ┌─────────────────┐
       │ Modèle local  │   │ Moteur de      │   │ Routeur cloud   │
       │ Qwen/Ollama   │   │ permissions    │   │ Claude (opt-in) │
