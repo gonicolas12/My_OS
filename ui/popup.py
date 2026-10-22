@@ -31,6 +31,7 @@ from PySide6.QtCore import QEvent, QRect, QSettings, Qt, QThread, Signal
 from PySide6.QtGui import QCloseEvent, QCursor, QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QFrame,
     QHBoxLayout,
     QInputDialog,
@@ -72,6 +73,16 @@ MESSAGE_OFFLINE = (
 MESSAGE_CONNECTION_LOST = (
     "Connexion au service My_OS perdue : la réponse est interrompue."
 )
+
+
+def _keep_above(dialog: QDialog) -> None:
+    """Ouvre ``dialog`` dans la couche du popup, lui-même « toujours au-dessus ».
+
+    Sans ``WindowStaysOnTopHint``, xfwm et consorts placent la fenêtre SOUS le
+    popup : modale, elle le bloque alors sans être visible (vu en VM avec la saisie
+    de la clé API ; même correctif que :class:`ui.confirm_dialog.ConfirmDialog`).
+    """
+    dialog.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
 
 
 class IPCClient(QThread):
@@ -519,6 +530,7 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         système (``models.secrets`` → keyring), cf. docs/SECURITY.md menace 4.
         """
         dialog = QInputDialog(self)
+        _keep_above(dialog)
         dialog.setWindowTitle("Clé API Anthropic")
         dialog.setLabelText(
             "Clé API Anthropic (stockée dans le trousseau, jamais en clair) :"
@@ -535,9 +547,15 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         try:
             secrets.set_api_key(key)
         except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
-            QMessageBox.warning(
-                self, "Clé API", f"Impossible d'enregistrer la clé : {exc}"
+            alert = QMessageBox(
+                QMessageBox.Icon.Warning,
+                "Clé API",
+                f"Impossible d'enregistrer la clé : {exc}",
+                QMessageBox.StandardButton.Ok,
+                self,
             )
+            _keep_above(alert)
+            alert.exec()
             return False
         return True
 
