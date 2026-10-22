@@ -22,14 +22,28 @@ production :class:`_SystemBackend` (import paresseux de ``dbus``) utilise :
   liste validée (cf. SECURITY §7). Choix documenté, transport interne au
   backend.
 
+Le serveur son démarre à la demande (activation par socket) : à la première
+commande de la session, sa sortie n'existe pas encore et ``pactl`` échoue
+(« No such entity »). La commande, idempotente, est alors rejouée quelques
+secondes au plus (cf. :meth:`_SystemBackend._pactl`).
+
 Aucune vérification de permission ici (rôle exclusif du ``policy_engine``).
 """
 
 from __future__ import annotations
 
+import time
 from typing import ClassVar, Protocol
 
 from tools.base_tool import BaseTool, ToolResult
+
+# Rejeu de pactl pendant que le serveur son démarre. Mesuré en VM : la sortie apparaît
+# ~0,1 s après la 1re commande de la session, plus tard sur un démarrage à froid. Au-delà
+# du délai, l'échec est rapporté tel quel (pas de serveur son, pas de carte son…).
+_PACTL_RETRY_S = 5.0
+_PACTL_POLL_S = 0.1
+# Codes de core.elevation.run_command qu'un rejeu ne changerait pas.
+_PACTL_FINAL_CODES = (124, 127)  # délai dépassé, commande introuvable
 
 
 def _err(message: str) -> ToolResult:
@@ -117,25 +131,30 @@ class _SystemBackend:
 
     def set_volume(self, percent: int) -> None:
         """Règle le volume via ``pactl`` (sans shell, argv liste)."""
-        from core.elevation import run_command  # pylint: disable=import-outside-toplevel
-
-        result = run_command(
-            ["pactl", "set-sink-volume", "@DEFAULT_SINK@", f"{percent}%"]
-        )
-        if not result.ok:
-            raise RuntimeError(
-                result.stderr.strip() or "échec de pactl set-sink-volume"
-            )
+        self._pactl(["set-sink-volume", "@DEFAULT_SINK@", f"{percent}%"])
 
     def set_mute(self, muted: bool) -> None:
         """Coupe/rétablit le son via ``pactl`` (sans shell, argv liste)."""
+        self._pactl(["set-sink-mute", "@DEFAULT_SINK@", "1" if muted else "0"])
+
+    @staticmethod
+    def _pactl(args: list[str]) -> None:
+        """Lance ``pactl ARGS`` et le rejoue tant que le serveur son démarre.
+
+        Rejoue toutes les ``_PACTL_POLL_S`` secondes, ``_PACTL_RETRY_S`` au plus.
+        Aucun tri sur le texte de l'erreur : ``pactl`` le traduit selon la langue
+        du système. Une commande introuvable ou bloquée échoue aussitôt.
+        """
         from core.elevation import run_command  # pylint: disable=import-outside-toplevel
 
-        result = run_command(
-            ["pactl", "set-sink-mute", "@DEFAULT_SINK@", "1" if muted else "0"]
-        )
-        if not result.ok:
-            raise RuntimeError(result.stderr.strip() or "échec de pactl set-sink-mute")
+        deadline = time.monotonic() + _PACTL_RETRY_S
+        while True:
+            result = run_command(["pactl", *args])
+            if result.ok:
+                return
+            if result.returncode in _PACTL_FINAL_CODES or time.monotonic() >= deadline:
+                raise RuntimeError(result.stderr.strip() or f"échec de pactl {args[0]}")
+            time.sleep(_PACTL_POLL_S)
 
     def set_wifi(self, enabled: bool) -> None:
         """Active/désactive le Wi-Fi via D-Bus NetworkManager (``WirelessEnabled``)."""
