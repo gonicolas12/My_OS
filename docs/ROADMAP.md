@@ -114,6 +114,17 @@ chacun stable et testé avant le suivant.
   dessous : modales, elles bloquaient le popup sans être visibles. Trouvé en VM en
   préparant les captures de présentation.
 
+### v1.4 — correctif du son (octobre 2026)
+- [x] ISO publiée : [release `v1.4`](https://github.com/gonicolas12/My_OS/releases/tag/v1.4)
+  (mêmes paquets que la v1.2 et la v1.3 : instantané Arch Linux Archive du 2026-10-20),
+  avec sa somme SHA-256 ; validée en VM (modèle local, 42 scénarios de permissions,
+  interface, saisie de la clé API, son au premier usage).
+- [x] Premier réglage du son de la session : le serveur son démarre à la demande et sa
+  sortie n'existait pas encore, si bien que `set_volume` et `set_mute` échouaient
+  (« No such entity ») à la première demande après le démarrage. La commande est
+  rejouée le temps que la sortie apparaisse (~0,1 s mesuré en VM, 5 s au plus). Trouvé
+  pendant la validation de la v1.3.
+
 ### Encore à éprouver
 - [ ] Un vrai PC (pilotes Wi-Fi, rétroéclairage, cartes graphiques ; son et Wi-Fi ont été
   validés en VM avec du matériel simulé). Le modèle sur une vraie carte graphique reste à
