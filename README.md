@@ -14,7 +14,7 @@ My_OS est la suite logique de [My_AI](https://github.com/gonicolas12/My_AI) : on
 d'une *application* qui parle au PC à un *système* dans lequel l'IA est résidente et
 profondément intégrée.
 
-> **État du projet : v1.2 publiée ([télécharger](https://github.com/gonicolas12/My_OS/releases/tag/v1.2)), validée en VM ; elle rend le modèle local plus fiable et plus rapide, et lui ouvre la carte graphique.** Les cinq jalons (socle →
+> **État du projet : v1.3 publiée ([télécharger](https://github.com/gonicolas12/My_OS/releases/tag/v1.3)), validée en VM ; elle reprend la v1.2 (modèle local plus fiable et plus rapide, carte graphique) et corrige la saisie de la clé API du mode cloud.** Les cinq jalons (socle →
 > fichiers/permissions → pilotage système → routeur cloud → packaging) sont terminés, et
 > l'ISO a été testée de bout en bout en VM (BIOS et UEFI) en octobre 2026 : permissions,
 > confirmations, élévation polkit, réglages, modèle local
@@ -150,7 +150,7 @@ Deux voies. Détails complets dans **[docs/INSTALLATION.md](docs/INSTALLATION.md
 ### a) Via l'ISO live (le plus simple)
 
 Une ISO bootable (base Arch + Xfce/X11) embarque My_OS prêt à l'emploi :
-**[télécharger l'ISO de la v1.2](https://github.com/gonicolas12/My_OS/releases/tag/v1.2)**
+**[télécharger l'ISO de la v1.3](https://github.com/gonicolas12/My_OS/releases/tag/v1.3)**
 (avec son fichier `.sha256`). Pour la construire vous-même, le profil
 [archiso](https://wiki.archlinux.org/title/Archiso) et le script de build sont dans
 [`packaging/`](packaging/) (`sudo ./packaging/build_iso.sh`, sur un hôte Arch). Au 1er boot, les dépendances et
@@ -308,6 +308,9 @@ par le point de passage unique `permissions/policy_engine.py`.
   modèle local : conversations longues sans réponse coupée (fenêtre de 16 384 tokens),
   carte graphique via Vulkan, réponses plus rapides sans GPU, contexte en 8 bits, Ollama
   en local seul.
+- [x] **v1.3 publiée** : [release GitHub](https://github.com/gonicolas12/My_OS/releases/tag/v1.3),
+  correctif : la saisie de la clé API du mode cloud s'ouvre au-dessus du popup (elle
+  s'ouvrait dessous et le bloquait sans être visible).
 
 **Encore à éprouver :** matériel réel (pilotes Wi-Fi, rétroéclairage, cartes graphiques)
 et mode cloud avec une vraie clé — retours bienvenus dans les

@@ -104,6 +104,16 @@ chacun stable et testé avant le suivant.
   processeur) et sur un périphérique Vulkan logiciel (modèle chargé en entier dessus,
   contexte en 8 bits compris, réponse juste).
 
+### v1.3 — correctif du mode cloud (octobre 2026)
+- [x] ISO publiée : [release `v1.3`](https://github.com/gonicolas12/My_OS/releases/tag/v1.3)
+  (mêmes paquets que la v1.2 : instantané Arch Linux Archive du 2026-10-20), avec sa
+  somme SHA-256 ; validée en VM (modèle local, 42 scénarios de permissions, interface,
+  saisie de la clé API).
+- [x] La saisie de la clé API (bascule « ☁ Cloud » ou bouton de la clé) et l'alerte
+  d'échec d'enregistrement s'ouvrent au-dessus du popup. Sous xfwm4, elles s'ouvraient
+  dessous : modales, elles bloquaient le popup sans être visibles. Trouvé en VM en
+  préparant les captures de présentation.
+
 ### Encore à éprouver
 - [ ] Un vrai PC (pilotes Wi-Fi, rétroéclairage, cartes graphiques ; son et Wi-Fi ont été
   validés en VM avec du matériel simulé). Le modèle sur une vraie carte graphique reste à
