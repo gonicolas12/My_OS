@@ -140,6 +140,12 @@ permissions.
   streaming rendues en markdown, sorties d'outils dans des cartes, thème noir et orange.
   Fenêtre redimensionnable par les bords, agrandissable, en plein écran (`F11`), qui
   revient là où on l'a laissée.
+- 🖱️ **Contrôle de l'ordinateur** *(prochaine version)* — quand une demande passe par une
+  application graphique, l'IA **voit l'écran** et agit : cliquer, taper, remplir des
+  champs, combinaisons de touches, ouvrir une application, changer de fenêtre. **En
+  local**, sans modèle de vision : l'écran lui est décrit par l'arbre d'accessibilité et
+  l'OCR, chaque élément numéroté. Pendant le contrôle, les **bords de l'écran brillent en
+  orange** et une barre rappelle comment l'arrêter (**Échap** ou bouton ■).
 
 ---
 
@@ -209,6 +215,16 @@ reste expérimental.
 - « Qu'est-ce qui mange ma RAM en ce moment ? »
 - « Résume ce fichier. » *(le contenu lu reste une donnée, jamais une instruction)*
 
+**Contrôle de l'ordinateur (session X11) :** demandez par exemple « Ouvre Mousepad et
+écris une liste de courses » ou « Remplis ce formulaire avec mon nom ». My_OS demande
+d'abord votre accord **pour cette demande** (« Autoriser pour cette demande » ;
+« Refuser » par défaut). Le popup s'efface, les bords de l'écran brillent en orange clair
+et une barre, en bas, montre l'action en cours : **« Cliquez ici ■ ou appuyez sur Échap
+pour arrêter »**. À la fin, la lueur s'éteint et le popup revient avec le compte rendu.
+Les actions sensibles (taper dans un terminal, bouton « Supprimer » ou « Envoyer »,
+paramètres du système) restent confirmées une à une ; mots de passe, demandes
+d'élévation et écran verrouillé ne sont jamais touchés.
+
 **Mode cloud (optionnel) :** activez « ☁ Cloud » sous la zone de saisie, puis saisissez
 votre clé API Anthropic (stockée dans le trousseau) ; un indicateur signale que **cette**
 requête part au cloud. Conseil : `Ctrl+L` avant, pour minimiser les données envoyées.
@@ -236,6 +252,9 @@ pas de la fiabilité du modèle**.
 - **Mémorisation** : *ce dossier* / *cette session*, **au niveau 1 seulement** — une
   action de niveau 2 est redemandée à chaque fois.
 - **Audit** : chaque action et décision est journalisée dans `~/.local/share/my_os/audit.db` (SQLite).
+- **Écran** : le contrôle de l'ordinateur est accordé **pour une requête** (niveau 2),
+  toujours visible et arrêtable d'un Échap ; la cible jugée est celle de l'écran, jamais
+  celle que décrit le modèle ([SECURITY.md](docs/SECURITY.md), menace 5).
 
 ---
 
@@ -319,9 +338,13 @@ par le point de passage unique `permissions/policy_engine.py`.
 et mode cloud avec une vraie clé — retours bienvenus dans les
 [issues](https://github.com/gonicolas12/My_OS/issues).
 
-**Au-delà de la v1 (vision long terme, non promise) :** contrôle d'applications via
-accessibilité (AT-SPI), contrôle par vision d'écran, défenses anti-injection avancées,
-Wayland natif grand public. Voir [docs/ROADMAP.md](docs/ROADMAP.md).
+- [x] **Contrôle de l'ordinateur** *(prochaine version)* : voir l'écran et agir à la
+  souris et au clavier, en local (accessibilité + OCR, éléments numérotés), bords
+  lumineux et barre d'arrêt, accord par demande ; validé en VM avec le modèle local.
+
+**Au-delà (vision long terme, non promise) :** vision pure pour les applications sans
+accessibilité ni texte (modèle local spécialisé, sur carte graphique), défenses
+anti-injection avancées, Wayland natif grand public. Voir [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ---
 
@@ -334,6 +357,7 @@ My_OS/
 │   ├── hotkey_listener.py    # raccourci global (X11 pynput / Wayland portal)
 │   ├── ipc_server.py         # socket Unix daemon ↔ popup
 │   ├── orchestrator.py       # boucle agentique requête → modèle → outils
+│   ├── control.py            # session de contrôle de l'écran (indicateur, arrêt)
 │   └── confirmation_provider.py
 ├── permissions/              # Couche 2 — sécurité (cœur)
 │   ├── risk_levels.py        # table statique outil → niveau
@@ -347,7 +371,9 @@ My_OS/
 │   ├── files.py              # fichiers
 │   ├── packages.py           # pacman
 │   ├── system_settings.py    # D-Bus / pactl
-│   └── processes.py          # psutil
+│   ├── processes.py          # psutil
+│   └── computer/             # contrôle de l'ordinateur : écran (accessibilité, OCR),
+│                             # souris et clavier (xdotool), applications
 ├── models/                   # Couche 3 — IA
 │   ├── local_llm.py          # Qwen/Ollama (défaut)
 │   ├── cloud_router.py       # routeur + API Anthropic (opt-in)
@@ -360,6 +386,7 @@ My_OS/
 │   ├── window_chrome.py      # barre de titre + redimensionnement (sans cadre)
 │   ├── markdown_render.py    # markdown sans HTML ni image (QTextBrowser)
 │   ├── confirm_dialog.py     # dialogue de confirmation
+│   ├── control_overlay.py    # bords lumineux + barre d'arrêt du contrôle
 │   ├── icons.py              # icônes et logo dessinés (QPainter)
 │   ├── styles.py             # jetons de design, thème noir/orange
 │   └── wayland_layer.py      # présentation Wayland (layer-shell), repli X11
@@ -380,7 +407,7 @@ My_OS/
 │   ├── build_iso.sh
 │   ├── README.md
 │   └── archiso/              # profiledef, packages, airootfs
-├── tests/                    # ~510 tests (permissions en priorité)
+├── tests/                    # ~740 tests (permissions en priorité)
 ├── config.yaml
 ├── myosd.service             # service systemd utilisateur
 ├── requirements.txt

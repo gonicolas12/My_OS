@@ -32,14 +32,19 @@ sudo pacman -S --needed \
     ollama \
     pipewire pipewire-pulse wireplumber libpulse \
     networkmanager \
-    noto-fonts noto-fonts-emoji
+    noto-fonts noto-fonts-emoji \
+    xdotool tesseract tesseract-data-fra tesseract-data-eng python-pillow
 ```
 
 > `pactl` (réglage du volume) vient de `libpulse`. `polkit` fournit `pkexec` (élévation
 > ponctuelle). `gnome-keyring`/`libsecret` fournissent le trousseau (Secret Service) pour
 > la clé API cloud. **`python-evdev`** est la dépendance native de `pynput` : sans lui,
 > `pip install pynput` doit la compiler (gcc requis) et échoue souvent. Les polices
-> `noto-fonts*` affichent les symboles du popup (☁, ⚠). Les noms de paquets peuvent
+> `noto-fonts*` affichent les symboles du popup (☁, ⚠). La dernière ligne sert au
+> **contrôle de l'ordinateur** (§3 bis) : `xdotool` injecte clics et frappes,
+> Tesseract lit le texte de l'écran là où une application n'expose rien à
+> l'accessibilité, Pillow capture l'écran ; l'arbre d'accessibilité vient avec GTK
+> (`at-spi2-core`) et se lit par `python-gobject`. Les noms de paquets peuvent
 > évoluer : vérifiez avec `pacman -Si <pkg>`.
 
 ### 2.2 · Récupérer le projet et les dépendances Python
@@ -173,12 +178,42 @@ Le cloud (Claude) est **opt-in, par requête** et **désactivé par défaut**.
 
 ---
 
+## 3 bis · Contrôle de l'ordinateur
+
+Quand une demande passe par une application graphique (« ouvre Mousepad et écris… »,
+« remplis ce formulaire »), le modèle peut voir l'écran et agir à la souris et au
+clavier. Rien ne se fait sans votre accord, demandé à **chaque** demande ; pendant le
+contrôle, les bords de l'écran brillent en orange et **Échap** (ou le bouton ■ en bas de
+l'écran) l'arrête aussitôt.
+
+- **Session X11 uniquement** : sous Wayland, le compositeur interdit la capture de
+  l'écran et l'injection d'événements (c'est voulu) ; les outils de l'écran répondent
+  alors « indisponible ».
+- **Dépendances** : celles de la dernière ligne du §2.1.
+- **Accessibilité des applications** : GTK (Xfce, GNOME) l'expose toujours ; Qt et
+  Firefox suivent l'état activé par My_OS au début du contrôle. Chromium et les
+  applications Electron ne le lisent qu'à leur démarrage : ajoutez à votre
+  `~/.xprofile` (comme l'ISO) puis rouvrez votre session :
+
+  ```sh
+  export GNOME_ACCESSIBILITY=1 ACCESSIBILITY_ENABLED=1 QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1
+  ```
+
+  Les applications ouvertes par My_OS (`open_app`) reçoivent ces variables d'office.
+- **Réglages** (`config.yaml`, section `computer`) : `enabled` (outils de l'écran
+  proposés au modèle), `vision` (capture annotée jointe au modèle local : `auto` =
+  seulement sur carte graphique, `on`, `off` ; le cloud la reçoit toujours), `ocr`
+  (`auto` ou `off`).
+
+---
+
 ## 4 · Notes X11 / Wayland
 
 | | X11 (nominal) | Wayland (expérimental) |
 |---|---|---|
 | **Raccourci global** | `pynput` (fonctionne tel quel) | portal `org.freedesktop.portal.GlobalShortcuts` |
 | **Popup centré/au-dessus** | `move()` + always-on-top | surface overlay `layer-shell` |
+| **Contrôle de l'ordinateur** | oui (§3 bis) | non (capture et injection interdites) |
 | **Détection** | automatique (`XDG_SESSION_TYPE`) | automatique |
 
 Le backend est choisi **au démarrage** selon la session (cf.
@@ -275,3 +310,11 @@ Procédure détaillée, décisions et limites : **[packaging/README.md](../packa
 - **Dépendances Python manquantes en live** : `~/.local/share/my_os/firstrun.log` ;
   l'installation est retentée à la session suivante.
 - **Session verrouillée après inactivité (live)** : mot de passe `myos`.
+- **Contrôle de l'ordinateur « indisponible »** : session Wayland, ou `DISPLAY` absent
+  de l'environnement du service (`systemctl --user import-environment DISPLAY
+  XAUTHORITY`, cf. §2.5). Pendant un contrôle, le journal du daemon note chaque
+  observation (`journalctl --user -u myosd | grep Observation`).
+- **Le modèle « ne voit » presque rien dans une application** : elle n'expose pas son
+  arbre d'accessibilité. Chromium et Electron : variables du §3 bis, puis rouvrir
+  l'application. Sans Tesseract (`tesseract --list-langs` doit lister `fra` ou `eng`),
+  rien ne complète l'arbre.
