@@ -19,6 +19,13 @@ PyGObject ; sys_platform == "linux"      # GLib MainLoop pour le portal (import 
                      # Popup Wayland en surface overlay : plugin SYSTÈME `layer-shell-qt`
                      # (paquet pacman, PAS un paquet pip) + Qt Wayland. Voir docs/INSTALLATION.md.
 
+# --- Contrôle de l'ordinateur (voir l'écran, souris, clavier ; X11) ---
+Pillow               # capture d'écran + image annotée (Arch : paquet python-pillow)
+python-xlib          # fenêtres X11 (déjà tiré par pynput)
+                     # Outils SYSTÈME (pacman, pas pip) : xdotool, tesseract +
+                     # tesseract-data-fra/eng ; arbre d'accessibilité via at-spi2-core
+                     # + python-gobject. Cf. docs/INSTALLATION.md.
+
 # --- IPC (daemon <-> popup) ---
 pyzmq                # messagerie robuste sur socket (optionnel : module socket standard suffit au départ)
 
