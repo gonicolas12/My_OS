@@ -8,7 +8,8 @@ par l'utilisateur pour la requête (cf. :data:`permissions.risk_levels.COMPUTER_
 * ``type_text`` — saisie au clavier (dans un élément, ou là où est le focus) ;
 * ``press_keys`` — touche ou combinaison (« ctrl+s », « Entrée ») ;
 * ``scroll`` — défilement ;
-* ``open_app`` — lance une application installée par son nom ;
+* ``open_app`` — lance une application installée par son nom (déjà ouverte : passe
+  à sa fenêtre) ;
 * ``focus_window`` — passe à une autre fenêtre.
 
 Chaque action renvoie la **nouvelle observation** : le modèle voit l'effet de son
@@ -40,6 +41,7 @@ from permissions.risk_levels import (
     is_destructive_label,
 )
 from tools.base_tool import BaseTool, ToolResult
+from tools.computer.apps import AppEntry
 from tools.computer.backend import ComputerBackend
 from tools.computer.keys import MAX_REPEAT, combo_parts, parse_combo
 from tools.computer.screen import (
@@ -60,6 +62,26 @@ SETTLE_SCROLL = 0.5
 SETTLE_FOCUS = 0.6
 APP_WINDOW_TIMEOUT = 12.0
 _APP_POLL = 0.3
+# Binaires qui lancent autre chose (lanceur, interpréteur) : ils ne désignent pas une
+# application, donc jamais une fenêtre déjà ouverte (open_app).
+_LAUNCHERS: frozenset[str] = frozenset(
+    {
+        # lanceurs
+        "env",
+        "sh",
+        "bash",
+        "flatpak",
+        "snap",
+        "gio",
+        "exo-open",
+        "xdg-open",
+        # interpréteurs
+        "python",
+        "python3",
+        "java",
+        "wine",
+    }
+)
 # Texte tapé au plus par appel, et par morceau : la fenêtre et le garde sont revérifiés
 # entre deux morceaux, donc un arrêt (Échap) coupe la frappe en 0,2 s au plus.
 MAX_TEXT = 2000
@@ -662,11 +684,17 @@ class FocusWindow(_ScreenTool):
 
 
 class OpenApp(_ScreenTool):
-    """Lance une application installée par son nom."""
+    """Lance une application installée par son nom, ou passe à sa fenêtre.
+
+    Déjà ouverte, l'application n'est pas relancée : sa fenêtre passe au premier
+    plan. Vu en VM : « Dans Firefox, remplis le formulaire… » faisait d'abord
+    ouvrir Firefox, et une seconde fenêtre (page d'accueil) recouvrait le bureau.
+    """
 
     name = "open_app"
     description = (
-        "Ouvre une application installée par son nom (« Firefox », « Mousepad »)."
+        "Ouvre une application installée par son nom (« Firefox », « Mousepad ») ; "
+        "déjà ouverte, passe à sa fenêtre."
     )
     risk_level = 1
     parameters: ClassVar[dict] = {"name": "str — nom de l'application"}
@@ -709,6 +737,16 @@ class OpenApp(_ScreenTool):
             return _err("open_app : le catalogue d'applications a changé, réessayez.")
 
         def act() -> ToolResult:
+            existing = self._open_window(entry)
+            if existing is not None:
+                if not existing.active:
+                    self._backend.activate(existing.id)
+                return self._observed(
+                    f"{entry.name} est déjà ouvert : fenêtre "
+                    f"{describe_window(existing)} au premier plan (pas de nouvelle "
+                    "fenêtre).",
+                    SETTLE_FOCUS,
+                )
             before = {w.id for w in self._backend.windows()}
             self._backend.launch(entry)
             waited = 0.0
@@ -730,6 +768,22 @@ class OpenApp(_ScreenTool):
             return self._observed(f"{entry.name} ouvert.", SETTLE_FOCUS)
 
         return self._guarded(act)
+
+    def _open_window(self, entry: AppEntry) -> Window | None:
+        """Fenêtre déjà ouverte de l'application : l'active, sinon la plus haute.
+
+        Même reconnaissance que les permissions (:func:`app_keys` de la classe X11
+        et de l'instance, contre l'identifiant ``.desktop`` et le binaire, sauf un
+        lanceur). Les fenêtres de My_OS ne sont jamais reprises.
+        """
+        keys = app_keys(entry.app_id, entry.executable) - _LAUNCHERS
+        mine = self._ctx.myos_pids()
+        found = [
+            w
+            for w in self._backend.windows()  # de la plus haute à la plus basse
+            if w.pid not in mine and app_keys(w.app, w.instance) & keys
+        ]
+        return next((w for w in found if w.active), found[0] if found else None)
 
 
 def build_computer_tools(context: ScreenContext) -> dict[str, BaseTool]:

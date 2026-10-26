@@ -9,6 +9,7 @@ la nouvelle observation (texte + capture pour le modèle).
 from __future__ import annotations
 
 from tests.test_tools.computer_fakes import (
+    POPUP_PID,
     FakeBackend,
     make_element,
     make_window,
@@ -281,7 +282,8 @@ def _catalog() -> dict[str, AppEntry]:
 
 def test_ouvrir_une_application_attend_sa_fenetre() -> None:
     backend = FakeBackend(
-        [make_window(5, "myos - Thunar", app="Thunar")], apps=_catalog()
+        [make_window(5, "myos - Thunar", app="Thunar", instance="thunar")],
+        apps=_catalog(),
     )
     backend.new_window_on_launch = make_window(
         8, "Sans titre 1 - Mousepad", active=False
@@ -292,9 +294,59 @@ def test_ouvrir_une_application_attend_sa_fenetre() -> None:
 
 
 def test_ouvrir_une_application_sans_nouvelle_fenetre() -> None:
-    backend = FakeBackend([make_window()], apps=_catalog())
+    backend = FakeBackend(
+        [make_window(5, "myos - Thunar", app="Thunar", instance="thunar")],
+        apps=_catalog(),
+    )
     result = _run(backend, "open_app", {"name": "Mousepad"}, observe=False)
     assert result.success and "aucune nouvelle fenêtre" in result.output
+
+
+def test_application_deja_ouverte_sa_fenetre_passe_au_premier_plan() -> None:
+    # Vu en VM : « Dans Firefox, remplis le formulaire… » relançait Firefox, et une
+    # seconde fenêtre (page d'accueil) recouvrait le bureau.
+    backend = FakeBackend(
+        [
+            make_window(5, "myos - Thunar", app="Thunar", instance="thunar"),
+            make_window(8, "liste.txt - Mousepad", active=False),
+        ],
+        apps=_catalog(),
+    )
+    result = _run(backend, "open_app", {"name": "Mousepad"}, observe=False)
+    assert backend.actions == [("activate", 8)]  # aucun lancement
+    assert result.success
+    assert "Mousepad est déjà ouvert" in result.output
+    assert "« liste.txt - Mousepad »" in result.output
+
+
+def test_application_deja_au_premier_plan_rien_a_faire() -> None:
+    backend = FakeBackend([make_window()], apps=_catalog())
+    result = _run(backend, "open_app", {"name": "Mousepad"}, observe=False)
+    assert backend.actions == []
+    assert result.success and "déjà ouvert" in result.output
+
+
+def test_une_fenetre_de_my_os_n_est_jamais_reprise_par_open_app() -> None:
+    backend = FakeBackend([make_window(9, "My_OS", pid=POPUP_PID)], apps=_catalog())
+    backend.new_window_on_launch = make_window(10, "Sans titre 1 - Mousepad")
+    _run(backend, "open_app", {"name": "Mousepad"}, observe=False)
+    assert backend.actions[0] == ("launch", "org.xfce.mousepad")
+
+
+def test_un_lanceur_generique_ne_designe_aucune_fenetre() -> None:
+    # Exec=python3 outil.py : une autre fenêtre « python3 » n'est pas cette application.
+    entry = AppEntry(
+        app_id="outil",
+        name="Outil",
+        path="/usr/share/applications/outil.desktop",
+        executable="python3",
+    )
+    backend = FakeBackend(
+        [make_window(4, "Autre", app="python3", instance="python3")],
+        apps={"outil": entry},
+    )
+    _run(backend, "open_app", {"name": "Outil"}, observe=False)
+    assert backend.actions[0] == ("launch", "outil")
 
 
 def test_ouvrir_une_application_inconnue_liste_les_installees() -> None:

@@ -634,7 +634,7 @@ de contrôle (§10.3) ; chaque action renvoie la **nouvelle observation**.
 | `type_text` | `text`, `element?`, `enter?` | frappe (dans l'élément, sinon là où est le focus) |
 | `press_keys` | `keys` (« ctrl+s », « Entrée »), `repeat?` (≤ 20) | combinaison, forme canonique xdotool |
 | `scroll` | `direction`, `amount?` (≤ 15), `element?` | molette |
-| `open_app` | `name` | lance une application installée (fichier `.desktop`) |
+| `open_app` | `name` | lance une application installée (fichier `.desktop`) ; déjà ouverte (fenêtre reconnue comme pour les permissions, `app_keys`, hors My_OS), passe à sa fenêtre sans en ouvrir une autre |
 | `focus_window` | `window` (N de `[wN]`) | passe à une fenêtre |
 
 Observation (texte remis au modèle, et au popup dans la carte de l'outil) :

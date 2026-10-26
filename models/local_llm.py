@@ -698,7 +698,7 @@ COMPUTER_TOOLS_SCHEMA: list[dict[str, Any]] = [
     _function(
         "open_app",
         "Ouvre une application installée par son nom (« Firefox », « Mousepad », "
-        "« gestionnaire de fichiers »).",
+        "« gestionnaire de fichiers ») ; déjà ouverte, passe à sa fenêtre.",
         {"name": {"type": "string", "description": "Nom de l'application"}},
         ["name"],
     ),
