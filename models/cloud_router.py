@@ -23,12 +23,19 @@ Ollama) pour éviter une 3ᵉ copie de la liste d'outils, et le system prompt r�
 
 from __future__ import annotations
 
+import base64
 import hashlib
 from typing import Any
 
 from daemon.orchestrator import Model, Plan, TokenCallback, ToolCall
 from models import secrets
-from models.local_llm import ALL_TOOLS_SCHEMA, BASE_SYSTEM_PROMPT, machine_context
+from models.local_llm import (
+    ALL_TOOLS_SCHEMA,
+    BASE_SYSTEM_PROMPT,
+    BASE_TOOLS_SCHEMA,
+    SCREEN_PROMPT,
+    machine_context,
+)
 
 # Modèle Claude par défaut (récent, bon rapport vitesse/intelligence). Configurable
 # via core.config.ModelConfig.cloud_model.
@@ -122,12 +129,35 @@ def _to_anthropic(messages: list[dict]) -> list[dict]:
                         {
                             "type": "tool_result",
                             "tool_use_id": tool_use_id,
-                            "content": str(message.get("content", "")),
+                            "content": _tool_content(message),
                         }
                     ],
                 }
             )
     return out
+
+
+def _tool_content(message: dict) -> str | list[dict]:
+    """Contenu d'un résultat d'outil : le texte, et la capture d'écran s'il y en a une.
+
+    Seule la dernière capture est gardée dans l'historique (cf. orchestrator) :
+    au plus une image part par requête.
+    """
+    text = str(message.get("content", ""))
+    image = message.get("image")
+    if not isinstance(image, bytes):
+        return text
+    return [
+        {"type": "text", "text": text},
+        {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": "image/jpeg",
+                "data": base64.b64encode(image).decode("ascii"),
+            },
+        },
+    ]
 
 
 def _make_anthropic_client(api_key: str | None) -> Any:
@@ -148,20 +178,27 @@ class ClaudeClient:
 
     name = "claude"
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
         api_key: str | None = None,
         model: str = DEFAULT_CLOUD_MODEL,
         max_tokens: int = DEFAULT_MAX_TOKENS,
         client: Any | None = None,
+        screen_control: bool = True,
     ) -> None:
         self._model = model
         self._max_tokens = max_tokens
         self._client = client if client is not None else _make_anthropic_client(api_key)
-        # Prompt de base partagé + note « cloud » honnête + contexte machine réel.
-        self._system_prompt = BASE_SYSTEM_PROMPT + _CLOUD_NOTE + machine_context()
-        self._tools = _to_anthropic_tools(ALL_TOOLS_SCHEMA)
+        # Prompt de base partagé (+ section écran) + note « cloud » honnête + contexte
+        # machine réel. Les captures d'écran partent avec les résultats d'outils.
+        screen = SCREEN_PROMPT if screen_control else ""
+        self._system_prompt = (
+            BASE_SYSTEM_PROMPT + screen + _CLOUD_NOTE + machine_context()
+        )
+        self._tools = _to_anthropic_tools(
+            ALL_TOOLS_SCHEMA if screen_control else BASE_TOOLS_SCHEMA
+        )
 
     def respond(
         self, messages: list[dict], on_token: TokenCallback | None = None
@@ -211,8 +248,10 @@ class CloudRouter:
         *,
         model: str = DEFAULT_CLOUD_MODEL,
         client_factory: Any | None = None,
+        screen_control: bool = True,
     ) -> None:
         self._model_name = model
+        self._screen_control = screen_control
         # Fabrique injectable pour les tests : () -> Model. En production, None →
         # construction d'un ClaudeClient réel à partir de la clé du trousseau.
         self._client_factory = client_factory
@@ -237,7 +276,11 @@ class CloudRouter:
             self._cloud = (
                 self._client_factory()
                 if self._client_factory is not None
-                else ClaudeClient(api_key=key, model=self._model_name)
+                else ClaudeClient(
+                    api_key=key,
+                    model=self._model_name,
+                    screen_control=self._screen_control,
+                )
             )
             self._fingerprint = fingerprint
         return self._cloud

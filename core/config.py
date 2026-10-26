@@ -77,6 +77,21 @@ class ModelConfig:
     cloud_model: str = "claude-sonnet-5-5"  # modèle Claude si requête routée cloud
 
 
+@dataclass
+class ComputerConfig:
+    """Contrôle de l'ordinateur (voir l'écran, souris, clavier ; X11).
+
+    ``vision`` : capture annotée envoyée au modèle LOCAL en plus de la liste des
+    éléments — ``auto`` (seulement si le modèle tourne sur une carte graphique),
+    ``on`` ou ``off``. Le cloud, opt-in, reçoit toujours l'image. ``ocr`` : texte
+    lu par Tesseract là où l'accessibilité ne dit rien (``auto`` ou ``off``).
+    """
+
+    enabled: bool = True
+    vision: str = "auto"  # "auto" | "on" | "off"
+    ocr: str = "auto"  # "auto" | "off"
+
+
 def default_audit_db_path() -> Path:
     """Chemin par défaut du journal d'audit (cf. docs/ARCHITECTURE.md §7).
 
@@ -97,6 +112,7 @@ class Config:
     audit_db_path: Path = field(default_factory=default_audit_db_path)
     ui: UIConfig = field(default_factory=UIConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
+    computer: ComputerConfig = field(default_factory=ComputerConfig)
 
 
 def _read_yaml(path: Path) -> dict:
@@ -151,10 +167,22 @@ def load_config(path: Path | None = None) -> Config:
     }
     model = ModelConfig(**{k: v for k, v in model_raw.items() if k in allowed_model})
 
+    computer_raw = data.get("computer") or {}
+    allowed_computer = {"enabled", "vision", "ocr"}
+    computer = ComputerConfig(
+        **{k: v for k, v in computer_raw.items() if k in allowed_computer}
+    )
+    # YAML lit « on » / « off » comme des booléens : on les ramène aux mots attendus.
+    for key in ("vision", "ocr"):
+        value = getattr(computer, key)
+        if isinstance(value, bool):
+            setattr(computer, key, "on" if value else "off")
+
     return Config(
         hotkey=data.get("hotkey", DEFAULT_HOTKEY),
         socket_path=resolve_socket_path(),
         audit_db_path=default_audit_db_path(),
         ui=ui,
         model=model,
+        computer=computer,
     )

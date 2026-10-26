@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import socket
+import struct
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -29,22 +30,47 @@ UserMessageHandler = Callable[[dict, Callable[[dict], None]], None]
 ConfirmationResponseHandler = Callable[[dict], None]
 # Callback pour le message de contrôle reset (vide l'historique conversationnel).
 ResetHandler = Callable[[], None]
+# Contrôle de l'ordinateur : accusé d'affichage de l'indicateur, demande d'arrêt.
+ControlReadyHandler = Callable[[dict], None]
+StopControlHandler = Callable[[], None]
+# Popup connecté (PID du processus, None s'il est inconnu) ou déconnecté (False).
+ClientHandler = Callable[[int | None | bool], None]
+
+
+def peer_pid(conn: socket.socket) -> int | None:
+    """PID du processus à l'autre bout de la socket Unix (``SO_PEERCRED``, Linux)."""
+    option = getattr(socket, "SO_PEERCRED", None)
+    if option is None:
+        return None
+    try:
+        raw = conn.getsockopt(socket.SOL_SOCKET, option, struct.calcsize("3i"))
+        pid, _uid, _gid = struct.unpack("3i", raw)
+    except (OSError, struct.error):
+        return None
+    return pid or None
 
 
 class IPCServer:  # pylint: disable=too-many-instance-attributes
     """Serveur socket Unix pour la communication daemon ↔ popup."""
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         socket_path: Path,
         on_user_message: UserMessageHandler,
         on_confirmation_response: ConfirmationResponseHandler | None = None,
         on_reset: ResetHandler | None = None,
+        *,
+        on_control_ready: ControlReadyHandler | None = None,
+        on_stop_control: StopControlHandler | None = None,
+        on_client: ClientHandler | None = None,
     ) -> None:
         self._socket_path = socket_path
         self._on_user_message = on_user_message
         self._on_confirmation_response = on_confirmation_response
         self._on_reset = on_reset
+        self._on_control_ready = on_control_ready
+        self._on_stop_control = on_stop_control
+        self._on_client = on_client
         self._server_sock: socket.socket | None = None
         self._client_sock: socket.socket | None = None
         self._client_lock = threading.Lock()
@@ -105,6 +131,8 @@ class IPCServer:  # pylint: disable=too-many-instance-attributes
                     self._close_quietly(self._client_sock)
                 self._client_sock = conn
             _log.info("Popup connecté")
+            if self._on_client is not None:
+                self._on_client(peer_pid(conn))
             threading.Thread(
                 target=self._read_loop, args=(conn,), name="ipc-read", daemon=True
             ).start()
@@ -117,10 +145,13 @@ class IPCServer:  # pylint: disable=too-many-instance-attributes
             pass
         finally:
             with self._client_lock:
-                if self._client_sock is conn:
+                current = self._client_sock is conn
+                if current:
                     self._client_sock = None
             self._close_quietly(conn)
             _log.info("Popup déconnecté")
+            if current and self._on_client is not None:
+                self._on_client(False)
 
     def _dispatch(self, message: dict, conn: socket.socket) -> None:
         """Route un message reçu selon son ``type``.
@@ -142,6 +173,10 @@ class IPCServer:  # pylint: disable=too-many-instance-attributes
             self._on_confirmation_response(message)
         elif mtype == "reset" and self._on_reset:
             self._on_reset()
+        elif mtype == "control_ready" and self._on_control_ready:
+            self._on_control_ready(message)
+        elif mtype == "stop_control" and self._on_stop_control:
+            self._on_stop_control()
 
     def _reply(self, conn: socket.socket, message: dict) -> None:
         try:

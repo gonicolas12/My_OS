@@ -54,3 +54,17 @@ model:
   # requête via le toggle du popup, cf. docs/INTERFACES.md §5). La CLÉ API n'est
   # JAMAIS ici : elle se saisit dans le popup et vit dans le trousseau (keyring).
   cloud_model: claude-sonnet-5-5
+
+# Contrôle de l'ordinateur (session X11) : le modèle voit l'écran et agit à la souris
+# et au clavier, quand une demande passe par une application graphique. Rien ne se
+# fait sans votre accord, donné à chaque demande ; pendant le contrôle, les bords de
+# l'écran brillent en orange et Échap (ou le bouton ■ en bas de l'écran) l'arrête.
+#   enabled: false -> outils de l'écran retirés au modèle.
+#   vision : capture annotée envoyée au modèle LOCAL en plus de la liste numérotée
+#            des éléments. auto = seulement s'il lit vite (carte graphique) ; on ;
+#            off. Le mode cloud (opt-in) reçoit toujours la capture.
+#   ocr    : texte lu par Tesseract là où l'application n'expose rien (auto | off).
+computer:
+  enabled: true
+  vision: auto
+  ocr: auto

@@ -74,6 +74,19 @@ def test_load_config_ignore_les_cles_inconnues(tmp_path: Path) -> None:
     assert cfg.model.backend == "ollama"
 
 
+def test_load_config_controle_de_l_ordinateur(tmp_path: Path) -> None:
+    defaults = load_config(tmp_path / "absent.yaml").computer
+    assert (defaults.enabled, defaults.vision, defaults.ocr) == (True, "auto", "auto")
+    path = tmp_path / "config.yaml"
+    # YAML lit « on » / « off » comme des booléens : ramenés aux mots attendus.
+    path.write_text(
+        "computer:\n  enabled: false\n  vision: on\n  ocr: off\n  inconnu: 1\n",
+        encoding="utf-8",
+    )
+    computer = load_config(path).computer
+    assert (computer.enabled, computer.vision, computer.ocr) == (False, "on", "off")
+
+
 def test_socket_path_jamais_pris_du_fichier(tmp_path: Path) -> None:
     # Même si le fichier tente d'imposer un socket_path, il est recalculé.
     path = tmp_path / "config.yaml"
