@@ -14,10 +14,10 @@ My_OS est la suite logique de [My_AI](https://github.com/gonicolas12/My_AI) : on
 d'une *application* qui parle au PC à un *système* dans lequel l'IA est résidente et
 profondément intégrée.
 
-> **État du projet : v1.4 publiée ([télécharger](https://github.com/gonicolas12/My_OS/releases/tag/v1.4)), validée en VM ; elle reprend la v1.2 (modèle local plus fiable et plus rapide, carte graphique) avec deux correctifs : la saisie de la clé API du mode cloud et le premier réglage du son après le démarrage.** Les cinq jalons (socle →
+> **État du projet : v1.5 publiée ([télécharger](https://github.com/gonicolas12/My_OS/releases/tag/v1.5)), validée en VM ; nouveauté : le contrôle de l'ordinateur — le modèle local voit l'écran et agit à la souris et au clavier, avec des bords lumineux et une barre d'arrêt (session X11). Elle garde le modèle local de la v1.2 et les correctifs de la v1.3 et de la v1.4 (clé API du mode cloud, premier réglage du son).** Les cinq jalons (socle →
 > fichiers/permissions → pilotage système → routeur cloud → packaging) sont terminés, et
 > l'ISO a été testée de bout en bout en VM (BIOS et UEFI) en octobre 2026 : permissions,
-> confirmations, élévation polkit, réglages, modèle local
+> confirmations, élévation polkit, réglages, modèle local, contrôle de l'ordinateur
 > ([détails](docs/SECURITY.md#8--validation-en-vm-octobre-2026)). **X11 est pleinement
 > supporté ; le port Wayland est expérimental** (cf. [§7](#7--sécurité) et
 > [docs/INSTALLATION.md](docs/INSTALLATION.md)).
@@ -44,7 +44,7 @@ raccourcis : sans GPU, le modèle a mis environ une minute et vingt secondes au 
 | ![Élévation polkit](docs/media/elevation-polkit.png) | ![Installation terminée](docs/media/installation.png) |
 | **Élévation polkit** — mot de passe pour la commande exacte, jamais de root permanent | **Installation terminée** — chaque outil dans sa carte (statut, sortie de `pacman` lisible), puis le compte rendu du modèle |
 
-### 🖱️ Contrôle de l'ordinateur *(prochaine version)*
+### 🖱️ Contrôle de l'ordinateur *(v1.5)*
 
 ![Démo : le modèle local remplit et envoie un formulaire dans Firefox](docs/media/controle.gif)
 
@@ -93,8 +93,8 @@ via un raccourci clavier ?
   ne sort sans action explicite.
 - **Cloud en option** — avec une clé API, on peut router une requête vers un modèle plus
   puissant (Claude). Opt-in, **par requête**, visible et journalisé.
-- **Accès réel au système** — fichiers, paquets, paramètres, processus. L'IA agit, elle
-  ne fait pas que répondre.
+- **Accès réel au système** — fichiers, paquets, paramètres, processus, et l'écran
+  lui-même (souris, clavier). L'IA agit, elle ne fait pas que répondre.
 - **Sûr par conception** — chaque action est classée par risque ; les actions sensibles
   demandent confirmation ; tout est journalisé ; rien de destructeur n'est silencieux.
 
@@ -128,7 +128,8 @@ source réutilisable.
                           │  Outils        │
                           │ fichiers,      │
                           │ paquets, D-Bus,│
-                          │ processus      │
+                          │ processus,     │
+                          │ écran          │
                           └────────────────┘
 ```
 
@@ -136,8 +137,8 @@ source réutilisable.
 
 ## 3 · Fonctionnalités
 
-Toutes ces capacités sont **opérationnelles** (v1) et passent par le moteur de
-permissions.
+Toutes ces capacités sont **opérationnelles** (v1, et contrôle de l'ordinateur depuis la
+v1.5) et passent par le moteur de permissions.
 
 - 🗂️ **Fichiers** — lire, lister, écrire, déplacer, créer, supprimer. Ex. « range mon
   dossier Téléchargements par type ». L'escalade de risque détecte les chemins sensibles
@@ -159,7 +160,7 @@ permissions.
   streaming rendues en markdown, sorties d'outils dans des cartes, thème noir et orange.
   Fenêtre redimensionnable par les bords, agrandissable, en plein écran (`F11`), qui
   revient là où on l'a laissée.
-- 🖱️ **Contrôle de l'ordinateur** *(prochaine version)* — quand une demande passe par une
+- 🖱️ **Contrôle de l'ordinateur** *(v1.5)* — quand une demande passe par une
   application graphique, l'IA **voit l'écran** et agit : cliquer, taper, remplir des
   champs, combinaisons de touches, ouvrir une application, changer de fenêtre. **En
   local**, sans modèle de vision : l'écran lui est décrit par l'arbre d'accessibilité et
@@ -175,7 +176,7 @@ Deux voies. Détails complets dans **[docs/INSTALLATION.md](docs/INSTALLATION.md
 ### a) Via l'ISO live (le plus simple)
 
 Une ISO bootable (base Arch + Xfce/X11) embarque My_OS prêt à l'emploi :
-**[télécharger l'ISO de la v1.4](https://github.com/gonicolas12/My_OS/releases/tag/v1.4)**
+**[télécharger l'ISO de la v1.5](https://github.com/gonicolas12/My_OS/releases/tag/v1.5)**
 (avec son fichier `.sha256`). Pour la construire vous-même, le profil
 [archiso](https://wiki.archlinux.org/title/Archiso) et le script de build sont dans
 [`packaging/`](packaging/) (`sudo ./packaging/build_iso.sh`, sur un hôte Arch). Au 1er boot, les dépendances et
@@ -352,14 +353,14 @@ par le point de passage unique `permissions/policy_engine.py`.
 - [x] **v1.4 publiée** : [release GitHub](https://github.com/gonicolas12/My_OS/releases/tag/v1.4),
   correctif : le premier réglage du son après le démarrage (volume, sourdine) n'échoue
   plus pendant que le serveur son démarre.
+- [x] **v1.5 publiée** : [release GitHub](https://github.com/gonicolas12/My_OS/releases/tag/v1.5),
+  contrôle de l'ordinateur : voir l'écran et agir à la souris et au clavier, en local
+  (accessibilité + OCR, éléments numérotés), bords lumineux et barre d'arrêt, accord par
+  demande ; validé en VM avec le modèle local.
 
 **Encore à éprouver :** matériel réel (pilotes Wi-Fi, rétroéclairage, cartes graphiques)
 et mode cloud avec une vraie clé — retours bienvenus dans les
 [issues](https://github.com/gonicolas12/My_OS/issues).
-
-- [x] **Contrôle de l'ordinateur** *(prochaine version)* : voir l'écran et agir à la
-  souris et au clavier, en local (accessibilité + OCR, éléments numérotés), bords
-  lumineux et barre d'arrêt, accord par demande ; validé en VM avec le modèle local.
 
 **Au-delà (vision long terme, non promise) :** vision pure pour les applications sans
 accessibilité ni texte (modèle local spécialisé, sur carte graphique), défenses

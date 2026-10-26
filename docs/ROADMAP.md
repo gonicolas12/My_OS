@@ -125,7 +125,14 @@ chacun stable et testé avant le suivant.
   rejouée le temps que la sortie apparaisse (~0,1 s mesuré en VM, 5 s au plus). Trouvé
   pendant la validation de la v1.3.
 
-### Contrôle de l'ordinateur — post-v1 (octobre 2026, version à venir)
+### v1.5 — contrôle de l'ordinateur (octobre 2026)
+- [x] ISO publiée : [release `v1.5`](https://github.com/gonicolas12/My_OS/releases/tag/v1.5)
+  (instantané Arch Linux Archive du 2026-10-20, comme la v1.2 à la v1.4, plus les paquets
+  du contrôle : `xdotool`, Tesseract et ses données française et anglaise,
+  `python-pillow`), avec sa somme SHA-256 ; validée en VM (modèle local, 42 scénarios de
+  permissions, interface, son au premier usage, saisie de la clé API, et contrôle de
+  l'ordinateur sur processeur seul : liste écrite dans Mousepad, arrêt par Échap,
+  terminal escaladé et refusé).
 - [x] Le modèle **voit l'écran et agit** à la souris et au clavier (session X11) : sept
   outils (`observe_screen`, `click`, `type_text`, `press_keys`, `scroll`, `open_app`,
   `focus_window`), en **local** par défaut.
@@ -145,7 +152,12 @@ chacun stable et testé avant le suivant.
   (ouvrir, taper, compte rendu), formulaire web dans Firefox (champs, liste, case à
   cocher, envoi confirmé), Thunar ; arrêt par Échap et par le bouton ■ ; terminal
   escaladé et refusé ; 42 scénarios de permissions de la v1 toujours conformes ;
-  745 tests sous Linux.
+  754 tests sous Linux.
+- [x] Trouvés en tournant la démo du README sur un écran en 1280×720, corrigés et
+  re-testés : une confirmation demandée pendant le contrôle passait en partie sous la
+  barre d'arrêt (elle s'affiche maintenant au-dessus) ; « Dans Firefox, remplis… »
+  rouvrait Firefox en double (`open_app` passe à la fenêtre d'une application déjà
+  ouverte).
 
 **Mesuré avant de choisir (labo, octobre 2026).** Sur 28 tâches réparties sur 6 écrans
 réels de l'ISO (Thunar, Mousepad, « Enregistrer sous », paramètres, recherche

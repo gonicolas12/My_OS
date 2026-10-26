@@ -615,7 +615,7 @@ overlay garanti sous Wayland.
 
 ---
 
-## 10 · Contrôle de l'ordinateur (post-v1)
+## 10 · Contrôle de l'ordinateur (v1.5)
 
 Le modèle voit l'écran et agit à la souris et au clavier (session **X11**). Perception
 sans modèle de vision : fenêtres X11 (EWMH), éléments de la fenêtre active lus dans
