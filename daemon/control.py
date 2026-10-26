@@ -26,6 +26,7 @@ import time
 from collections.abc import Callable
 from typing import Protocol
 
+from core.i18n import N_, tr
 from core.logger import get_logger
 from tools.computer.backend import ComputerBackend
 from tools.computer.screen import Rect
@@ -42,6 +43,7 @@ _INJECTED_ESCAPE_S = 0.6
 _INJECTED_REPEAT_S = 0.1
 
 STOP_REASONS = ("finished", "user", "error")
+_ALREADY_RUNNING = N_("un contrôle de l'ordinateur est déjà en cours")
 
 
 def _rect(value: object) -> Rect | None:
@@ -169,7 +171,7 @@ class ControlSession:  # pylint: disable=too-many-instance-attributes
         if reason:
             return reason
         if self._active:
-            return "un contrôle de l'ordinateur est déjà en cours"
+            return tr(_ALREADY_RUNNING)
         return None
 
     def begin(self, request_id: str) -> str | None:
@@ -180,13 +182,16 @@ class ControlSession:  # pylint: disable=too-many-instance-attributes
         """
         with self._lock:
             if self._active:
-                return "un contrôle de l'ordinateur est déjà en cours"
+                return tr(_ALREADY_RUNNING)
             self._ready.clear()
             self._cancelled = False
             self._stop_rect = None
             self._request_id = request_id
         if not self._send({"type": "control_state", "id": request_id, "active": True}):
-            return "le popup n'est pas connecté : l'indicateur de contrôle ne peut pas s'afficher"
+            return tr(
+                "le popup n'est pas connecté : l'indicateur de contrôle ne peut pas "
+                "s'afficher"
+            )
         if not self._ready.wait(self._ready_timeout):
             self._send(
                 {
@@ -196,7 +201,7 @@ class ControlSession:  # pylint: disable=too-many-instance-attributes
                     "reason": "error",
                 }
             )
-            return "l'indicateur de contrôle ne s'est pas affiché : contrôle annulé"
+            return tr("l'indicateur de contrôle ne s'est pas affiché : contrôle annulé")
         with self._lock:
             self._active = True
             self._expected_escapes = []

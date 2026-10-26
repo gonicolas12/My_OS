@@ -659,8 +659,10 @@ def test_reset_history_repart_de_zero(audit: AuditLog) -> None:
     orch.reset_history()
     orch.handle({"id": "m2", "content": "quel chiffre ?"}, [].append)
 
-    # Après reset, le 2e appel ne voit QUE son propre message.
-    assert model.seen[1] == [{"role": "user", "content": "quel chiffre ?"}]
+    # Après reset, le 2e appel ne voit QUE son propre message (et sa langue).
+    assert model.seen[1] == [
+        {"role": "user", "content": "quel chiffre ?", "language": "fr"}
+    ]
 
 
 def test_message_vide_ne_pollue_pas_l_historique(audit: AuditLog) -> None:
@@ -671,7 +673,9 @@ def test_message_vide_ne_pollue_pas_l_historique(audit: AuditLog) -> None:
     orch.handle({"id": "m2", "content": "vraie question"}, [].append)
 
     # Le message vide n'a rien ajouté : le modèle ne voit que la vraie question.
-    assert model.seen == [[{"role": "user", "content": "vraie question"}]]
+    assert model.seen == [
+        [{"role": "user", "content": "vraie question", "language": "fr"}]
+    ]
 
 
 def test_historique_est_borne_et_commence_par_user(audit: AuditLog) -> None:

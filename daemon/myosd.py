@@ -25,6 +25,7 @@ import signal
 import threading
 
 from core.config import ComputerConfig, Config, ModelConfig, load_config
+from core.i18n import resolve_language, set_language
 from core.logger import get_logger
 from daemon.confirmation_provider import IPCConfirmationProvider
 from daemon.control import ControlSession
@@ -224,8 +225,16 @@ class Daemon:  # pylint: disable=too-many-instance-attributes
 
 
 def main() -> None:
-    """Lance le daemon avec la configuration par défaut."""
-    Daemon(load_config()).run()
+    """Lance le daemon avec la configuration par défaut.
+
+    Langue du daemon : celle de la config, sinon du système. Elle ne sert qu'aux
+    requêtes qui n'en précisent pas : le popup envoie la sienne avec chacune.
+    """
+    config = load_config()
+    language = resolve_language(configured=config.language)
+    set_language(language)
+    _log.info("Langue par défaut : %s (config : %s)", language, config.language)
+    Daemon(config).run()
 
 
 if __name__ == "__main__":

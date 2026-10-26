@@ -35,6 +35,7 @@ from __future__ import annotations
 import time
 from typing import ClassVar, Protocol
 
+from core.i18n import tr
 from tools.base_tool import BaseTool, ToolResult
 
 # Rejeu de pactl pendant que le serveur son démarre. Mesuré en VM : la sortie apparaît
@@ -49,6 +50,25 @@ _PACTL_FINAL_CODES = (124, 127)  # délai dépassé, commande introuvable
 def _err(message: str) -> ToolResult:
     """Construit un ToolResult d'échec lisible."""
     return ToolResult(success=False, output=message, reversible=False)
+
+
+def _not_a_number(tool: str, name: str) -> ToolResult:
+    """Échec : pourcentage illisible."""
+    return _err(
+        tr("{tool} : '{name}' doit être un nombre (0 à 100)", tool=tool, name=name)
+    )
+
+
+def _not_a_boolean(tool: str, name: str) -> ToolResult:
+    """Échec : booléen illisible."""
+    return _err(
+        tr("{tool} : '{name}' doit être un booléen (true/false)", tool=tool, name=name)
+    )
+
+
+def _failure(tool: str, error: object) -> ToolResult:
+    """Échec du réglage (message du backend)."""
+    return _err(tr("{tool} : {error}", tool=tool, error=error))
 
 
 def _coerce_percent(value: object) -> int | None:
@@ -115,7 +135,7 @@ class _SystemBackend:
             sorted(os.listdir(backlight_root)) if os.path.isdir(backlight_root) else []
         )
         if not devices:
-            raise RuntimeError("aucun périphérique de rétroéclairage détecté")
+            raise RuntimeError(tr("aucun périphérique de rétroéclairage détecté"))
         device = devices[0]
         with open(
             f"{backlight_root}/{device}/max_brightness", encoding="ascii"
@@ -153,7 +173,10 @@ class _SystemBackend:
             if result.ok:
                 return
             if result.returncode in _PACTL_FINAL_CODES or time.monotonic() >= deadline:
-                raise RuntimeError(result.stderr.strip() or f"échec de pactl {args[0]}")
+                raise RuntimeError(
+                    result.stderr.strip()
+                    or tr("échec de pactl {command}", command=args[0])
+                )
             time.sleep(_PACTL_POLL_S)
 
     def set_wifi(self, enabled: bool) -> None:
@@ -198,13 +221,15 @@ class SetBrightness(_SettingTool):
     def run(self, args: dict) -> ToolResult:
         percent = _coerce_percent(args.get("percent"))
         if percent is None:
-            return _err("set_brightness : 'percent' doit être un nombre (0 à 100)")
+            return _not_a_number("set_brightness", "percent")
         try:
             self._backend.set_brightness(percent)
         except (OSError, RuntimeError, ValueError) as exc:
-            return _err(f"set_brightness : {exc}")
+            return _failure("set_brightness", exc)
         return ToolResult(
-            success=True, output=f"Luminosité réglée à {percent} %", reversible=False
+            success=True,
+            output=tr("Luminosité réglée à {percent} %", percent=percent),
+            reversible=False,
         )
 
 
@@ -219,13 +244,15 @@ class SetVolume(_SettingTool):
     def run(self, args: dict) -> ToolResult:
         percent = _coerce_percent(args.get("percent"))
         if percent is None:
-            return _err("set_volume : 'percent' doit être un nombre (0 à 100)")
+            return _not_a_number("set_volume", "percent")
         try:
             self._backend.set_volume(percent)
         except (OSError, RuntimeError, ValueError) as exc:
-            return _err(f"set_volume : {exc}")
+            return _failure("set_volume", exc)
         return ToolResult(
-            success=True, output=f"Volume réglé à {percent} %", reversible=False
+            success=True,
+            output=tr("Volume réglé à {percent} %", percent=percent),
+            reversible=False,
         )
 
 
@@ -242,13 +269,13 @@ class SetMute(_SettingTool):
     def run(self, args: dict) -> ToolResult:
         muted = _coerce_bool(args.get("muted"))
         if muted is None:
-            return _err("set_mute : 'muted' doit être un booléen (true/false)")
+            return _not_a_boolean("set_mute", "muted")
         try:
             self._backend.set_mute(muted)
         except (OSError, RuntimeError, ValueError) as exc:
-            return _err(f"set_mute : {exc}")
-        etat = "coupé" if muted else "rétabli"
-        return ToolResult(success=True, output=f"Son {etat}", reversible=False)
+            return _failure("set_mute", exc)
+        output = tr("Son coupé") if muted else tr("Son rétabli")
+        return ToolResult(success=True, output=output, reversible=False)
 
 
 class SetWifi(_SettingTool):
@@ -264,13 +291,13 @@ class SetWifi(_SettingTool):
     def run(self, args: dict) -> ToolResult:
         enabled = _coerce_bool(args.get("enabled"))
         if enabled is None:
-            return _err("set_wifi : 'enabled' doit être un booléen (true/false)")
+            return _not_a_boolean("set_wifi", "enabled")
         try:
             self._backend.set_wifi(enabled)
         except (OSError, RuntimeError, ValueError) as exc:
-            return _err(f"set_wifi : {exc}")
-        etat = "activé" if enabled else "désactivé"
-        return ToolResult(success=True, output=f"Wi-Fi {etat}", reversible=False)
+            return _failure("set_wifi", exc)
+        output = tr("Wi-Fi activé") if enabled else tr("Wi-Fi désactivé")
+        return ToolResult(success=True, output=output, reversible=False)
 
 
 # Registre des outils de réglages — fusionné dans le daemon (cf. daemon/myosd.py).

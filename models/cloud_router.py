@@ -16,9 +16,11 @@ Sécurité (cf. docs/SECURITY.md menaces 2 & 4) :
 * le contenu lu reste une **donnée** non fiable : les schémas d'outils et le system
   prompt sont partagés avec le local, qui rappelle déjà l'invariant.
 
-Le schéma d'outils envoyé à Claude est **dérivé** de ``ALL_TOOLS_SCHEMA`` (format
-Ollama) pour éviter une 3ᵉ copie de la liste d'outils, et le system prompt réutilise
-:data:`models.local_llm.BASE_SYSTEM_PROMPT` (+ une note « cloud » honnête).
+Le schéma d'outils envoyé à Claude est **dérivé** de celui du local
+(:func:`models.local_llm.tools_schema`, format Ollama) pour éviter une 3ᵉ copie de la
+liste d'outils, et le system prompt réutilise
+:data:`models.prompts.BASE_SYSTEM_PROMPTS` (+ une note « cloud » honnête). Les deux
+suivent la langue de la requête, comme en local.
 """
 
 from __future__ import annotations
@@ -27,15 +29,11 @@ import base64
 import hashlib
 from typing import Any
 
+from core.i18n import SUPPORTED_LANGUAGES, current_language
 from daemon.orchestrator import Model, Plan, TokenCallback, ToolCall
 from models import secrets
-from models.local_llm import (
-    ALL_TOOLS_SCHEMA,
-    BASE_SYSTEM_PROMPT,
-    BASE_TOOLS_SCHEMA,
-    SCREEN_PROMPT,
-    machine_context,
-)
+from models.local_llm import tools_schema, with_language_reminders
+from models.prompts import system_prompt
 
 # Modèle Claude par défaut (récent, bon rapport vitesse/intelligence). Configurable
 # via core.config.ModelConfig.cloud_model.
@@ -47,13 +45,21 @@ DEFAULT_MAX_TOKENS = 4096
 
 # Note de backend « cloud » ajoutée au prompt de base : honnête sur le fait que la
 # conversation quitte la machine, et rappelle que les permissions restent locales.
-_CLOUD_NOTE = (
-    "\n\nPour cette requête, tu fonctionnes en mode CLOUD : la conversation est "
-    "envoyée à l'API Anthropic (Claude), un service distant. Tu restes soumis au "
-    "moteur de permissions LOCAL — tu n'as aucun droit supplémentaire, et toute "
-    "action sensible passe par une confirmation de l'utilisateur, exactement comme "
-    "en local."
-)
+_CLOUD_NOTES = {
+    "fr": (
+        "\n\nPour cette requête, tu fonctionnes en mode CLOUD : la conversation est "
+        "envoyée à l'API Anthropic (Claude), un service distant. Tu restes soumis au "
+        "moteur de permissions LOCAL — tu n'as aucun droit supplémentaire, et toute "
+        "action sensible passe par une confirmation de l'utilisateur, exactement "
+        "comme en local."
+    ),
+    "en": (
+        "\n\nFor this request, you run in CLOUD mode: the conversation is sent to "
+        "the Anthropic API (Claude), a remote service. You remain subject to the "
+        "LOCAL permission engine — you have no extra rights, and every sensitive "
+        "action goes through a confirmation by the user, exactly as in local mode."
+    ),
+}
 
 
 def _to_anthropic_tools(schema: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -190,15 +196,28 @@ class ClaudeClient:
         self._model = model
         self._max_tokens = max_tokens
         self._client = client if client is not None else _make_anthropic_client(api_key)
-        # Prompt de base partagé (+ section écran) + note « cloud » honnête + contexte
-        # machine réel. Les captures d'écran partent avec les résultats d'outils.
-        screen = SCREEN_PROMPT if screen_control else ""
-        self._system_prompt = (
-            BASE_SYSTEM_PROMPT + screen + _CLOUD_NOTE + machine_context()
-        )
-        self._tools = _to_anthropic_tools(
-            ALL_TOOLS_SCHEMA if screen_control else BASE_TOOLS_SCHEMA
-        )
+        # Par langue : prompt de base partagé (+ section écran) + note « cloud »
+        # honnête + contexte machine réel, et outils traduits. Les captures d'écran
+        # partent avec les résultats d'outils.
+        self._system_prompts = {
+            language: system_prompt(
+                language,
+                screen_control=screen_control,
+                backend_note=_CLOUD_NOTES[language],
+            )
+            for language in SUPPORTED_LANGUAGES
+        }
+        self._tools_by_language = {
+            language: _to_anthropic_tools(
+                tools_schema(language, screen_control=screen_control)
+            )
+            for language in SUPPORTED_LANGUAGES
+        }
+
+    @property
+    def _tools(self) -> list[dict[str, Any]]:
+        """Outils envoyés à Claude dans la langue courante."""
+        return self._tools_by_language[current_language()]
 
     def respond(
         self, messages: list[dict], on_token: TokenCallback | None = None
@@ -208,14 +227,15 @@ class ClaudeClient:
         Le texte est diffusé fragment par fragment via ``on_token`` ; les blocs
         ``tool_use`` du message final deviennent des :class:`ToolCall` que
         l'orchestrator route vers le ``policy_engine`` puis les outils réels.
+        Prompt et outils sont ceux de la langue de la requête.
         """
         narration_parts: list[str] = []
         with self._client.messages.stream(
             model=self._model,
             max_tokens=self._max_tokens,
-            system=self._system_prompt,
+            system=self._system_prompts[current_language()],
             tools=self._tools,
-            messages=_to_anthropic(messages),
+            messages=_to_anthropic(with_language_reminders(messages)),
         ) as stream:
             for fragment in stream.text_stream:
                 narration_parts.append(fragment)

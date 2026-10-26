@@ -3,7 +3,9 @@
 Ouvrir une application par son nom est plus fiable que de la chercher à l'écran
 dans un menu : le modèle demande « Firefox » ou « éditeur de texte », le catalogue
 trouve le fichier ``.desktop`` correspondant (nom, nom générique, mots-clés, en
-français ou en anglais) et ``gio launch`` la lance comme le ferait le menu.
+français ou en anglais, quelle que soit la langue de My_OS) et ``gio launch`` la
+lance comme le ferait le menu. Le nom montré (confirmations, résultats) est celui de
+la langue de la requête.
 
 Lecture seule de fichiers texte (``configparser``), sans dépendance : testable
 partout avec un dossier d'applications factice.
@@ -17,15 +19,24 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
+from core.i18n import current_language
+
 _SECTION = "Desktop Entry"
+# Traductions lues dans les fichiers .desktop pour chaque langue de My_OS, dans
+# l'ordre de préférence (``Name[fr]``, sinon ``Name[fr_FR]``) ; sans traduction, le
+# nom par défaut (``Name=``, en anglais le plus souvent).
+_LOCALES: dict[str, tuple[str, ...]] = {
+    "fr": ("fr", "fr_FR"),
+    "en": ("en_US", "en"),
+}
 
 
 @dataclass(frozen=True)
-class AppEntry:
+class AppEntry:  # pylint: disable=too-many-instance-attributes
     """Application lançable : identifiant, nom affiché, fichier ``.desktop``."""
 
     app_id: str  # ex. « org.xfce.mousepad »
-    name: str
+    name: str  # nom par défaut (``Name=``, en anglais le plus souvent)
     path: str
     generic: str = ""
     keywords: tuple[str, ...] = ()
@@ -33,6 +44,13 @@ class AppEntry:
     terminal: bool = False  # Terminal=true : l'application tourne dans un terminal
     categories: tuple[str, ...] = ()
     command: str = ""  # ligne Exec complète
+    # Nom traduit par langue de My_OS, s'il existe : (("fr", "Éditeur…"),).
+    localized_names: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def label(self) -> str:
+        """Nom montré à l'utilisateur, dans la langue courante (sinon ``name``)."""
+        return dict(self.localized_names).get(current_language(), self.name)
 
     @property
     def opens_terminal(self) -> bool:
@@ -73,11 +91,24 @@ def application_dirs(environ: dict[str, str] | None = None) -> list[Path]:
     return unique
 
 
+def _translation(section: configparser.SectionProxy, key: str, language: str) -> str:
+    """Traduction de ``key`` pour une langue de My_OS (``""`` s'il n'y en a pas)."""
+    for locale in _LOCALES[language]:
+        value = section.get(f"{key}[{locale}]", "")
+        if value:
+            return value
+    return ""
+
+
 def _localized(section: configparser.SectionProxy, key: str) -> list[str]:
+    """Valeur par défaut de ``key`` et toutes ses traductions lues (recherche)."""
     values = [section.get(key, "")]
-    for lang in ("fr_FR", "fr"):
-        values.append(section.get(f"{key}[{lang}]", ""))
-    return [v for v in values if v]
+    values += [
+        section.get(f"{key}[{locale}]", "")
+        for locales in _LOCALES.values()
+        for locale in locales
+    ]
+    return [v for v in dict.fromkeys(values) if v]
 
 
 def _parse(path: Path) -> AppEntry | None:
@@ -105,9 +136,15 @@ def _parse(path: Path) -> AppEntry | None:
     executable = (
         os.path.basename(entry.get("Exec", "").split()[0]) if entry.get("Exec") else ""
     )
+    translated = {
+        language: _translation(entry, "Name", language) for language in _LOCALES
+    }
     return AppEntry(
         app_id=path.stem,
-        name=names[-1],  # le nom français s'il existe
+        name=entry.get("Name", "") or names[0],
+        localized_names=tuple(
+            (lang, name) for lang, name in translated.items() if name
+        ),
         path=str(path),
         generic=" / ".join(dict.fromkeys(_localized(entry, "GenericName"))),
         keywords=tuple(dict.fromkeys(names + keywords)),
@@ -160,8 +197,9 @@ class AppCatalog:
         return best
 
     def suggestions(self, limit: int = 25) -> list[str]:
-        """Noms d'applications, pour aider le modèle quand rien ne correspond."""
-        return sorted({e.name for e in self.entries()})[:limit]
+        """Noms d'applications (langue courante), pour aider le modèle quand rien ne
+        correspond."""
+        return sorted({e.label for e in self.entries()})[:limit]
 
 
 def _score(entry: AppEntry, wanted: str) -> int:

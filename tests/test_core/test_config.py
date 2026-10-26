@@ -87,6 +87,20 @@ def test_load_config_controle_de_l_ordinateur(tmp_path: Path) -> None:
     assert (computer.enabled, computer.vision, computer.ocr) == (False, "on", "off")
 
 
+def test_load_config_langue(tmp_path: Path) -> None:
+    assert load_config(tmp_path / "absent.yaml").language == "auto"
+    path = tmp_path / "config.yaml"
+    for value, expected in (
+        ("en", "en"),
+        ("FR", "fr"),
+        ("fr_CA.UTF-8", "fr"),
+        ("auto", "auto"),
+        ("de", "auto"),  # langue non prise en charge : celle du système
+    ):
+        path.write_text(f"language: {value}\n", encoding="utf-8")
+        assert load_config(path).language == expected, value
+
+
 def test_socket_path_jamais_pris_du_fichier(tmp_path: Path) -> None:
     # Même si le fichier tente d'imposer un socket_path, il est recalculé.
     path = tmp_path / "config.yaml"

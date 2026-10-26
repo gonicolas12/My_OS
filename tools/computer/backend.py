@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from core.elevation import run_command
+from core.i18n import N_, tr
 from core.logger import get_logger
 from tools.computer.accessibility import (
     ACCESSIBILITY_ENV,
@@ -49,7 +50,7 @@ _log = get_logger("myosd.computer")
 # pas le contexte du modèle).
 MAX_OCR_ELEMENTS = 60
 OCR_MODES = ("auto", "off")
-LOCKED_NOTE = (
+LOCKED_NOTE = N_(
     "L'écran est VERROUILLÉ : My_OS ne lit rien et n'agit pas sur l'écran de "
     "verrouillage (il attend le mot de passe de l'utilisateur)."
 )
@@ -180,7 +181,7 @@ class DesktopBackend:  # pylint: disable=too-many-instance-attributes,too-many-p
         notes: list[str] = []
         if screen_locked():
             # Rien n'est lu ni capturé : l'écran de verrouillage attend un mot de passe.
-            notes.append(LOCKED_NOTE)
+            notes.append(tr(LOCKED_NOTE))
             observation = Observation(
                 screen=screen, windows=windows, active=None, elements=[], notes=notes
             )
@@ -190,7 +191,7 @@ class DesktopBackend:  # pylint: disable=too-many-instance-attributes,too-many-p
         try:
             image = self._desktop.capture()
         except DesktopError as exc:
-            notes.append(f"(Capture d'écran impossible : {exc}.)")
+            notes.append(tr("(Capture d'écran impossible : {error}.)", error=exc))
         elements, accessible = self._accessible_elements(active, screen)
         if active is not None:
             region = (active.content or active.rect).intersection(screen) or screen
@@ -203,8 +204,10 @@ class DesktopBackend:  # pylint: disable=too-many-instance-attributes,too-many-p
             elements = _reading_order(elements + read[:MAX_OCR_ELEMENTS])
         elif accessible is None and active is not None:
             notes.append(
-                "(Cette application n'expose pas d'éléments accessibles et l'OCR "
-                "est indisponible.)"
+                tr(
+                    "(Cette application n'expose pas d'éléments accessibles et l'OCR "
+                    "est indisponible.)"
+                )
             )
         observation = Observation(
             screen=screen,
@@ -355,7 +358,13 @@ class DesktopBackend:  # pylint: disable=too-many-instance-attributes,too-many-p
         )
         if not result.ok:
             detail = result.stderr.strip() or f"code {result.returncode}"
-            raise DesktopError(f"lancement de {app.name} impossible : {detail}")
+            raise DesktopError(
+                tr(
+                    "lancement de {app} impossible : {detail}",
+                    app=app.label,
+                    detail=detail,
+                )
+            )
 
 
 def _reading_order(elements: list[Element]) -> list[Element]:
