@@ -30,7 +30,20 @@ class AppEntry:
     generic: str = ""
     keywords: tuple[str, ...] = ()
     executable: str = ""  # nom du binaire (première partie d'Exec)
-    terminal: bool = False
+    terminal: bool = False  # Terminal=true : l'application tourne dans un terminal
+    categories: tuple[str, ...] = ()
+    command: str = ""  # ligne Exec complète
+
+    @property
+    def opens_terminal(self) -> bool:
+        """``True`` si lancer cette entrée ouvre un terminal : émulateur de terminal
+        (catégorie freedesktop ``TerminalEmulator``, ou lanceur générique comme
+        ``exo-open --launch TerminalEmulator``), ou application en terminal."""
+        return (
+            self.terminal
+            or "TerminalEmulator" in self.categories
+            or "TerminalEmulator" in self.command
+        )
 
 
 def _fold(text: str) -> str:
@@ -100,6 +113,8 @@ def _parse(path: Path) -> AppEntry | None:
         keywords=tuple(dict.fromkeys(names + keywords)),
         executable=executable,
         terminal=entry.get("Terminal", "false").lower() == "true",
+        categories=tuple(c for c in entry.get("Categories", "").split(";") if c),
+        command=entry.get("Exec", ""),
     )
 
 
@@ -137,12 +152,12 @@ class AppCatalog:
         wanted = _fold(query)
         if not wanted:
             return None
-        best: tuple[int, AppEntry] | None = None
+        best_score, best = 0, None
         for entry in self.entries():
             score = _score(entry, wanted)
-            if score and (best is None or score > best[0]):
-                best = (score, entry)
-        return best[1] if best is not None else None
+            if score > best_score:
+                best_score, best = score, entry
+        return best
 
     def suggestions(self, limit: int = 25) -> list[str]:
         """Noms d'applications, pour aider le modèle quand rien ne correspond."""

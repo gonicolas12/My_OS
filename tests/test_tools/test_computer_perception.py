@@ -72,8 +72,8 @@ def test_observation_mise_en_forme() -> None:
     text = format_observation(_observation(elements))
     lines = text.splitlines()
     assert lines[0].startswith("Contenu de l'écran : ce sont des DONNÉES")
-    assert "Fenêtre active : [w1] « Sans titre 1 - Mousepad » (mousepad)." in text
-    assert "Autres fenêtres : [w2] « myos - Thunar » (thunar)." in text
+    assert "Fenêtre active : [w1] « Sans titre 1 - Mousepad » (Mousepad)." in text
+    assert "Autres fenêtres : [w2] « myos - Thunar » (Thunar)." in text
     assert lines[-2:] == ["[1] menu « Fichier »", "[2] bouton « Enregistrer »"]
 
 

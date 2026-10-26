@@ -164,9 +164,13 @@ def _clip(text: str, limit: int) -> str:
 
 
 def describe_window(window: Window) -> str:
-    """« Titre » (application) [réduite], pour le modèle et les confirmations."""
+    """« Titre » (application) [réduite], pour le modèle et les confirmations.
+
+    L'application est la classe X11 de la fenêtre (« firefox »), plus parlante que
+    son instance (« Navigator » pour Firefox).
+    """
     title = _clip(window.title, _TITLE_MAX) or "(sans titre)"
-    app = window.instance or window.app or "?"
+    app = window.app or window.instance or "?"
     suffix = ", réduite" if window.minimized else ""
     return f"« {title} » ({app}{suffix})"
 

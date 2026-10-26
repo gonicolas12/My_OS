@@ -136,3 +136,18 @@ def test_accord_pour_le_controle_de_l_ordinateur(app: object) -> None:
     details = dialog.findChild(RichText, "confirmText").toPlainText()
     assert "écris une liste de courses" in details
     assert "Échap" in details
+
+
+def test_cible_technique_de_l_ecran_non_affichee(app: object) -> None:
+    payload = _payload(2, [])
+    payload["tool"] = "type_text"
+    payload["summary"] = "[niveau 2] Taper « ls » dans « Terminal » (Xfce4-terminal)"
+    payload["args"] = {
+        "text": "ls",
+        "enter": False,
+        "target": {"window_id": 48234499, "pid": 3319, "x": 406, "y": 360},
+    }
+    details = ConfirmDialog(payload).findChild(RichText, "confirmText").toPlainText()
+    assert "Taper « ls » dans « Terminal »" in details
+    assert '"text": "ls"' in details
+    assert "window_id" not in details and "48234499" not in details

@@ -269,6 +269,65 @@ def test_ouvrir_un_terminal_en_niveau_2() -> None:
 
 
 @pytest.mark.parametrize(
+    "entry",
+    [
+        # Lanceur générique d'Xfce, vu en VM : il échappait à l'escalade.
+        AppEntry(
+            app_id="xfce4-terminal-emulator",
+            name="Émulateur de terminal",
+            path="/usr/share/applications/xfce4-terminal-emulator.desktop",
+            executable="exo-open",
+            categories=("Utility", "X-XFCE"),
+            command="exo-open --launch TerminalEmulator",
+        ),
+        AppEntry(
+            app_id="com.example.Console",
+            name="Console",
+            path="/usr/share/applications/com.example.Console.desktop",
+            executable="console-bin",
+            categories=("System", "TerminalEmulator"),
+        ),
+        AppEntry(
+            app_id="htop",
+            name="Htop",
+            path="/usr/share/applications/htop.desktop",
+            executable="htop",
+            terminal=True,
+        ),
+    ],
+)
+def test_ouvrir_tout_ce_qui_ouvre_un_terminal_en_niveau_2(entry: AppEntry) -> None:
+    backend = FakeBackend([make_window()], apps={"terminal": entry})
+    decision, args = _decide("open_app", {"name": "terminal"}, backend)
+    assert args["target"]["terminal"] is True
+    assert (decision.action, decision.risk_level) == ("confirm", 2)
+
+
+def test_resume_lisible_dans_les_confirmations() -> None:
+    decision, _ = _decide("click", {"element": 1}, _app_backend("Supprimer"))
+    assert decision.summary == (
+        "[niveau 2] Cliquer sur [1] bouton « Supprimer » dans "
+        "« Sans titre 1 - Mousepad » (Mousepad)"
+    )
+    console = make_element("terminal", "Terminal", BUTTON, states=("focused",))
+    backend = FakeBackend(
+        [
+            make_window(
+                title="Terminal", app="Xfce4-terminal", instance="xfce4-terminal"
+            )
+        ],
+        [console],
+        focused=console,
+    )
+    typed, _ = _decide("type_text", {"text": "rm -rf ~/x", "enter": True}, backend)
+    assert typed.summary == (
+        "[niveau 2] Taper « rm -rf ~/x » puis Entrée dans « Terminal » (Xfce4-terminal)"
+    )
+    keys, _ = _decide("press_keys", {"keys": "Maj+Suppr"}, _app_backend())
+    assert keys.summary.startswith("[niveau 2] Appuyer sur « shift+Delete »")
+
+
+@pytest.mark.parametrize(
     "label",
     [
         "Supprimer",

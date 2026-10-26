@@ -2,6 +2,8 @@
 applications, injection X11 (xdotool simulé) et backend d'observation."""
 
 # pylint: disable=missing-function-docstring,too-many-instance-attributes
+# pylint: disable=redefined-outer-name,use-implicit-booleaness-not-comparison
+# pylint: disable=unbalanced-tuple-unpacking
 from __future__ import annotations
 
 import subprocess
@@ -114,6 +116,24 @@ def test_recherche_par_nom_generique_ou_mot_cle(
 def test_recherche_sans_resultat(catalog: AppCatalog) -> None:
     assert catalog.find("photoshop") is None
     assert catalog.find("") is None
+
+
+def test_entree_qui_ouvre_un_terminal(tmp_path: Path) -> None:
+    _desktop_file(
+        tmp_path,
+        "xfce4-terminal-emulator",
+        "Name=Terminal Emulator\nExec=exo-open --launch TerminalEmulator\n"
+        "Categories=Utility;X-XFCE;\n",
+    )
+    _desktop_file(tmp_path, "htop", "Name=Htop\nExec=htop\nTerminal=true\n")
+    _desktop_file(tmp_path, "notes", "Name=Notes\nExec=notes\nCategories=Office;\n")
+    catalog = AppCatalog([tmp_path])
+    emulator = catalog.find("Terminal Emulator")
+    assert emulator.categories == ("Utility", "X-XFCE")
+    assert emulator.command == "exo-open --launch TerminalEmulator"
+    assert emulator.opens_terminal
+    assert catalog.find("htop").opens_terminal
+    assert not catalog.find("notes").opens_terminal
 
 
 def test_dossiers_xdg(tmp_path: Path) -> None:

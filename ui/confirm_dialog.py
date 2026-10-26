@@ -163,7 +163,15 @@ class ConfirmDialog(QDialog):
                 "</table>"
             )
         else:
-            args_str = json.dumps(args, ensure_ascii=False, indent=2)
+            # Outils de l'écran : la cible technique résolue par le daemon (fenêtre,
+            # pid, coordonnées) n'est pas montrée telle quelle, la ligne « Action »
+            # la décrit en clair.
+            shown = (
+                {k: v for k, v in args.items() if k != "target"}
+                if isinstance(args, dict)
+                else args
+            )
+            args_str = json.dumps(shown, ensure_ascii=False, indent=2)
             details.setHtml(
                 '<table cellspacing="0" cellpadding="4">'
                 f"<tr>{_LABEL_CELL}Outil</td>"

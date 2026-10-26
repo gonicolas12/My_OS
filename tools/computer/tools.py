@@ -43,6 +43,7 @@ from tools.base_tool import BaseTool, ToolResult
 from tools.computer.backend import ComputerBackend
 from tools.computer.keys import MAX_REPEAT, combo_parts, parse_combo
 from tools.computer.screen import (
+    ROLE_LABELS,
     Element,
     Rect,
     Window,
@@ -131,6 +132,25 @@ def _as_int(value: object) -> int | None:
     return None
 
 
+def _target_of(args: dict) -> dict:
+    target = args.get("target")
+    return target if isinstance(target, dict) else {}
+
+
+def _element_phrase(args: dict) -> str:
+    """« [3] bouton « Supprimer » » : l'élément visé tel que l'utilisateur le voit."""
+    target = _target_of(args)
+    label = ROLE_LABELS.get(str(target.get("role", "")), "élément")
+    name = f" « {target['name']} »" if target.get("name") else ""
+    number = f"[{args['element']}] " if args.get("element") is not None else ""
+    return f"{number}{label}{name}"
+
+
+def _in_window(args: dict) -> str:
+    window = _target_of(args).get("window")
+    return f" dans {window}" if window and window != "bureau" else " sur le bureau"
+
+
 def _as_bool(value: object) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in ("true", "1", "oui", "yes")
@@ -206,6 +226,8 @@ class _ScreenTool(BaseTool):  # pylint: disable=abstract-method
             return self.risk_level
         keys = app_keys(str(target.get("app", "")), str(target.get("instance", "")))
         if keys & TERMINAL_APPS or target.get("role") == "terminal":
+            return 2
+        if target.get("terminal"):  # open_app d'une entrée qui ouvre un terminal
             return 2
         if keys & SYSTEM_SETTINGS_APPS:
             return 2
@@ -289,6 +311,10 @@ class ObserveScreen(_ScreenTool):
         """Aucun argument."""
         return {}
 
+    def describe(self, args: dict) -> str | None:
+        """« Regarder l'écran »."""
+        return "Regarder l'écran (fenêtres et éléments visibles)"
+
     def run(self, args: dict) -> ToolResult:
         def act() -> ToolResult:
             observation = self._backend.observe()
@@ -325,6 +351,15 @@ class Click(_ScreenTool):
         if element is not None:
             clean["target"] = self._point_target(element)
         return clean
+
+    def describe(self, args: dict) -> str | None:
+        """« Cliquer sur [3] bouton « Supprimer » dans « Fenêtre » (app) »."""
+        if not _target_of(args):
+            return None
+        verb = "Double-cliquer sur" if args.get("double") else "Cliquer sur"
+        if args.get("button") == "right":
+            verb = "Clic droit sur"
+        return f"{verb} {_element_phrase(args)}{_in_window(args)}"
 
     def run(self, args: dict) -> ToolResult:
         target = args.get("target")
@@ -387,6 +422,19 @@ class TypeText(_ScreenTool):
             return clean
         clean["target"] = self._focus_target()
         return clean
+
+    def describe(self, args: dict) -> str | None:
+        """« Taper « ls » (puis Entrée) dans « Terminal » (xfce4-terminal) » : le
+        texte exact, en entier."""
+        if not _target_of(args):
+            return None
+        enter = " puis Entrée" if args.get("enter") else ""
+        field = (
+            f" dans le champ {_element_phrase(args)}"
+            if args.get("element") is not None
+            else ""
+        )
+        return f"Taper « {args.get('text', '')} »{enter}{field}{_in_window(args)}"
 
     def run(self, args: dict) -> ToolResult:
         text = str(args.get("text", ""))
@@ -472,6 +520,19 @@ class PressKeys(_ScreenTool):
             return max(level, 2)
         return level
 
+    def describe(self, args: dict) -> str | None:
+        """« Appuyer sur « shift+Delete » (×2) dans « Fenêtre » (app) »."""
+        if not _target_of(args):
+            return None
+        repeat = int(args.get("repeat", 1) or 1)
+        times = f" ×{repeat}" if repeat > 1 else ""
+        focus = (
+            f", focus sur {_element_phrase(args)}"
+            if _target_of(args).get("name")
+            else ""
+        )
+        return f"Appuyer sur « {args.get('keys', '')} »{times}{_in_window(args)}{focus}"
+
     def run(self, args: dict) -> ToolResult:
         if args.get("invalid"):
             return _err(f"press_keys : {args['invalid']}.")
@@ -524,6 +585,19 @@ class Scroll(_ScreenTool):
                 clean["target"] = self._target(window, point=area.center)
         return clean
 
+    def describe(self, args: dict) -> str | None:
+        """« Faire défiler vers le bas ×3 dans « Fenêtre » (app) »."""
+        if not _target_of(args):
+            return None
+        directions = {
+            "up": "le haut",
+            "down": "le bas",
+            "left": "la gauche",
+            "right": "la droite",
+        }
+        way = directions.get(str(args.get("direction")), str(args.get("direction")))
+        return f"Faire défiler vers {way} ×{args.get('amount', 3)}{_in_window(args)}"
+
     def run(self, args: dict) -> ToolResult:
         if args.get("direction") not in ("up", "down", "left", "right"):
             return _err("scroll : direction attendue up, down, left ou right.")
@@ -566,6 +640,11 @@ class FocusWindow(_ScreenTool):
             clean["target"] = self._target(window)
         return clean
 
+    def describe(self, args: dict) -> str | None:
+        """« Passer à la fenêtre « Titre » (app) »."""
+        window = _target_of(args).get("window")
+        return f"Passer à la fenêtre {window}" if window else None
+
     def run(self, args: dict) -> ToolResult:
         target = args.get("target")
         if self._backend.last is None:
@@ -603,9 +682,19 @@ class OpenApp(_ScreenTool):
                 "app": entry.app_id,
                 "instance": entry.executable,
                 "desktop_file": entry.path,
+                "command": entry.command,
+                "terminal": entry.opens_terminal,
                 "locked": self._backend.screen_locked(),
             }
         return clean
+
+    def describe(self, args: dict) -> str | None:
+        """« Ouvrir l'application … (commande) »."""
+        target = _target_of(args)
+        if not target:
+            return None
+        command = f" ({target['command']})" if target.get("command") else ""
+        return f"Ouvrir l'application « {target.get('window', '')} »{command}"
 
     def run(self, args: dict) -> ToolResult:
         name = str(args.get("name", ""))

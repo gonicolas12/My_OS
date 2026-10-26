@@ -70,7 +70,9 @@ def _effective_risk(tool: BaseTool, args: dict) -> int:
 
 
 def _summary(tool: BaseTool, args: dict, level: int) -> str:
-    return f"[niveau {level}] {tool.name}({args})"
+    """Résumé de l'action : la phrase de l'outil (``describe``), sinon ``outil(args)``."""
+    description = tool.describe(args)
+    return f"[niveau {level}] {description or f'{tool.name}({args})'}"
 
 
 def evaluate(tool: BaseTool, args: dict, grants: Grants) -> Decision:

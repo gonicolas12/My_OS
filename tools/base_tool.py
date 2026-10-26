@@ -93,6 +93,17 @@ class BaseTool:
         return False
 
     # pylint: disable-next=unused-argument
+    def describe(self, args: dict) -> str | None:
+        """Phrase lisible de l'action, pour les confirmations et les refus.
+
+        ``None`` (défaut) : le ``policy_engine`` affiche ``outil(arguments)``. Un
+        outil dont les arguments normalisés sont techniques (cible résolue depuis
+        l'écran, par exemple) dit ici ce que l'utilisateur approuve. Ne décide
+        rien : simple présentation.
+        """
+        return None
+
+    # pylint: disable-next=unused-argument
     def affected_paths(self, args: dict) -> list[str]:
         """Chemins concernés par l'action, utilisés pour matcher les grants.
 
