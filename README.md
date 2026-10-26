@@ -44,6 +44,25 @@ raccourcis : sans GPU, le modèle a mis environ une minute et vingt secondes au 
 | ![Élévation polkit](docs/media/elevation-polkit.png) | ![Installation terminée](docs/media/installation.png) |
 | **Élévation polkit** — mot de passe pour la commande exacte, jamais de root permanent | **Installation terminée** — chaque outil dans sa carte (statut, sortie de `pacman` lisible), puis le compte rendu du modèle |
 
+### 🖱️ Contrôle de l'ordinateur *(prochaine version)*
+
+![Démo : le modèle local remplit et envoie un formulaire dans Firefox](docs/media/controle.gif)
+
+*« Dans Firefox, remplis le formulaire d'inscription : nom Dupont, prénom Marie, e-mail
+marie.dupont@example.org, ville Lyon, coche la case de la lettre d'information, puis
+envoie l'inscription. » Après l'accord pour cette demande, les bords de l'écran
+s'illuminent en orange et le modèle local agit seul : il lit l'écran (éléments
+numérotés), remplit les champs, choisit la ville et coche la case ; l'envoi, action
+sensible, redemande une confirmation renforcée. Échap ou ■ arrête tout, à tout moment.
+Les temps d'attente sont raccourcis : avec la carte graphique intégrée du PC de test, la
+demande a pris environ trois minutes. Firefox, absent de l'ISO, a été installé pour la
+démo.*
+
+| | |
+|:---:|:---:|
+| ![Accord pour la demande](docs/media/controle-accord.png) | ![Pendant le contrôle de l'ordinateur](docs/media/controle-envoi.png) |
+| **Accord pour cette demande** — la demande telle que tapée, l'accès donné et comment arrêter ; « Refuser » par défaut | **Pendant le contrôle** — bords lumineux, barre d'arrêt (■ ou Échap) ; « Envoyer » redemande une confirmation renforcée, au-dessus de la barre |
+
 ---
 
 ## 📑 Sommaire
