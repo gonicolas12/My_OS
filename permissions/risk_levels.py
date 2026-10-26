@@ -224,6 +224,7 @@ DESTRUCTIVE_LABELS: tuple[str, ...] = (
     "commander",
     "transferer",
     "send",
+    "submit",  # le pendant anglais d'« Envoyer » sur un formulaire
     "publish",
     "pay",
     "buy",

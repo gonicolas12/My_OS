@@ -172,7 +172,7 @@ n'importe quelle action devient un clic.
 - **Escalade (niveau 2, redemandée à chaque fois).** Terminaux et lanceurs de commandes
   comme « Exécuter un programme » (y taper, c'est exécuter : le texte exact est montré),
   paramètres du système, libellés destructeurs ou sortants (Supprimer, Vider la
-  corbeille, Envoyer, Payer, Éteindre…), Maj+Suppr, Entrée ou Espace sur un tel bouton
+  corbeille, Envoyer, Submit, Payer, Éteindre…), Maj+Suppr, Entrée ou Espace sur un tel bouton
   focalisé, ouverture d'un terminal ou d'un lanceur, y compris par leurs raccourcis
   (Ctrl+Alt+T, Alt+F2, Alt+F3) : un accès refusé ne s'obtient pas par un autre chemin.
 - **Revérification juste avant d'agir.** La fenêtre visée (et, pour un élément de
