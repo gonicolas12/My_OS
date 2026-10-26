@@ -172,6 +172,35 @@ en plus (10,8 s), mais **3 sur 28** quand il doit donner des coordonnées sur la
 brute. La note qui suit (« nécessite un modèle cloud ») était donc juste pour le
 *grounding* au pixel d'un petit modèle, fausse pour un contrôle par éléments numérotés.
 
+### Français et anglais — post-v1.5 (octobre 2026, version à venir)
+- [x] **Toute l'application dans les deux langues** : interface du popup (barre de
+  titre, suggestions, statuts, cartes d'outils, confirmations, accord et barre d'arrêt
+  du contrôle), réponses du modèle local et du cloud (un prompt système et des
+  descriptions d'outils par langue), messages des outils, description de l'écran et
+  noms des applications pendant le contrôle de l'ordinateur.
+- [x] **Langue de Linux au premier lancement** : français si la session est en
+  français, anglais pour toute autre langue (`C` et `POSIX` compris). Bouton 🌐 FR / EN
+  dans la barre de titre : changement immédiat, sans redémarrer, choix mémorisé ;
+  `language: auto | fr | en` dans `config.yaml`.
+- [x] **La langue voyage avec chaque requête** : le daemon traite toute la requête
+  (prompt, outils, confirmations, notes au modèle) dans la langue du popup.
+- [x] **Sécurité inchangée** : la langue ne décide de rien, mêmes niveaux et mêmes
+  décisions ; libellés destructeurs et combinaisons reconnus dans les deux langues,
+  quelle que soit celle de My_OS. Cf. [SECURITY.md](SECURITY.md) §4, règle 9.
+- [x] **Le français ne change pas** : prompts et textes français identiques à ceux de la
+  v1.5, comparés avant et après.
+- [x] Validé en VM (ISO de la v1.5 avec le code de la branche, modèle local sur l'iGPU
+  du labo) : 42 scénarios de permissions dans chaque langue, mêmes décisions ;
+  13 demandes en langage naturel, bon outil 13 fois sur 13 dans chaque langue ;
+  contrôle de l'ordinateur en anglais (Mousepad ; terminal escaladé et refusé par
+  toutes les voies) ; ~850 tests sous Linux.
+- [x] Trouvés pendant la validation, corrigés et re-testés : les exemples entre
+  guillemets droits des descriptions d'outils anglaises étaient recopiés par le modèle
+  (« Open a terminal and run ls » ouvrait Mousepad 11 fois sur 20 ; 0 sur 20 sans
+  guillemets) ; après un passage du français à l'anglais en cours de conversation, le
+  modèle répondait parfois dans l'ancienne langue (environ 1 fois sur 10 ; 25 sur 25
+  avec un rappel de la langue à chaque demande quand la conversation en mélange deux).
+
 ### Encore à éprouver
 - [ ] Un vrai PC (pilotes Wi-Fi, rétroéclairage, cartes graphiques ; son et Wi-Fi ont été
   validés en VM avec du matériel simulé). Le modèle sur une vraie carte graphique reste à
@@ -196,6 +225,10 @@ Documenté pour montrer la direction. Chaque item est un projet en soi.
   prompt indirecte (problème de recherche ouvert).
 - **Wayland natif grand public** — port Wayland sorti du statut expérimental, confinement
   Wayland comme couche de sécurité supplémentaire, ISO installable par tous.
+- **D'autres langues** — une langue de plus, c'est un catalogue `core/locales/<code>.py`,
+  un prompt système et des descriptions d'outils (cf. [INTERFACES.md](INTERFACES.md)
+  §11), puis la même validation avec le modèle local. Les libellés destructeurs lus à
+  l'écran ne sont aujourd'hui reconnus qu'en français et en anglais.
 
 > Le routage par mode d'accès (commandes directes → accessibilité → vision) suit toujours
 > le principe : **essayer le mode le plus fiable d'abord, la vision en dernier recours.**
@@ -207,6 +240,8 @@ Plus modestes, et directement issues de l'usage réel :
   encore exploités.
 - **Consulter l'historique** depuis le popup (aujourd'hui : fichier SQLite d'audit).
 - **Messages polkit traduits** (« Request dismissed » s'affiche tel quel).
+- **Menus standard de Qt** : le clic droit dans le champ de la clé API reste en anglais,
+  même en français (traductions de Qt à charger, paquet `qt6-translations`).
 - **Confirmations en double** : le modèle demande parfois « Voulez-vous vraiment… ? »
   en texte avant d'appeler l'outil, puis la fenêtre de confirmation redemande ; après
   un refus, il lui arrive aussi de reproposer la même action, et rarement d'affirmer

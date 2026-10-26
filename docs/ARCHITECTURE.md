@@ -145,7 +145,7 @@ Interface invoquée au raccourci. Nouvelle vue en PySide6, mais la **logique** d
 | `ui/popup.py` | fenêtre PySide6 : client IPC, routage des messages du daemon vers la bonne réponse, états de la fenêtre (agrandie, plein écran) et mémoire de sa géométrie |
 | `ui/chat_view.py` | conversation : bulle de l'utilisateur, réponse en streaming, cartes d'outils et de code, notices, écran d'accueil, défilement collé en bas |
 | `ui/composer.py` | zone de saisie multiligne, bascule « ☁ Cloud », clé API, bouton d'envoi |
-| `ui/window_chrome.py` | barre de titre (rappel « Échap pour fermer », boutons) et poignées de redimensionnement d'une fenêtre sans cadre système |
+| `ui/window_chrome.py` | barre de titre (rappel « Échap pour fermer », menu de la langue FR/EN, boutons) et poignées de redimensionnement d'une fenêtre sans cadre système |
 | `ui/markdown_render.py` | découpage texte / blocs de code et mise en forme du markdown (`QTextDocument`, sans HTML brut ni image) |
 | `ui/confirm_dialog.py` | dialogue de confirmation d'action (et d'accord pour le contrôle de l'ordinateur) |
 | `ui/control_overlay.py` | indicateur du contrôle de l'ordinateur : bords de l'écran lumineux (orange clair, fondus d'apparition et de disparition, respiration) et barre d'arrêt « Cliquez ici ■ ou appuyez sur Échap pour arrêter » |
@@ -166,6 +166,27 @@ global passe par le **portal `org.freedesktop.portal.GlobalShortcuts`**. Le back
 (`core/session.py`) — contrats et limites (support dépendant du compositeur) détaillés
 dans `INTERFACES.md §9`. Repli propre + diagnostic si le compositeur n'a pas
 `layer-shell` / le portal.
+
+---
+
+## 5 bis · Langue : français et anglais (`core/i18n.py`)
+
+My_OS est bilingue. Le français est la langue de référence : tous les textes du code
+sont écrits en français et passent par `tr()` au moment d'être affichés ; en anglais,
+`tr()` les prend dans le catalogue `core/locales/en.py`. Le modèle a un prompt système
+par langue (`models/prompts.py`) et des descriptions d'outils traduites ; ses outils et
+leurs paramètres ne changent pas.
+
+| Où | Langue |
+|----|--------|
+| Popup | choix de l'utilisateur (bouton FR/EN de la barre de titre, mémorisé), sinon `language` de `config.yaml`, sinon langue du système : français si Linux est en français, anglais pour toute autre langue |
+| Daemon | celle de chaque requête (`user_message.language`), posée pour le thread de la requête : modèle, outils, observations de l'écran, confirmations, notices |
+| Écran lu, libellés, touches, applications | **les deux langues**, quelle que soit celle de My_OS (l'écran est dans la langue du système) |
+
+Changer de langue retraduit l'interface aussitôt, conversation affichée comprise (ce
+qui a été dit reste tel quel) ; la requête suivante part dans la nouvelle langue. Une
+conversation qui change de langue rappelle au modèle, à chaque demande, la langue de
+cette demande. Contrat complet : `INTERFACES.md §11`.
 
 ---
 
@@ -204,7 +225,7 @@ dans `INTERFACES.md §9`. Repli propre + diagnostic si le compositeur n'a pas
 |--------|----------|
 | Journal d'audit | `~/.local/share/my_os/audit.db` (SQLite) |
 | Configuration | `config.yaml` (versionné) + `config.local.yaml` (surcharges locales, non versionné) |
-| Taille, position et état du popup | `~/.config/my_os/popup.conf` (`QSettings`, aucune donnée sensible) |
+| Taille, position et état du popup, langue choisie | `~/.config/my_os/popup.conf` (`QSettings`, aucune donnée sensible) |
 | Clé API / secrets | trousseau OS (`keyring`) — **pas** sur disque en clair |
 | Grants de session | en mémoire (réinitialisés à chaque session) |
 | Dépendances PyPI (ISO) | venv `~/.local/share/my_os/venv` (créé au 1er run, journal `firstrun.log`) |
@@ -237,3 +258,5 @@ L'effort **neuf** se concentre sur : le daemon (couche 1), le moteur de permissi
 - **Écran décrit par l'accessibilité, pas par la vision** : un modèle local de 4 milliards de paramètres choisit bien dans une liste numérotée mais vise mal au pixel ; la capture annotée n'est qu'un complément, sur carte graphique (cf. §3.3).
 - **Indicateur dessiné par le popup, pas par le daemon** : le daemon reste sans interface ; il attend l'accusé du popup avant d'agir, si bien qu'aucun contrôle n'a lieu sans indicateur visible.
 - **Local par défaut, cloud opt-in** : inverse de la norme, par choix de confidentialité.
+- **Langue portée par chaque requête, pas d'état partagé** : le popup (qui vit dans la session graphique, donc connaît la langue du bureau) choisit, chaque `user_message` porte sa langue, le daemon y répond. Pas de fichier de réglages commun aux deux processus, et un service systemd dont l'environnement diffère de la session (`LANG` de `/etc/locale.conf`) ne décide pas de la langue de l'utilisateur.
+- **Textes français dans le code, catalogue pour l'anglais** : le code se lit comme avant et le comportement français reste exactement celui d'origine ; des tests vérifient le catalogue contre le code (aucun texte oublié, aucune traduction orpheline).
