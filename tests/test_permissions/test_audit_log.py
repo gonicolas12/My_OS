@@ -133,3 +133,19 @@ def test_cle_partielle_sensible_est_aussi_masquee(audit: AuditLog) -> None:
     entry = audit.fetch_all()[0]
     assert entry["args"]["refresh_token"] == "[REDACTED]"
     assert entry["args"]["user_password_hash"] == "[REDACTED]"
+
+
+def test_touches_pressees_jamais_masquees(audit: AuditLog) -> None:
+    # « keys » contient l'aiguille « key », mais les touches d'un press_keys ne
+    # sont pas un secret : l'audit d'un contrôle de l'écran doit les montrer.
+    audit.log(
+        tool="press_keys",
+        args={"keys": "shift+Delete", "api_key": "sk-123"},
+        risk_level=2,
+        decision="approved",
+        success=True,
+        reversible=False,
+    )
+    entry = audit.fetch_all()[0]
+    assert entry["args"]["keys"] == "shift+Delete"
+    assert entry["args"]["api_key"] == "[REDACTED]"

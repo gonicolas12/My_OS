@@ -77,6 +77,25 @@ def _default_runner(
     )
 
 
+def _detached_runner(
+    argv: list[str], timeout: float
+) -> subprocess.CompletedProcess[str]:
+    """Lanceur sans tube, pour une commande qui laisse un processus derrière elle
+    (application graphique lancée) : hérités par ce processus, des tubes de capture
+    resteraient ouverts et ``subprocess.run`` attendrait leur fermeture jusqu'au
+    délai (vu en VM avec ``gio launch``). Entrées et sorties : ``/dev/null``."""
+    completed = subprocess.run(
+        argv,
+        shell=False,  # jamais de shell : pas d'interprétation d'entrée (SECURITY §7)
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=timeout,
+        check=False,
+    )
+    return subprocess.CompletedProcess(argv, completed.returncode, "", "")
+
+
 def build_argv(argv: list[str], *, elevate: bool) -> list[str]:
     """Construit l'argv final, préfixé par ``pkexec`` si ``elevate``.
 
@@ -98,6 +117,7 @@ def run_command(
     elevate: bool = False,
     timeout: float = DEFAULT_TIMEOUT_S,
     runner: Runner | None = None,
+    detach_output: bool = False,
 ) -> CommandResult:
     """Exécute ``argv`` (sans shell), avec élévation polkit ponctuelle si demandé.
 
@@ -108,6 +128,9 @@ def run_command(
         après authentification polkit. Le daemon reste utilisateur.
     :param timeout: délai max en secondes.
     :param runner: lanceur injectable (tests). Défaut : :func:`subprocess.run`.
+    :param detach_output: pas de capture de la sortie (``/dev/null``), pour une
+        commande qui lance un processus durable (application graphique) : la
+        sortie n'est pas lue et seul le code de retour compte.
     :returns: :class:`CommandResult` (code, stdout, stderr).
 
     En cas de timeout ou d'absence du binaire (``pkexec`` ou la commande
@@ -115,7 +138,8 @@ def run_command(
     de propager l'exception — l'orchestrator réinjecte ce message comme donnée.
     """
     final_argv = build_argv(argv, elevate=elevate)
-    run = runner if runner is not None else _default_runner
+    default = _detached_runner if detach_output else _default_runner
+    run = runner if runner is not None else default
     try:
         completed = run(final_argv, timeout=timeout)
     except FileNotFoundError as exc:

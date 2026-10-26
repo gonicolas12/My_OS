@@ -27,12 +27,15 @@ class ToolResult:
 
     ``reversible`` et ``undo_data`` documentent une éventuelle annulation
     ultérieure ; au jalon 2 ils ne sont pas encore exploités par l'orchestrator.
+    ``image`` (outils de l'écran) : capture annotée en JPEG, transmise au modèle
+    s'il voit les images, jamais au popup ni au journal d'audit.
     """
 
     success: bool
     output: str
     reversible: bool = False
     undo_data: dict | None = None
+    image: bytes | None = None
 
 
 class BaseTool:

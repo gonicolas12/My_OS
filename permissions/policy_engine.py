@@ -30,14 +30,22 @@ viendra jamais. L'élévation réelle se fait à l'exécution dans
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol
 
 from permissions.blocklist import is_blocked
-from permissions.session_grants import SessionGrants
+from permissions.risk_levels import COMPUTER_TOOLS
 from tools.base_tool import BaseTool
 
 # Niveau maximal qu'un grant (dossier / session) peut couvrir. Au-delà, chaque
 # action est reconfirmée et aucune portée de grant n'est proposée ni enregistrée.
 GRANTABLE_MAX_LEVEL = 1
+
+
+class Grants(Protocol):
+    """Grants consultés par :func:`evaluate` (``SessionGrants`` ou ``RequestGrants``)."""
+
+    def is_granted(self, tool_name: str, paths: list[str]) -> bool:
+        """``True`` si un grant couvre l'outil pour ces chemins."""
 
 
 @dataclass
@@ -65,7 +73,7 @@ def _summary(tool: BaseTool, args: dict, level: int) -> str:
     return f"[niveau {level}] {tool.name}({args})"
 
 
-def evaluate(tool: BaseTool, args: dict, grants: SessionGrants) -> Decision:
+def evaluate(tool: BaseTool, args: dict, grants: Grants) -> Decision:
     """Évalue une demande d'exécution d'outil et renvoie la décision à appliquer."""
     # 1. Blocklist : jamais franchissable.
     if is_blocked(tool.name, args):
@@ -113,10 +121,11 @@ def grantable_scopes(tool: BaseTool, args: dict, risk_level: int) -> list[str]:
     """Portées de grant que l'utilisateur peut choisir pour cette action.
 
     Vide au-delà de :data:`GRANTABLE_MAX_LEVEL` (confirmation renforcée : « une
-    fois » seulement). ``this_folder`` n'a de sens que si l'outil touche des
-    chemins (un ``pacman -S`` n'en a pas). Le popup n'affiche que ces portées et
-    l'orchestrator n'enregistre jamais un grant hors de cette liste.
+    fois » seulement), et pour le contrôle de l'écran (accordé à une requête, jamais
+    au-delà). ``this_folder`` n'a de sens que si l'outil touche des chemins (un
+    ``pacman -S`` n'en a pas). Le popup n'affiche que ces portées et l'orchestrator
+    n'enregistre jamais un grant hors de cette liste.
     """
-    if risk_level > GRANTABLE_MAX_LEVEL:
+    if risk_level > GRANTABLE_MAX_LEVEL or tool.name in COMPUTER_TOOLS:
         return []
     return ["this_folder", "session"] if tool.affected_paths(args) else ["session"]

@@ -8,7 +8,9 @@ par :meth:`AuditLog.log` directement (entrée complète en une fois).
 
 Les arguments enregistrés ne contiennent **jamais** de secret en clair :
 :func:`_redact` masque les valeurs des clés contenant ``password``, ``secret``,
-``token``, ``api_key`` ou ``key`` (cf. SECURITY §3 menace 4).
+``token``, ``api_key`` ou ``key`` (cf. SECURITY §3 menace 4) — sauf ``keys``, les
+touches pressées par ``press_keys`` (« ctrl+s ») : ce n'est pas un secret, et
+c'est exactement ce que l'audit d'un contrôle de l'écran doit montrer.
 """
 
 from __future__ import annotations
@@ -40,14 +42,18 @@ _REDACTED_KEY_NEEDLES: tuple[str, ...] = (
     "key",
 )
 _REDACTED = "[REDACTED]"
+# Noms exacts jamais masqués malgré une aiguille (cf. en-tête du module).
+_NEVER_SECRET: frozenset[str] = frozenset({"keys"})
 
 
 def _redact(args: dict) -> dict:
     """Copie de ``args`` où les valeurs des clés sensibles sont masquées."""
     safe: dict = {}
     for key, value in args.items():
-        if isinstance(key, str) and any(
-            needle in key.lower() for needle in _REDACTED_KEY_NEEDLES
+        if (
+            isinstance(key, str)
+            and key not in _NEVER_SECRET
+            and any(needle in key.lower() for needle in _REDACTED_KEY_NEEDLES)
         ):
             safe[key] = _REDACTED
         else:

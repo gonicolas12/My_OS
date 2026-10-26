@@ -28,7 +28,14 @@ import os
 import posixpath
 from collections.abc import Callable
 
-from permissions.risk_levels import CRITICAL_PACKAGES, SYSTEM_SENSITIVE_ROOTS
+from permissions.risk_levels import (
+    CRITICAL_PACKAGES,
+    FORBIDDEN_COMBOS,
+    FORBIDDEN_KEYS,
+    PROTECTED_APPS,
+    SYSTEM_SENSITIVE_ROOTS,
+    app_keys,
+)
 
 # Cibles supplémentaires (au-delà de SYSTEM_SENSITIVE_ROOTS) dont la racine
 # ne doit jamais être supprimée ou déplacée.
@@ -125,6 +132,50 @@ def _block_remove(args: dict) -> bool:
     return name.strip().lower() in CRITICAL_PACKAGES
 
 
+def _target(args: dict) -> dict:
+    target = args.get("target")
+    return target if isinstance(target, dict) else {}
+
+
+def _block_screen_target(args: dict) -> bool:
+    """Bloque toute action sur une cible protégée de l'écran.
+
+    La cible est résolue par l'outil (``normalize_args``) depuis l'état réel de
+    l'écran, jamais fournie par le modèle : fenêtre de My_OS lui-même (popup,
+    confirmations : l'IA ne valide jamais ses propres actions), bouton d'arrêt du
+    contrôle, écran verrouillé, application protégée (mot de passe, élévation,
+    trousseau, verrouillage, partitionnement).
+    """
+    target = _target(args)
+    if target.get("myos") or target.get("stop_button") or target.get("locked"):
+        return True
+    return bool(
+        app_keys(str(target.get("app", "")), str(target.get("instance", "")))
+        & PROTECTED_APPS
+    )
+
+
+def _block_password(args: dict) -> bool:
+    """L'IA ne tape jamais dans un champ de mot de passe."""
+    return _target(args).get("role") == "password"
+
+
+def _block_combo(args: dict) -> bool:
+    """Combinaisons interdites (tuer la session graphique, changer de console…).
+
+    ``keys`` est déjà en forme canonique (``tools.computer.keys.parse_combo``,
+    appliqué par ``normalize_args``) : une autre écriture ne contourne pas la règle.
+    """
+    combo = args.get("keys")
+    if not isinstance(combo, str):
+        return False
+    parts = combo.split("+")
+    if combo in FORBIDDEN_COMBOS or any(part in FORBIDDEN_KEYS for part in parts):
+        return True
+    # Alt+Impr. écran = SysRq : les « touches magiques » du noyau.
+    return "alt" in parts and "Print" in parts
+
+
 _BLOCKERS: dict[str, tuple[Callable[[dict], bool], ...]] = {
     "delete_file": (_block_delete,),
     "move_file": (_block_move,),
@@ -132,6 +183,12 @@ _BLOCKERS: dict[str, tuple[Callable[[dict], bool], ...]] = {
     "create_file": (_block_write,),
     "kill_process": (_block_kill,),
     "remove_package": (_block_remove,),
+    "click": (_block_screen_target,),
+    "scroll": (_block_screen_target,),
+    "focus_window": (_block_screen_target,),
+    "open_app": (_block_screen_target,),
+    "type_text": (_block_screen_target, _block_password),
+    "press_keys": (_block_screen_target, _block_password, _block_combo),
 }
 
 
