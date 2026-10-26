@@ -55,8 +55,8 @@ s'illuminent en orange et le modèle local agit seul : il lit l'écran (élémen
 numérotés), remplit les champs, choisit la ville et coche la case ; l'envoi, action
 sensible, redemande une confirmation renforcée. Échap ou ■ arrête tout, à tout moment.
 Les temps d'attente sont raccourcis : avec la carte graphique intégrée du PC de test, la
-demande a pris environ trois minutes. Firefox, absent de l'ISO, a été installé pour la
-démo.*
+demande a pris un peu plus de deux minutes. Firefox, absent de l'ISO, a été installé
+pour la démo.*
 
 | | |
 |:---:|:---:|
