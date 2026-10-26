@@ -150,7 +150,10 @@ n'importe quelle action devient un clic.
   ferme avec la requête quoi qu'il arrive (`finally`).
 - **Toujours visible.** La session ne s'ouvre qu'une fois l'indicateur affiché par le
   popup (bords orange + barre d'arrêt, accusé `control_ready`) : pas de popup, pas de
-  contrôle. La barre montre l'action en cours.
+  contrôle. La barre montre l'action en cours. Une confirmation demandée pendant le
+  contrôle s'affiche au-dessus de la barre, jamais dessous : sur un petit écran où elle
+  ne tient pas au-dessus, la barre cesse de se remettre au premier plan le temps de la
+  question (aucune action n'a lieu pendant ce temps).
 - **Arrêt garanti.** Échap (écoute globale, sans capture ; les Échap injectés par le
   modèle sont décomptés un à un), le bouton ■, ou un popup déconnecté arrêtent la
   session ; dès lors un **garde**, vérifié avant chaque événement injecté et chaque

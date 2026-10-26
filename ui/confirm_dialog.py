@@ -30,7 +30,7 @@ from __future__ import annotations
 import html
 import json
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QRect, Qt, QTimer
 from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import (
     QDialog,
@@ -66,6 +66,10 @@ _LABEL_CELL = (
     '<td style="color:#a3a3a3; padding-right:14px; white-space:nowrap" valign="top">'
 )
 _VALUE_CELL = '<td style="white-space:pre-wrap">'
+# Zone à laisser libre (barre d'arrêt du contrôle) : marge, et second passage une fois
+# le cadre du gestionnaire de fenêtres connu (ms).
+_CLEAR_MARGIN = 12
+_FRAME_SETTLE_MS = 150
 
 
 class ConfirmDialog(QDialog):
@@ -76,6 +80,7 @@ class ConfirmDialog(QDialog):
         self._payload = payload
         self._response: tuple[str, str | None] | None = None
         self._deny_btn: QPushButton | None = None
+        self._clear_of: QRect | None = None
         # Même couche que le popup (WindowStaysOnTopHint) : sans ce drapeau, xfwm
         # et consorts ouvrent la confirmation SOUS le popup, donc invisible.
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
@@ -94,6 +99,7 @@ class ConfirmDialog(QDialog):
         if self._deny_btn is not None:
             self._deny_btn.setFocus()
         QTimer.singleShot(0, self.fit_contents)
+        QTimer.singleShot(_FRAME_SETTLE_MS, self, self._stay_clear)
 
     def fit_contents(self) -> None:
         """Agrandit la fenêtre à son contenu une fois affichée.
@@ -113,6 +119,25 @@ class ConfirmDialog(QDialog):
         needed = self.heightForWidth(self.width())
         if needed > self.height():
             self.resize(self.width(), needed)
+        self._stay_clear()
+
+    def keep_clear_of(self, area: QRect) -> None:
+        """Zone de l'écran à ne pas recouvrir : la barre d'arrêt pendant le contrôle
+        de l'ordinateur. La fenêtre s'affiche au-dessus d'elle si la place le permet
+        (vu en 1280×720 : la barre, toujours au premier plan, cachait le bas du
+        dialogue, et en aurait caché les boutons)."""
+        self._clear_of = QRect(area)
+
+    def _stay_clear(self) -> None:
+        area = self._clear_of
+        if area is None or not self.isVisible():
+            return
+        frame = self.frameGeometry()
+        if not frame.intersects(area):
+            return
+        screen = self.screen().availableGeometry()
+        top = max(screen.top(), area.top() - _CLEAR_MARGIN - frame.height())
+        self.move(frame.x(), top)
 
     @property
     def response(self) -> tuple[str, str | None]:

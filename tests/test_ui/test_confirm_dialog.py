@@ -171,6 +171,22 @@ def test_accord_de_controle_jamais_rogne(app: object) -> None:
     parent.deleteLater()
 
 
+def test_confirmation_au_dessus_de_la_barre_d_arret(app: object) -> None:
+    # Vu en 1280×720 : pendant le contrôle, la barre d'arrêt (toujours au premier
+    # plan) cachait le bas d'une confirmation, et en aurait caché les boutons.
+    dialog = ConfirmDialog(_payload(2, []))
+    screen = dialog.screen().availableGeometry()
+    bar = QtCore.QRect(screen.x(), screen.bottom() - 90, screen.width(), 70)
+    dialog.keep_clear_of(bar)
+    dialog.show()
+    QtWidgets.QApplication.processEvents()
+    dialog.move(dialog.x(), bar.top() - 60)  # posée sur la barre
+    dialog.fit_contents()
+    assert not dialog.frameGeometry().intersects(bar)
+    assert dialog.frameGeometry().top() >= screen.top()
+    dialog.close()
+
+
 def test_cible_technique_de_l_ecran_non_affichee(app: object) -> None:
     payload = _payload(2, [])
     payload["tool"] = "type_text"

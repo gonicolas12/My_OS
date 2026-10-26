@@ -22,6 +22,7 @@ QtWidgets = pytest.importorskip("PySide6.QtWidgets")
 
 from core.config import Config
 from ui.chat_view import AssistantMessage, Notice, UserMessage
+from ui.confirm_dialog import ConfirmDialog
 from ui.popup import (
     MESSAGE_CONNECTION_LOST,
     MESSAGE_OFFLINE,
@@ -406,6 +407,42 @@ def test_bouton_stop_demande_l_arret_au_daemon(popup: Popup) -> None:
     try:
         popup._overlay.stop_clicked.emit()
         assert _client(popup).sent[-1] == {"type": "stop_control"}
+    finally:
+        _stop_overlay(popup)
+
+
+def test_confirmation_pendant_le_controle_jamais_sous_la_barre(
+    popup: Popup, monkeypatch: object
+) -> None:
+    # Vu en 1280×720 : la barre d'arrêt, remontée toutes les 700 ms, cachait le bas
+    # d'une confirmation renforcée (et en aurait caché les boutons).
+    request_id = _start_control(popup)
+    seen: dict = {}
+
+    class Confirmation(ConfirmDialog):
+        def exec(self) -> int:
+            seen["clear_of"] = self._clear_of
+            seen["raising"] = popup._overlay._raise_timer.isActive()
+            return 0  # fermée : refus
+
+    monkeypatch.setattr("ui.popup.ConfirmDialog", Confirmation)
+    try:
+        _client(popup).message_received.emit(
+            {
+                "type": "confirmation_needed",
+                "id": request_id,
+                "request_id": "c1",
+                "tool": "click",
+                "args": {"element": 3},
+                "risk_level": 2,
+                "summary": "[niveau 2] Cliquer sur [3] bouton « Envoyer »",
+                "allowed_scopes": [],
+            }
+        )
+        assert seen["clear_of"] == popup._overlay.bar_rect()
+        assert seen["raising"] is False  # pendant la question
+        assert popup._overlay._raise_timer.isActive()  # reprise ensuite
+        assert _client(popup).sent[-1]["decision"] == "deny"
     finally:
         _stop_overlay(popup)
 

@@ -123,6 +123,26 @@ def test_sans_compositeur_ni_fondu_ni_transparence(app: object) -> None:
     assert overlay.windows() == []
 
 
+def test_remise_au_premier_plan_suspendue_le_temps_d_une_question(
+    overlay: ControlOverlay,
+) -> None:
+    overlay.show_overlay()
+    assert overlay._raise_timer.isActive()
+    overlay.set_raising(False)
+    assert not overlay._raise_timer.isActive()
+    overlay.set_raising(True)
+    assert overlay._raise_timer.isActive()
+
+
+def test_remise_au_premier_plan_jamais_relancee_apres_l_arret(app: object) -> None:
+    overlay = ControlOverlay(solid=True)
+    overlay.show_overlay()
+    overlay.set_raising(False)
+    overlay.hide_overlay()  # sans compositeur : fenêtres fermées aussitôt
+    overlay.set_raising(True)
+    assert not overlay._raise_timer.isActive()
+
+
 def test_action_en_cours_coupee(overlay: ControlOverlay) -> None:
     overlay.show_overlay()
     overlay.set_status("Clique · " + "très long libellé " * 40)

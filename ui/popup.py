@@ -672,9 +672,20 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         if not self.isVisible() and self._control_request is None:
             self.present()  # la demande s'affiche sur la conversation qui la motive
         # Pendant le contrôle de l'écran, le popup reste caché : la confirmation
-        # s'ouvre seule, au-dessus de l'application pilotée.
+        # s'ouvre seule, au-dessus de l'application pilotée et de la barre d'arrêt,
+        # qui ne cache jamais ses boutons (petit écran). Aucune action n'a lieu
+        # pendant la question : l'indicateur cesse de se remettre au premier plan.
         dialog = ConfirmDialog(payload, parent=self)
-        dialog.exec()
+        overlay = self._overlay if self._control_request is not None else None
+        bar = overlay.bar_rect() if overlay is not None else None
+        if overlay is not None and bar is not None:
+            dialog.keep_clear_of(bar)
+            overlay.set_raising(False)
+        try:
+            dialog.exec()
+        finally:
+            if overlay is not None:
+                overlay.set_raising(True)
         decision, scope = dialog.response
         response: dict = {
             "type": "confirmation_response",

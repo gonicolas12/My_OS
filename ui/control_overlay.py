@@ -93,7 +93,8 @@ _OPACITY_STEP = 0.004
 BAR_BOTTOM_GAP = 64
 _BAR_MARGIN = 18  # halo autour de la barre (dans sa fenêtre transparente)
 STOP_BUTTON_SIZE = 30
-# Les fenêtres sont remontées régulièrement (une fenêtre gérée peut passer devant).
+# Les fenêtres sont remontées régulièrement (une fenêtre gérée peut passer devant),
+# sauf pendant une confirmation (cf. ControlOverlay.set_raising).
 _RAISE_MS = 700
 
 TITLE = "My_OS contrôle l'ordinateur"
@@ -511,6 +512,19 @@ class ControlOverlay(QObject):  # pylint: disable=too-many-instance-attributes
             self._destroy()
             return
         self._animate(0.0, FADE_OUT_MS, QEasingCurve.Type.InOutSine)
+
+    def set_raising(self, enabled: bool) -> None:
+        """Suspend (``False``) ou reprend la remise au premier plan périodique.
+
+        Le popup la suspend le temps d'une confirmation : aucune action n'a lieu
+        pendant la question, et le dialogue doit rester entièrement visible, même
+        sur un petit écran où la barre d'arrêt le chevaucherait.
+        """
+        if not enabled:
+            self._raise_timer.stop()
+        elif self._showing:
+            self._raise_all()
+            self._raise_timer.start()
 
     def set_status(self, text: str) -> None:
         """Action en cours, sous le titre de la barre (texte brut, coupé)."""
