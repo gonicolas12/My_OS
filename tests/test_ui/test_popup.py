@@ -22,7 +22,13 @@ QtWidgets = pytest.importorskip("PySide6.QtWidgets")
 
 from core.config import Config
 from ui.chat_view import AssistantMessage, Notice, UserMessage
-from ui.popup import MESSAGE_CONNECTION_LOST, MESSAGE_OFFLINE, Popup
+from ui.confirm_dialog import ConfirmDialog
+from ui.popup import (
+    MESSAGE_CONNECTION_LOST,
+    MESSAGE_OFFLINE,
+    STATUS_CONTROLLING,
+    Popup,
+)
 
 
 class FakeClient(QtCore.QObject):
@@ -340,3 +346,129 @@ def test_taille_et_position_memorisees(app: object, settings: object) -> None:
     first.deleteLater()
     second.hide()
     second.deleteLater()
+
+
+# ---- contrôle de l'ordinateur ---------------------------------------------------
+
+
+def _start_control(popup: Popup) -> str:
+    _client(popup).connect_daemon()
+    request_id = _send(popup, "écris une liste de courses")
+    popup.present()
+    _client(popup).message_received.emit(
+        {"type": "control_state", "id": request_id, "active": True}
+    )
+    return request_id
+
+
+def _stop_overlay(popup: Popup) -> None:
+    if popup._overlay is not None:
+        popup._overlay._destroy()
+
+
+def test_controle_cache_le_popup_et_allume_l_indicateur(popup: Popup) -> None:
+    request_id = _start_control(popup)
+    try:
+        assert not popup.isVisible()
+        assert popup._overlay is not None and popup._overlay.showing
+        ready = _client(popup).sent[-1]
+        assert ready["type"] == "control_ready" and ready["id"] == request_id
+        stop = QtCore.QRect(*ready["stop_rect"])
+        bar = QtCore.QRect(*ready["bar_rect"])
+        assert stop.width() > 0 and bar.contains(stop)
+        assert _last_turn(popup).status_text() == STATUS_CONTROLLING
+    finally:
+        _stop_overlay(popup)
+
+
+def test_controle_d_une_requete_oubliee_ignore(popup: Popup) -> None:
+    _client(popup).connect_daemon()
+    _client(popup).message_received.emit(
+        {"type": "control_state", "id": "inconnue", "active": True}
+    )
+    assert popup._overlay is None
+    assert all(m["type"] != "control_ready" for m in _client(popup).sent)
+
+
+def test_fin_du_controle_eteint_l_indicateur_et_rouvre_le_popup(popup: Popup) -> None:
+    request_id = _start_control(popup)
+    try:
+        _client(popup).message_received.emit(
+            {"type": "control_state", "id": request_id, "active": False}
+        )
+        assert not popup._overlay.showing
+        assert popup.isVisible()
+    finally:
+        _stop_overlay(popup)
+
+
+def test_bouton_stop_demande_l_arret_au_daemon(popup: Popup) -> None:
+    _start_control(popup)
+    try:
+        popup._overlay.stop_clicked.emit()
+        assert _client(popup).sent[-1] == {"type": "stop_control"}
+    finally:
+        _stop_overlay(popup)
+
+
+def test_confirmation_pendant_le_controle_jamais_sous_la_barre(
+    popup: Popup, monkeypatch: object
+) -> None:
+    # Vu en 1280×720 : la barre d'arrêt, remontée toutes les 700 ms, cachait le bas
+    # d'une confirmation renforcée (et en aurait caché les boutons).
+    request_id = _start_control(popup)
+    seen: dict = {}
+
+    class Confirmation(ConfirmDialog):
+        def exec(self) -> int:
+            seen["clear_of"] = self._clear_of
+            seen["raising"] = popup._overlay._raise_timer.isActive()
+            return 0  # fermée : refus
+
+    monkeypatch.setattr("ui.popup.ConfirmDialog", Confirmation)
+    try:
+        _client(popup).message_received.emit(
+            {
+                "type": "confirmation_needed",
+                "id": request_id,
+                "request_id": "c1",
+                "tool": "click",
+                "args": {"element": 3},
+                "risk_level": 2,
+                "summary": "[niveau 2] Cliquer sur [3] bouton « Envoyer »",
+                "allowed_scopes": [],
+            }
+        )
+        assert seen["clear_of"] == popup._overlay.bar_rect()
+        assert seen["raising"] is False  # pendant la question
+        assert popup._overlay._raise_timer.isActive()  # reprise ensuite
+        assert _client(popup).sent[-1]["decision"] == "deny"
+    finally:
+        _stop_overlay(popup)
+
+
+def test_action_du_modele_affichee_dans_la_barre(popup: Popup) -> None:
+    request_id = _start_control(popup)
+    try:
+        _client(popup).message_received.emit(
+            {
+                "type": "tool_result",
+                "id": request_id,
+                "tool": "click",
+                "status": "ok",
+                "text": "Clic sur [3] « Enregistrer ».\n\nContenu de l'écran…",
+            }
+        )
+        bar = popup._overlay._bar
+        assert bar.status.text().startswith("Clique · Clic sur [3]")
+    finally:
+        _stop_overlay(popup)
+
+
+def test_daemon_perdu_arrete_l_indicateur(popup: Popup) -> None:
+    _start_control(popup)
+    try:
+        _client(popup).drop()
+        assert not popup._overlay.showing
+    finally:
+        _stop_overlay(popup)

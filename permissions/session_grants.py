@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import posixpath
 
+from permissions.risk_levels import COMPUTER_TOOLS
+
 VALID_SCOPES: tuple[str, ...] = ("this_file", "this_folder", "session")
 
 
@@ -84,3 +86,46 @@ class SessionGrants:
         self._file_grants.clear()
         self._folder_grants.clear()
         self._session_grants.clear()
+
+
+class RequestGrants:
+    """Grants vus par UNE requête : ceux de la session, plus le contrôle de l'écran.
+
+    Le contrôle de l'ordinateur est accordé par l'utilisateur pour la requête en
+    cours seulement (confirmation dédiée) ; il disparaît avec elle. Tant qu'il est
+    accordé, les outils de :data:`permissions.risk_levels.COMPUTER_TOOLS` sont
+    couverts — et le ``policy_engine`` ne laisse un grant couvrir que le niveau 1 :
+    une action escaladée (terminal, bouton « Supprimer »…) reste redemandée.
+
+    Même interface que :class:`SessionGrants` pour le ``policy_engine`` ; les grants
+    « dossier » et « session » sont enregistrés dans la session partagée.
+    """
+
+    def __init__(self, session: SessionGrants) -> None:
+        self._session = session
+        self._control = False
+
+    @property
+    def control_allowed(self) -> bool:
+        """``True`` si le contrôle de l'ordinateur est accordé pour cette requête."""
+        return self._control
+
+    def allow_control(self) -> None:
+        """Accorde le contrôle de l'ordinateur pour cette requête."""
+        self._control = True
+
+    def revoke_control(self) -> None:
+        """Retire le contrôle (fin de requête, arrêt par l'utilisateur)."""
+        self._control = False
+
+    def grant(self, tool_name: str, scope: str, target: str | None = None) -> None:
+        """Enregistre un grant de session (délégué à :class:`SessionGrants`)."""
+        if tool_name in COMPUTER_TOOLS:
+            return  # jamais de grant durable sur le contrôle de l'écran
+        self._session.grant(tool_name, scope, target)
+
+    def is_granted(self, tool_name: str, paths: list[str]) -> bool:
+        """Grants de la session, plus le contrôle accordé à la requête."""
+        if tool_name in COMPUTER_TOOLS:
+            return self._control
+        return self._session.is_granted(tool_name, paths)

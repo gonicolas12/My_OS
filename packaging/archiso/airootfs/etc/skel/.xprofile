@@ -1,5 +1,8 @@
 # shellcheck shell=sh
 # My_OS — initialisation de la session X (Xfce/X11), sourcée au démarrage de session.
+# 0) Contrôle de l'ordinateur : les applications exposent leur arbre d'accessibilité
+#    (Chromium et Electron ne le lisent qu'à leur démarrage ; GTK l'expose toujours).
+export GNOME_ACCESSIBILITY=1 ACCESSIBILITY_ENABLED=1 QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1
 # 1) Première exécution : venv + dépendances + modèle (idempotent, cf. myos-user-firstrun).
 /usr/local/bin/myos-user-firstrun
 # 2) Le daemon (service utilisateur) a besoin de DISPLAY/XAUTHORITY : on les importe

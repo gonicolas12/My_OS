@@ -24,17 +24,21 @@ from __future__ import annotations
 import signal
 import threading
 
-from core.config import Config, ModelConfig, load_config
+from core.config import ComputerConfig, Config, ModelConfig, load_config
 from core.logger import get_logger
 from daemon.confirmation_provider import IPCConfirmationProvider
+from daemon.control import ControlSession
 from daemon.hotkey_listener import HotkeyListener
 from daemon.ipc_server import IPCServer
 from daemon.orchestrator import Model, Orchestrator
 from models.cloud_router import CloudRouter
 from models.stub_model import StubRuleModel
 from permissions.audit_log import AuditLog
+from permissions.risk_levels import COMPUTER_TOOLS
 from permissions.session_grants import SessionGrants
 from tools.base_tool import BaseTool
+from tools.computer.backend import DesktopBackend
+from tools.computer.tools import ScreenContext, build_computer_tools
 from tools.files import FILE_TOOLS
 from tools.packages import PACKAGE_TOOLS
 from tools.processes import PROCESS_TOOLS
@@ -43,28 +47,36 @@ from tools.system_settings import SETTINGS_TOOLS
 _log = get_logger("myosd")
 
 
-def _build_tools() -> dict[str, BaseTool]:
+def _build_tools(screen: ScreenContext | None = None) -> dict[str, BaseTool]:
     """Fusionne tous les registres d'outils câblés dans le daemon.
 
     Les noms d'outils sont uniques entre registres (vérifié par les tests) ;
     en cas de collision accidentelle, la dernière source l'emporterait, donc on
-    garde des préfixes de noms distincts par domaine.
+    garde des préfixes de noms distincts par domaine. Les outils de l'écran
+    partagent le contexte de la session de contrôle (``screen``) ; sans contexte,
+    ils reçoivent un bureau réel paresseux (rien n'est lu à la construction).
     """
+    if screen is None:
+        screen = ScreenContext(backend=DesktopBackend())
     return {
         **FILE_TOOLS,
         **PROCESS_TOOLS,
         **PACKAGE_TOOLS,
         **SETTINGS_TOOLS,
+        **build_computer_tools(screen),
     }
 
 
-def _build_model(model_config: ModelConfig) -> Model:
+def _build_model(
+    model_config: ModelConfig, computer: ComputerConfig | None = None
+) -> Model:
     """Construit le backend modèle demandé dans la config.
 
     Le client Ollama n'est importé que si nécessaire — ça évite d'exiger la
     présence du module ``ollama`` quand on utilise le stub.
     """
     backend = (model_config.backend or "stub").lower()
+    computer = computer or ComputerConfig()
     if backend == "ollama":
         from models.local_llm import OllamaClient  # pylint: disable=import-outside-toplevel
 
@@ -81,6 +93,8 @@ def _build_model(model_config: ModelConfig) -> Model:
             think=model_config.think,
             num_ctx=model_config.num_ctx,
             keep_alive=model_config.keep_alive,
+            screen_control=computer.enabled,
+            vision=computer.vision,
         )
     if backend != "stub":
         _log.warning(
@@ -98,28 +112,51 @@ class Daemon:  # pylint: disable=too-many-instance-attributes
         self._config = config
         self._audit = AuditLog(config.audit_db_path)
         self._grants = SessionGrants()
-        self._model = _build_model(config.model)
+        self._model = _build_model(config.model, config.computer)
         # Routeur cloud (jalon 4) : sélection du backend Claude PAR REQUÊTE selon
         # use_cloud. Le local reste le défaut ; le cloud n'est utilisable qu'une fois
         # une clé saisie dans le popup (trousseau OS). Construit même sans clé : son
         # is_available() reflète dynamiquement la présence de la clé.
-        self._cloud_router = CloudRouter(model=config.model.cloud_model)
+        self._cloud_router = CloudRouter(
+            model=config.model.cloud_model, screen_control=config.computer.enabled
+        )
         self._server = IPCServer(
             config.socket_path,
             on_user_message=self._on_user_message,
             on_confirmation_response=self._on_confirmation_response,
             on_reset=self._on_reset,
+            on_control_ready=self._on_control_ready,
+            on_stop_control=self._on_stop_control,
+            on_client=self._on_client,
         )
         self._confirmation = IPCConfirmationProvider(
             send_to_client=self._server.send_to_client
         )
+        # Contrôle de l'ordinateur : bureau X11 (lu à la demande seulement) et
+        # session qui garde chaque action (indicateur affiché, arrêt par Échap / ■).
+        self._control = ControlSession(
+            send=self._server.send_to_client,
+            backend=DesktopBackend(ocr_mode=config.computer.ocr),
+        )
+        tools = _build_tools(
+            ScreenContext(
+                backend=self._control.backend,
+                myos_pids=self._control.myos_pids,
+                stop_rect=self._control.stop_rect,
+            )
+        )
+        if not config.computer.enabled:
+            tools = {
+                name: tool for name, tool in tools.items() if name not in COMPUTER_TOOLS
+            }
         self._orchestrator = Orchestrator(
             model=self._model,
-            tools=_build_tools(),
+            tools=tools,
             grants=self._grants,
             audit=self._audit,
             confirmation_provider=self._confirmation,
             cloud_router=self._cloud_router,
+            control=self._control if config.computer.enabled else None,
         )
         self._hotkey = HotkeyListener(config.hotkey, self._on_hotkey)
         self._stop_event = threading.Event()
@@ -156,6 +193,19 @@ class Daemon:  # pylint: disable=too-many-instance-attributes
         _log.info("Reset de la conversation demandé par le popup")
         self._orchestrator.reset_history()
 
+    def _on_control_ready(self, message: dict) -> None:
+        self._control.on_ready(message)
+
+    def _on_stop_control(self) -> None:
+        _log.info("Arrêt du contrôle demandé (bouton ■ du popup)")
+        self._control.cancel("user")
+
+    def _on_client(self, pid: int | None | bool) -> None:
+        if pid is False:
+            self._control.popup_lost()  # sans indicateur, pas de contrôle
+        else:
+            self._control.set_popup_pid(pid if isinstance(pid, int) else None)
+
     def _on_hotkey(self) -> None:
         _log.info("Raccourci activé → demande d'affichage du popup")
         if not self._server.send_to_client({"type": "show"}):
@@ -166,6 +216,7 @@ class Daemon:  # pylint: disable=too-many-instance-attributes
         self._stop_event.set()
 
     def _shutdown(self) -> None:
+        self._control.end("finished")
         self._hotkey.stop()
         self._server.stop()
         self._audit.close()

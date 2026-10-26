@@ -44,13 +44,17 @@ from typing import Protocol
 from core.logger import get_logger
 from permissions.audit_log import AuditLog
 from permissions.confirmation import (
+    CONTROL_SUMMARY,
+    CONTROL_TOOL,
     ConfirmationResponse,
     build_confirmation_needed,
+    build_control_confirmation,
     new_request_id,
 )
 from permissions.policy_engine import evaluate
-from permissions.session_grants import SessionGrants
-from tools.base_tool import BaseTool
+from permissions.risk_levels import COMPUTER_TOOLS
+from permissions.session_grants import RequestGrants, SessionGrants
+from tools.base_tool import BaseTool, ToolResult
 
 
 @dataclass
@@ -82,6 +86,9 @@ Message = dict
 # Assez haut pour des tâches multi-fichiers (lister + N actions + vérif + conclusion),
 # assez bas pour borner un modèle qui s'emballerait.
 MAX_STEPS = 12
+# Plafond pendant un contrôle de l'ordinateur : une tâche à l'écran enchaîne
+# observer, cliquer, taper… L'utilisateur voit tout et l'arrête d'un Échap.
+MAX_CONTROL_STEPS = 40
 
 # Plafond de messages conservés dans l'historique persistant. Borne la mémoire,
 # le contexte envoyé au modèle, et (jalon 4) le volume de données partant au
@@ -107,6 +114,47 @@ RESULT_OK = "ok"
 RESULT_ERROR = "error"
 RESULT_DENIED = "denied"
 RESULT_BLOCKED = "blocked"
+
+# Contrôle de l'ordinateur (cf. daemon.control).
+_CONTROL_STOPPED_NOTICE = (
+    "⏹ Contrôle de l'ordinateur arrêté : plus aucune action à l'écran."
+)
+_CONTROL_STOPPED_RESULT = (
+    "Arrêté par l'utilisateur : le contrôle de l'ordinateur a pris fin."
+)
+_CONTROL_UNAVAILABLE = "Contrôle de l'ordinateur indisponible"
+
+
+class ControlProvider(Protocol):
+    """Session de contrôle de l'ordinateur vue par l'orchestrator (cf. daemon.control)."""
+
+    @property
+    def active(self) -> bool:
+        """``True`` pendant une session (indicateur affiché, pas d'arrêt)."""
+
+    @property
+    def cancelled(self) -> bool:
+        """``True`` si l'utilisateur a arrêté la session en cours."""
+
+    def unavailable_reason(self) -> str | None:
+        """Pourquoi une session ne peut pas commencer (``None`` si elle le peut)."""
+
+    def begin(self, request_id: str) -> str | None:
+        """Ouvre une session (indicateur affiché) ; message d'échec ou ``None``."""
+
+    def end(self, reason: str = "finished") -> None:
+        """Ferme la session (idempotent)."""
+
+
+@dataclass
+class _Request:
+    """État propre à une requête : grants vus, contrôle de l'ordinateur."""
+
+    id: str
+    text: str
+    grants: RequestGrants
+    control_denied: bool = False
+    control_started: bool = False
 
 
 class Model(Protocol):
@@ -186,6 +234,7 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
         audit: AuditLog,
         confirmation_provider: ConfirmationProvider,
         cloud_router: ModelRouter | None = None,
+        control: ControlProvider | None = None,
     ) -> None:
         self._model = model
         self._tools = tools
@@ -195,6 +244,9 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
         # Routeur cloud optionnel (jalon 4). None → toujours local (rétro-compatible).
         # Le local reste le défaut ; le cloud est choisi PAR REQUÊTE selon use_cloud.
         self._cloud_router = cloud_router
+        # Session de contrôle de l'ordinateur (indicateur, arrêt). None → les outils
+        # de l'écran répondent « indisponible ».
+        self._control = control
         # Historique conversationnel persistant entre les requêtes (cf. en-tête
         # du module). Protégé par un verrou car chaque user_message est traité
         # dans un thread dédié (cf. daemon.ipc_server._dispatch).
@@ -264,10 +316,44 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
         if cloud_active:
             self._log_cloud_send(list(history), model)
 
-        for _step in range(MAX_STEPS):
-            plan = self._run_model(model, list(history), user_message_id, reply)
+        request = _Request(
+            id=user_message_id, text=content, grants=RequestGrants(self._grants)
+        )
+        try:
+            finished = self._loop(model, history, request, reply)
+        finally:
+            # Le contrôle de l'ordinateur ne survit jamais à sa requête.
+            self._end_control(request, reply)
+        if not finished:
+            return  # erreur du modèle, déjà signalée au popup
+
+        # Borne l'historique persistant après ce tour (sans casser les paires
+        # assistant↔tool ; cf. _trim_history_locked).
+        with self._history_lock:
+            self._trim_history_locked(history)
+
+        reply({"type": "done", "id": user_message_id})
+
+    def _loop(
+        self, model: Model, history: list[Message], request: _Request, reply: Reply
+    ) -> bool:
+        """Boucle agentique d'une requête ; ``False`` si le modèle a échoué."""
+        step = 0
+        while True:
+            limit = MAX_CONTROL_STEPS if request.control_started else MAX_STEPS
+            if step >= limit:
+                _notice(
+                    reply,
+                    request.id,
+                    "warning",
+                    f"J'ai atteint la limite de {limit} étapes. Si la tâche n'est "
+                    "pas terminée, relancez-moi pour continuer.",
+                )
+                return True
+            step += 1
+            plan = self._run_model(model, list(history), request.id, reply)
             if plan is None:
-                return  # erreur déjà signalée au popup
+                return False
             with self._history_lock:
                 history.append(
                     {
@@ -277,28 +363,109 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
                     }
                 )
             if not plan.tool_calls:
-                break  # réponse finale : fin de la boucle
+                return True  # réponse finale : fin de la boucle
             for tool_call in plan.tool_calls:
-                output = self._handle_tool_call(user_message_id, tool_call, reply)
-                with self._history_lock:
-                    history.append(
-                        {"role": "tool", "tool": tool_call.tool, "content": output}
+                if self._control_stopped(request):
+                    # Arrêté par l'utilisateur : plus rien ne s'exécute ; chaque appel
+                    # reçoit quand même son résultat (historique et popup cohérents).
+                    output = _emit_result(
+                        reply,
+                        request.id,
+                        tool_call.tool,
+                        RESULT_DENIED,
+                        _CONTROL_STOPPED_RESULT,
                     )
-        else:
-            _notice(
-                reply,
-                user_message_id,
-                "warning",
-                f"J'ai atteint la limite de {MAX_STEPS} étapes. Si la tâche n'est "
-                "pas terminée, relancez-moi pour continuer.",
-            )
+                    image = None
+                else:
+                    output, image = self._handle_tool_call(request, tool_call, reply)
+                self._append_tool_result(history, tool_call.tool, output, image)
+            if self._control_stopped(request):
+                return True
 
-        # Borne l'historique persistant après ce tour (sans casser les paires
-        # assistant↔tool ; cf. _trim_history_locked).
+    def _append_tool_result(
+        self, history: list[Message], tool: str, output: str, image: bytes | None
+    ) -> None:
+        """Réinjecte un résultat d'outil ; seule la dernière capture d'écran est gardée."""
+        entry: Message = {"role": "tool", "tool": tool, "content": output}
         with self._history_lock:
-            self._trim_history_locked(history)
+            if image is not None:
+                for message in history:
+                    message.pop("image", None)
+                entry["image"] = image
+            history.append(entry)
 
-        reply({"type": "done", "id": user_message_id})
+    # ---- contrôle de l'ordinateur ------------------------------------------------
+    def _control_stopped(self, request: _Request) -> bool:
+        return (
+            request.control_started
+            and self._control is not None
+            and self._control.cancelled
+        )
+
+    def _ensure_control(
+        self, request: _Request, reply: Reply
+    ) -> tuple[str, str] | None:
+        """Accord et ouverture du contrôle de l'ordinateur pour cette requête.
+
+        Une seule confirmation par requête (niveau 2, la demande tapée par
+        l'utilisateur affichée) ; l'indicateur doit s'afficher avant toute action.
+        Renvoie ``None`` si le contrôle est actif, sinon ``(statut, texte)`` du refus.
+        """
+        if request.grants.control_allowed:
+            if self._control_stopped(request):
+                return RESULT_DENIED, _CONTROL_STOPPED_RESULT
+            return None
+        if self._control is None:
+            return RESULT_ERROR, f"{_CONTROL_UNAVAILABLE} dans cette installation."
+        if request.control_denied:
+            return (
+                RESULT_DENIED,
+                (
+                    f"Refusé par l'utilisateur : {CONTROL_SUMMARY} Ne le redemandez "
+                    "pas dans cette requête."
+                ),
+            )
+        reason = self._control.unavailable_reason()
+        if reason:
+            return RESULT_ERROR, f"{_CONTROL_UNAVAILABLE} : {reason}."
+        payload = build_control_confirmation(
+            request_id=new_request_id(),
+            user_message_id=request.id,
+            request_text=request.text,
+        )
+        approved = self._confirmation.ask(payload).is_approval
+        failure = self._control.begin(request.id) if approved else None
+        self._audit.log(
+            tool=CONTROL_TOOL,
+            args=payload["args"],
+            risk_level=2,
+            decision="approved" if approved else "denied",
+            success=approved and failure is None,
+            reversible=False,
+        )
+        if not approved:
+            request.control_denied = True
+            return RESULT_DENIED, f"Refusé par l'utilisateur : {CONTROL_SUMMARY}"
+        if failure:
+            return RESULT_ERROR, f"{_CONTROL_UNAVAILABLE} : {failure}."
+        request.control_started = True
+        request.grants.allow_control()
+        _notice(
+            reply,
+            request.id,
+            "info",
+            "🖱 Contrôle de l'ordinateur accordé pour cette demande (Échap pour arrêter).",
+        )
+        return None
+
+    def _end_control(self, request: _Request, reply: Reply) -> None:
+        if not request.control_started or self._control is None:
+            return
+        stopped = self._control.cancelled
+        request.grants.revoke_control()
+        self._control.end("user" if stopped else "finished")
+        if stopped:
+            _notice(reply, request.id, "warning", _CONTROL_STOPPED_NOTICE)
 
     def _run_model(
         self, model: Model, messages: list[Message], msg_id: str, reply: Reply
@@ -378,14 +545,18 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
             chars,
         )
 
-    def _handle_tool_call(self, msg_id: str, call: ToolCall, reply: Reply) -> str:
-        """Évalue + exécute un appel d'outil. Renvoie le texte à réinjecter au modèle.
+    def _handle_tool_call(
+        self, request: _Request, call: ToolCall, reply: Reply
+    ) -> tuple[str, bytes | None]:
+        """Évalue + exécute un appel d'outil. Renvoie ``(texte, capture)`` pour le modèle.
 
         Le même texte est aussi envoyé au popup (``tool_result``) pour la
-        transparence. Couvre tous les cas (inconnu / bloqué / refusé / erreur /
+        transparence ; la capture d'écran éventuelle (outils de l'écran) ne va
+        qu'au modèle. Couvre tous les cas (inconnu / bloqué / refusé / erreur /
         succès) afin que le modèle « voie » toujours ce qui s'est passé et puisse
         s'adapter.
         """
+        msg_id = request.id
         tool = self._tools.get(call.tool)
         if tool is None:
             # Outil inconnu : tracé comme blocked au niveau 3 ; rien d'autre n'est sûr.
@@ -397,14 +568,21 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
                 success=False,
                 reversible=False,
             )
-            return _emit_result(
-                reply, msg_id, call.tool, RESULT_BLOCKED, f"Outil inconnu : {call.tool}"
-            )
+            text = f"Outil inconnu : {call.tool}"
+            return _emit_result(reply, msg_id, call.tool, RESULT_BLOCKED, text), None
+
+        if tool.name in COMPUTER_TOOLS:
+            # Le contrôle s'ouvre AVANT de résoudre la cible : tant que le popup est
+            # affiché, c'est lui qui a le focus (la cible serait My_OS lui-même).
+            refusal = self._ensure_control(request, reply)
+            if refusal is not None:
+                status, text = refusal
+                return _emit_result(reply, msg_id, tool.name, status, text), None
 
         # Normalise les arguments (ex. expansion de ~) AVANT toute évaluation :
         # blocklist, escalade, grants et run voient ainsi le chemin réel.
         args = tool.normalize_args(call.args)
-        decision = evaluate(tool, args, self._grants)
+        decision = evaluate(tool, args, request.grants)
 
         if decision.action == "blocked":
             self._audit.log(
@@ -415,20 +593,19 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
                 success=False,
                 reversible=False,
             )
-            return _emit_result(
-                reply, msg_id, tool.name, RESULT_BLOCKED, f"Bloqué : {decision.summary}"
-            )
+            text = f"Bloqué : {decision.summary}"
+            return _emit_result(reply, msg_id, tool.name, RESULT_BLOCKED, text), None
 
         audit_decision = "auto"
         if decision.action == "confirm":
-            request = build_confirmation_needed(
+            payload = build_confirmation_needed(
                 request_id=new_request_id(),
                 user_message_id=msg_id,
                 tool=tool,
                 args=args,
                 decision=decision,
             )
-            response = self._confirmation.ask(request)
+            response = self._confirmation.ask(payload)
             if not response.is_approval:
                 self._audit.log(
                     tool=tool.name,
@@ -438,18 +615,13 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
                     success=False,
                     reversible=False,
                 )
-                return _emit_result(
-                    reply,
-                    msg_id,
-                    tool.name,
-                    RESULT_DENIED,
-                    f"Refusé par l'utilisateur : {decision.summary}",
-                )
+                text = f"Refusé par l'utilisateur : {decision.summary}"
+                return _emit_result(reply, msg_id, tool.name, RESULT_DENIED, text), None
             # Un grant n'est enregistré que pour une portée proposée par le daemon :
             # jamais au niveau 2, même si le client renvoie approve_scope (l'action
             # est alors exécutée une seule fois).
-            if response.creates_grant and response.scope in request["allowed_scopes"]:
-                self._record_grant(tool, args, response.scope)
+            if response.creates_grant and response.scope in payload["allowed_scopes"]:
+                self._record_grant(request.grants, tool, args, response.scope)
             audit_decision = "approved"
 
         # auto ou confirmé : exécute.
@@ -460,27 +632,30 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
             decision=audit_decision,
         )
         try:
-            result = tool.run(args)
+            result: ToolResult = tool.run(args)
         except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             self._audit.update_result(row_id, success=False, reversible=False)
-            return _emit_result(
-                reply, msg_id, tool.name, RESULT_ERROR, f"Erreur d'exécution : {exc}"
-            )
+            text = f"Erreur d'exécution : {exc}"
+            return _emit_result(reply, msg_id, tool.name, RESULT_ERROR, text), None
         self._audit.update_result(
             row_id, success=result.success, reversible=result.reversible
         )
         status = RESULT_OK if result.success else RESULT_ERROR
-        return _emit_result(reply, msg_id, tool.name, status, result.output)
+        text = _emit_result(reply, msg_id, tool.name, status, result.output)
+        return text, result.image
 
-    def _record_grant(self, tool: BaseTool, args: dict, scope: str) -> None:
+    @staticmethod
+    def _record_grant(
+        grants: RequestGrants, tool: BaseTool, args: dict, scope: str
+    ) -> None:
         if scope == "session":
-            self._grants.grant(tool.name, "session")
+            grants.grant(tool.name, "session")
             return
         paths = tool.affected_paths(args)
         if not paths:
             return  # rien à autoriser
         if scope == "this_file":
-            self._grants.grant(tool.name, "this_file", target=paths[0])
+            grants.grant(tool.name, "this_file", target=paths[0])
         else:  # this_folder
             parent = posixpath.dirname(paths[0].replace("\\", "/"))
-            self._grants.grant(tool.name, "this_folder", target=parent)
+            grants.grant(tool.name, "this_folder", target=parent)

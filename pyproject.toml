@@ -29,6 +29,9 @@ ignored-modules = [
     "gi.repository",
     "anthropic",  # client cloud (jalon 4) : import paresseux, pas toujours installé
     "keyring",  # trousseau OS (jalon 4) : import paresseux, pas toujours installé
+    "Xlib",  # python-xlib (dépendance de pynput) : fenêtres X11 du contrôle de l'écran
+    "Xlib.display",
+    "PIL",  # Pillow : capture et OCR de l'écran, import paresseux
 ]
 
 [tool.pylint.typecheck]

@@ -133,3 +133,25 @@ def test_default_runner_n_utilise_jamais_shell(monkeypatch: pytest.MonkeyPatch) 
     run_command(["echo", "hello"])
     assert captured["kwargs"]["shell"] is False
     assert captured["argv"] == ["echo", "hello"]
+
+
+def test_lancement_sans_tube_pour_une_application(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Une application lancée hériterait des tubes de capture : subprocess.run
+    # attendrait leur fermeture jusqu'au délai (vu en VM avec gio launch).
+    captured: dict[str, Any] = {}
+
+    def fake_run(argv: list[str], **kwargs: Any) -> Any:
+        captured["kwargs"] = kwargs
+        return _fake_completed(0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    result = run_command(["gio", "launch", "/x.desktop"], detach_output=True)
+    kwargs = captured["kwargs"]
+    assert kwargs["shell"] is False
+    assert kwargs["stdout"] is subprocess.DEVNULL
+    assert kwargs["stderr"] is subprocess.DEVNULL
+    assert kwargs["stdin"] is subprocess.DEVNULL
+    assert "capture_output" not in kwargs
+    assert result.ok and result.stdout == ""

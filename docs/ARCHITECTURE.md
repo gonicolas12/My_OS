@@ -40,6 +40,7 @@ Le cœur résident du système. Un service `systemd` **utilisateur** qui démarr
 | `daemon/hotkey_listener.py` | capture du raccourci global — X11 via `pynput` (nominal), Wayland via le portal `GlobalShortcuts` (jalon 5, expérimental) ; backend choisi selon la session (cf. `INTERFACES.md §9`) |
 | `daemon/ipc_server.py` | serveur socket Unix, protocole de messages |
 | `daemon/orchestrator.py` | logique requête → modèle → outils → réponse |
+| `daemon/control.py` | session de contrôle de l'ordinateur : indicateur affiché par le popup, garde de chaque action, arrêt par Échap ou bouton ■ (cf. §3.3) |
 
 **Flux IPC.** Le popup et le daemon sont deux processus. Le popup envoie le message utilisateur sur la socket ; le daemon répond en streaming. La socket est locale (pas de réseau) — cf. `SECURITY.md §5`.
 
@@ -63,6 +64,7 @@ Chaque outil est une capacité concrète et déterministe (≠ « le modèle cli
 | `tools/system_settings.py` | luminosité, Wi-Fi (D-Bus) ; volume, sourdine (`pactl`) | 1 |
 | `tools/processes.py` | lister | 0 |
 |  | tuer un processus (droits de l'utilisateur) | 2 |
+| `tools/computer/` | voir l'écran, cliquer, taper, touches, défiler, ouvrir une application, changer de fenêtre (cf. §3.3) | 1 (→2 terminal, paramètres, libellé destructeur ; blocklist : My_OS, mots de passe) |
 
 Les outils fichiers résolvent le **chemin réel** dans `normalize_args` (`~`, chemin relatif, `..`, `//`, liens symboliques) **avant** toute décision : blocklist, escalade, grants et audit voient tous le fichier réellement visé (cf. `SECURITY.md §4`, règle 5).
 
@@ -79,6 +81,36 @@ Voir `SECURITY.md §4` pour les règles. Modules :
 | `audit_log.py` | écrit chaque action dans `~/.local/share/my_os/audit.db` (SQLite) |
 
 **Invariant.** Aucune action système ne s'exécute sans passer par `policy_engine.py`. C'est le point de passage unique — un « choke point » de sécurité.
+
+### 3.3 · Contrôle de l'ordinateur (`tools/computer/`, post-v1)
+
+Quand une demande passe par une application graphique, le modèle voit l'écran et agit à
+la souris et au clavier (session X11). **Choix : l'accessibilité d'abord, la vision en
+option.** Un petit modèle local situe mal un clic au pixel près (3 fois sur 28 en
+donnant des coordonnées, mesuré en labo sur 6 écrans de l'ISO avec qwen3.5:4b), mais
+choisit très bien dans une liste numérotée (27 sur 28) : l'écran lui est donc décrit en
+texte, chaque élément avec un numéro, et il agit par numéro.
+
+| Fichier | Rôle |
+|---------|------|
+| `screen.py` | modèle de l'observation (fenêtres, éléments numérotés) et sa mise en texte |
+| `x11.py` | fenêtres (EWMH par python-xlib), capture (Pillow), injection XTEST (`xdotool`, derrière le garde de la session), écran verrouillé |
+| `accessibility.py` | éléments de la fenêtre active lus dans l'arbre AT-SPI (rôle, nom, états, valeur, position), parcours borné |
+| `ocr.py` | texte lu par Tesseract là où l'application n'expose rien (vue des fichiers, bureau, jeux) |
+| `marks.py` | capture annotée : éléments encadrés et numérotés, pour un modèle qui voit les images |
+| `apps.py` | catalogue des applications (fichiers `.desktop`, noms français et anglais) |
+| `keys.py` | combinaisons de touches (« Ctrl+Maj+T », « Entrée ») → forme canonique xdotool |
+| `backend.py` | observation complète (accessibilité + OCR + capture) et actions ; lancement dans un scope systemd propre |
+| `tools.py` | les sept outils exposés au modèle ; cible réelle résolue depuis l'écran, revérifiée avant d'agir |
+
+**Session de contrôle.** Aucun outil de l'écran ne s'exécute sans une session accordée
+pour la requête (confirmation dédiée, niveau 2), ouverte seulement une fois l'indicateur
+affiché par le popup, et close avec la requête. Échap ou le bouton ■ l'arrêtent : dès
+lors, le garde refuse tout événement (cf. `SECURITY.md` menace 5).
+
+**Vision en option.** La capture annotée part au modèle local seulement s'il tourne sur
+une carte graphique (`computer.vision: auto`), toujours au cloud. Sous Wayland, le
+contrôle est indisponible : le compositeur interdit capture et injection.
 
 ---
 
@@ -115,7 +147,8 @@ Interface invoquée au raccourci. Nouvelle vue en PySide6, mais la **logique** d
 | `ui/composer.py` | zone de saisie multiligne, bascule « ☁ Cloud », clé API, bouton d'envoi |
 | `ui/window_chrome.py` | barre de titre (rappel « Échap pour fermer », boutons) et poignées de redimensionnement d'une fenêtre sans cadre système |
 | `ui/markdown_render.py` | découpage texte / blocs de code et mise en forme du markdown (`QTextDocument`, sans HTML brut ni image) |
-| `ui/confirm_dialog.py` | dialogue de confirmation d'action |
+| `ui/confirm_dialog.py` | dialogue de confirmation d'action (et d'accord pour le contrôle de l'ordinateur) |
+| `ui/control_overlay.py` | indicateur du contrôle de l'ordinateur : bords de l'écran lumineux (orange clair, fondus d'apparition et de disparition, respiration) et barre d'arrêt « Cliquez ici ■ ou appuyez sur Échap pour arrêter » |
 | `ui/icons.py` | icônes et logo dessinés au `QPainter` (aucun fichier image, pas de QtSvg) |
 | `ui/styles.py` | jetons de design et feuille QSS, charte noir/orange (gabarit de l'interface de My_AI) |
 | `ui/wayland_layer.py` | présentation Wayland du popup (surface `layer-shell`), repli X11 — jalon 5 (cf. `INTERFACES.md §9`) |
@@ -200,5 +233,7 @@ L'effort **neuf** se concentre sur : le daemon (couche 1), le moteur de permissi
 
 - **Daemon + popup en deux processus** plutôt qu'un seul : isole l'UI du cœur, et permet au popup de planter/redémarrer sans tuer le daemon.
 - **Choke point de sécurité unique** (`policy_engine.py`) : un seul endroit à auditer pour garantir qu'aucune action n'échappe au contrôle.
-- **Outils déterministes d'abord, GUI en dernier recours** (voir roadmap) : la fiabilité prime, le contrôle par vision n'arrive que quand aucune commande directe n'existe.
+- **Outils déterministes d'abord, GUI en dernier recours** (voir roadmap) : la fiabilité prime, le contrôle de l'écran n'arrive que quand aucune commande directe n'existe.
+- **Écran décrit par l'accessibilité, pas par la vision** : un modèle local de 4 milliards de paramètres choisit bien dans une liste numérotée mais vise mal au pixel ; la capture annotée n'est qu'un complément, sur carte graphique (cf. §3.3).
+- **Indicateur dessiné par le popup, pas par le daemon** : le daemon reste sans interface ; il attend l'accusé du popup avant d'agir, si bien qu'aucun contrôle n'a lieu sans indicateur visible.
 - **Local par défaut, cloud opt-in** : inverse de la norme, par choix de confidentialité.

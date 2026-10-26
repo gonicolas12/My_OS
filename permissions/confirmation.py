@@ -50,6 +50,41 @@ def build_confirmation_needed(
     }
 
 
+# Pseudo-outil de la confirmation du contrôle de l'ordinateur (une par requête).
+CONTROL_TOOL = "computer_control"
+CONTROL_SUMMARY = (
+    "Prendre le contrôle de l'ordinateur pour cette demande : voir l'écran, "
+    "déplacer la souris, cliquer et taper au clavier."
+)
+_REQUEST_PREVIEW_MAX = 400
+
+
+def build_control_confirmation(
+    *, request_id: str, user_message_id: str, request_text: str
+) -> dict:
+    """Demande d'accord pour une session de contrôle de l'ordinateur.
+
+    Toujours au niveau 2 (confirmation renforcée, « Refuser » par défaut, aucune
+    portée) : l'accord vaut pour CETTE requête seulement. La demande montrée est
+    celle que l'utilisateur a tapée, pas une description fournie par le modèle.
+    """
+    text = " ".join(request_text.split())
+    if len(text) > _REQUEST_PREVIEW_MAX:
+        text = text[: _REQUEST_PREVIEW_MAX - 1] + "…"
+    return {
+        "type": "confirmation_needed",
+        "id": user_message_id,
+        "request_id": request_id,
+        "tool": CONTROL_TOOL,
+        "args": {"demande": text},
+        "risk_level": 2,
+        "summary": CONTROL_SUMMARY,
+        "requires_elevation": False,
+        "allowed_scopes": [],
+        "control": True,
+    }
+
+
 @dataclass
 class ConfirmationResponse:
     """Réponse utilisateur typée — produite par :func:`parse_confirmation_response`."""

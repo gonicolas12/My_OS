@@ -125,6 +125,36 @@ chacun stable et testé avant le suivant.
   rejouée le temps que la sortie apparaisse (~0,1 s mesuré en VM, 5 s au plus). Trouvé
   pendant la validation de la v1.3.
 
+### Contrôle de l'ordinateur — post-v1 (octobre 2026, version à venir)
+- [x] Le modèle **voit l'écran et agit** à la souris et au clavier (session X11) : sept
+  outils (`observe_screen`, `click`, `type_text`, `press_keys`, `scroll`, `open_app`,
+  `focus_window`), en **local** par défaut.
+- [x] **Perception sans modèle de vision** : arbre d'accessibilité AT-SPI (GTK, Qt,
+  Firefox, LibreOffice ; Chromium et Electron avec la variable de session), complété par
+  l'OCR Tesseract là où une application n'expose rien ; éléments numérotés, le modèle
+  agit par numéro. Capture annotée en plus sur carte graphique, et pour le cloud.
+- [x] **Indicateur** : bords de l'écran lumineux en orange clair, qui apparaissent et
+  disparaissent en fondu, et barre « Cliquez ici ■ ou appuyez sur Échap pour arrêter »
+  avec l'action en cours. Vérifié en VM en échantillonnant l'écran : l'affichage suit
+  l'animation à ~50 ms près.
+- [x] **Sécurité** : accord par requête (niveau 2), arrêt garanti (Échap, ■), cible
+  réelle jugée et revérifiée avant d'agir, blocklist (fenêtres de My_OS, mots de passe,
+  écran verrouillé, polkit, combinaisons système), escalade (terminaux, paramètres,
+  libellés destructeurs). Cf. [SECURITY.md](SECURITY.md) menace 5.
+- [x] Validé en VM sur une ISO de la branche, avec le modèle local réel : Mousepad
+  (ouvrir, taper, compte rendu), formulaire web dans Firefox (champs, liste, case à
+  cocher, envoi confirmé), Thunar ; arrêt par Échap et par le bouton ■ ; terminal
+  escaladé et refusé ; 42 scénarios de permissions de la v1 toujours conformes ;
+  745 tests sous Linux.
+
+**Mesuré avant de choisir (labo, octobre 2026).** Sur 28 tâches réparties sur 6 écrans
+réels de l'ISO (Thunar, Mousepad, « Enregistrer sous », paramètres, recherche
+d'applications, bureau), qwen3.5:4b désigne le bon élément 27 fois sur 28 avec la liste
+numérotée seule (2,6 s par tâche sur l'iGPU du labo), 28 sur 28 avec la capture annotée
+en plus (10,8 s), mais **3 sur 28** quand il doit donner des coordonnées sur la capture
+brute. La note qui suit (« nécessite un modèle cloud ») était donc juste pour le
+*grounding* au pixel d'un petit modèle, fausse pour un contrôle par éléments numérotés.
+
 ### Encore à éprouver
 - [ ] Un vrai PC (pilotes Wi-Fi, rétroéclairage, cartes graphiques ; son et Wi-Fi ont été
   validés en VM avec du matériel simulé). Le modèle sur une vraie carte graphique reste à
@@ -137,14 +167,14 @@ chacun stable et testé avant le suivant.
 
 Documenté pour montrer la direction. Chaque item est un projet en soi.
 
-- **Contrôle d'applications via accessibilité (AT-SPI)** — piloter des applications par
-  leur arbre d'accessibilité (cliquer un bouton nommé, remplir un champ). Local, mais
-  support inégal selon les applications.
-- **Contrôle par vision d'écran** — capture + modèle multimodal qui localise où cliquer.
-  Universel mais lent, faillible, et **nécessite un modèle cloud** (les modèles locaux ne
-  sont pas assez fiables en *grounding* GUI en 2026). Sécurité renforcée requise
-  (confirmation avant chaque séquence, stop toujours accessible, périmètre limité à la
-  fenêtre active).
+- ~~**Contrôle d'applications via accessibilité (AT-SPI)**~~ — fait (cf. « Contrôle de
+  l'ordinateur » ci-dessus).
+- **Vision pure, sans arbre ni texte** (jeux, canevas, applications sans accessibilité ni
+  texte lisible) — fait en partie : capture annotée sur carte graphique. Reste un
+  modèle local spécialisé dans la localisation d'éléments (GUI-Owl-1.5, UI-Venus-1.5,
+  Holo2 : 57 à 71 sur ScreenSpot-Pro selon leurs auteurs, disponibles en GGUF) en
+  complément, sur carte graphique. Sur processeur, une capture coûte ~1 000 tokens par
+  étape : trop lent.
 - **Sécurité anti-injection avancée** — défenses plus poussées contre l'injection de
   prompt indirecte (problème de recherche ouvert).
 - **Wayland natif grand public** — port Wayland sorti du statut expérimental, confinement
@@ -165,6 +195,11 @@ Plus modestes, et directement issues de l'usage réel :
   un refus, il lui arrive aussi de reproposer la même action, et rarement d'affirmer
   l'avoir faite (vu une fois en octobre 2026, la carte de l'outil affichant bien le
   refus). À cadrer dans le prompt (la fenêtre est la seule confirmation nécessaire).
+- **Contrôle de l'ordinateur plus rapide** : chaque étape coûte un tour du modèle
+  (~5 à 25 s sur l'iGPU du labo selon ce qu'il écrit). Pistes : plusieurs actions par
+  tour quand elles ne dépendent pas l'une de l'autre, observation plus courte.
+- **Valider un formulaire par Entrée** n'est pas escaladé (seuls les boutons au libellé
+  reconnu le sont) ; une icône sans libellé non plus.
 - **Temps de réponse sans GPU** : ~10 s par demande neuve en VM 8 cœurs depuis les lots
   de 256 tokens, mais près d'une minute quand le modèle doit être chargé (première
   requête de la session, ou après 1 h sans requête) : il relit alors tout le prompt

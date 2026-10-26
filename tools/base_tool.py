@@ -27,12 +27,15 @@ class ToolResult:
 
     ``reversible`` et ``undo_data`` documentent une éventuelle annulation
     ultérieure ; au jalon 2 ils ne sont pas encore exploités par l'orchestrator.
+    ``image`` (outils de l'écran) : capture annotée en JPEG, transmise au modèle
+    s'il voit les images, jamais au popup ni au journal d'audit.
     """
 
     success: bool
     output: str
     reversible: bool = False
     undo_data: dict | None = None
+    image: bytes | None = None
 
 
 class BaseTool:
@@ -88,6 +91,17 @@ class BaseTool:
         avec ``elevate=True``. Par défaut : ``False``.
         """
         return False
+
+    # pylint: disable-next=unused-argument
+    def describe(self, args: dict) -> str | None:
+        """Phrase lisible de l'action, pour les confirmations et les refus.
+
+        ``None`` (défaut) : le ``policy_engine`` affiche ``outil(arguments)``. Un
+        outil dont les arguments normalisés sont techniques (cible résolue depuis
+        l'écran, par exemple) dit ici ce que l'utilisateur approuve. Ne décide
+        rien : simple présentation.
+        """
+        return None
 
     # pylint: disable-next=unused-argument
     def affected_paths(self, args: dict) -> list[str]:

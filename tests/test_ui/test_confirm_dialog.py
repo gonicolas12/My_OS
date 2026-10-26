@@ -113,3 +113,90 @@ def test_chemin_long_jamais_tronque(app: object) -> None:
         label = table.cellAt(row, 0).firstCursorPosition().block()
         assert label.layout().lineCount() == 1, label.text()
     dialog.close()
+
+
+def test_accord_pour_le_controle_de_l_ordinateur(app: object) -> None:
+    payload = {
+        "type": "confirmation_needed",
+        "id": "m1",
+        "request_id": "r1",
+        "tool": "computer_control",
+        "args": {"demande": "écris une liste de courses"},
+        "risk_level": 2,
+        "summary": "Prendre le contrôle de l'ordinateur pour cette demande",
+        "requires_elevation": False,
+        "allowed_scopes": [],
+        "control": True,
+    }
+    dialog = ConfirmDialog(payload)
+    buttons = _buttons(dialog)
+    assert set(buttons) == {"Refuser", "Autoriser pour cette demande"}
+    assert buttons["Refuser"].isDefault()
+    assert dialog.windowTitle() == "Contrôle de l'ordinateur"
+    details = dialog.findChild(RichText, "confirmText").toPlainText()
+    assert "écris une liste de courses" in details
+    assert "Échap" in details
+
+
+def test_accord_de_controle_jamais_rogne(app: object) -> None:
+    # Vu en VM : la fenêtre, dimensionnée avant que le détail connaisse sa hauteur,
+    # coupait la dernière ligne (« … pendant tout le contrôle. »). Puis, agrandie
+    # au sizeHint, elle dépassait de ~60 px et la pastille du niveau gonflait.
+    payload = {
+        "type": "confirmation_needed",
+        "id": "m1",
+        "request_id": "r1",
+        "tool": "computer_control",
+        "args": {"demande": "Ouvre Mousepad et écris une liste de courses : pain."},
+        "risk_level": 2,
+        "summary": "Prendre le contrôle de l'ordinateur pour cette demande",
+        "requires_elevation": False,
+        "allowed_scopes": [],
+        "control": True,
+    }
+    parent = QtWidgets.QWidget()
+    dialog = ConfirmDialog(payload, parent=parent)
+    dialog.show()
+    QtWidgets.QApplication.processEvents()
+    dialog.fit_contents()
+    QtWidgets.QApplication.processEvents()
+    card = dialog.findChild(QtWidgets.QFrame, "confirmDetails")
+    details = dialog.findChild(RichText, "confirmText")
+    assert card.height() >= card.sizeHint().height()
+    assert details.viewport().height() >= details.document().size().height()
+    badge = dialog.findChild(QtWidgets.QLabel, "riskBadge")
+    assert dialog.height() == dialog.heightForWidth(dialog.width())
+    assert badge.height() == badge.sizeHint().height()
+    dialog.close()
+    parent.deleteLater()
+
+
+def test_confirmation_au_dessus_de_la_barre_d_arret(app: object) -> None:
+    # Vu en 1280×720 : pendant le contrôle, la barre d'arrêt (toujours au premier
+    # plan) cachait le bas d'une confirmation, et en aurait caché les boutons.
+    dialog = ConfirmDialog(_payload(2, []))
+    screen = dialog.screen().availableGeometry()
+    bar = QtCore.QRect(screen.x(), screen.bottom() - 90, screen.width(), 70)
+    dialog.keep_clear_of(bar)
+    dialog.show()
+    QtWidgets.QApplication.processEvents()
+    dialog.move(dialog.x(), bar.top() - 60)  # posée sur la barre
+    dialog.fit_contents()
+    assert not dialog.frameGeometry().intersects(bar)
+    assert dialog.frameGeometry().top() >= screen.top()
+    dialog.close()
+
+
+def test_cible_technique_de_l_ecran_non_affichee(app: object) -> None:
+    payload = _payload(2, [])
+    payload["tool"] = "type_text"
+    payload["summary"] = "[niveau 2] Taper « ls » dans « Terminal » (Xfce4-terminal)"
+    payload["args"] = {
+        "text": "ls",
+        "enter": False,
+        "target": {"window_id": 48234499, "pid": 3319, "x": 406, "y": 360},
+    }
+    details = ConfirmDialog(payload).findChild(RichText, "confirmText").toPlainText()
+    assert "Taper « ls » dans « Terminal »" in details
+    assert '"text": "ls"' in details
+    assert "window_id" not in details and "48234499" not in details

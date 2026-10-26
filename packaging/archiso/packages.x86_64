@@ -67,6 +67,17 @@ python-yaml
 qt6-wayland
 layer-shell-qt
 
+# --- Contrôle de l'ordinateur (voir l'écran, souris, clavier ; X11) ---
+# xdotool : clics et frappes injectés (XTEST) ; Tesseract + données fra/eng : texte
+# lu à l'écran là où une application n'expose rien à l'accessibilité ; Pillow :
+# capture d'écran. L'arbre d'accessibilité (at-spi2-core, python-gobject) vient
+# déjà avec GTK.
+xdotool
+tesseract
+tesseract-data-eng
+tesseract-data-fra
+python-pillow
+
 # --- Polices : texte + symboles/emoji du popup (☁, 🔑), sinon rendus en carrés ---
 ttf-dejavu
 noto-fonts

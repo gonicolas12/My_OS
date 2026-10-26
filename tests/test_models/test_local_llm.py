@@ -283,7 +283,7 @@ def test_requete_en_cours_trop_longue_anciens_resultats_retires() -> None:
             {"role": "tool", "tool": "read_file", "content": str(n) * 6000},
         ]
     fake = _FakeClient([_chunk()])
-    OllamaClient(client=fake, num_ctx=8192).respond(history)
+    OllamaClient(client=fake, num_ctx=8192, screen_control=False).respond(history)
 
     results = [m["content"] for m in _sent(fake) if m["role"] == "tool"]
     assert len(results) == 3
@@ -386,6 +386,14 @@ def test_plan_envoie_le_schema_de_tous_les_outils() -> None:
         "set_volume",
         "set_mute",
         "set_wifi",
+        # contrôle de l'ordinateur
+        "observe_screen",
+        "click",
+        "type_text",
+        "press_keys",
+        "scroll",
+        "open_app",
+        "focus_window",
     }
 
 
