@@ -236,6 +236,56 @@ def test_terminal_en_niveau_2(tool: str, args: dict) -> None:
     assert (decision.action, decision.risk_level) == ("confirm", 2)
 
 
+@pytest.mark.parametrize(
+    ("tool", "args"),
+    [
+        ("type_text", {"text": "rm -rf ~/Documents"}),
+        ("press_keys", {"keys": "Entrée"}),
+        ("click", {"element": 1}),
+    ],
+)
+def test_lanceur_de_commandes_en_niveau_2(tool: str, args: dict) -> None:
+    # « Exécuter un programme » (Alt+F2) exécute ce qu'on y tape, sans terminal :
+    # trois actions de niveau 1 y lançaient n'importe quelle commande.
+    field = make_element("text_field", "", BUTTON, states=("focused",))
+    backend = FakeBackend(
+        [
+            make_window(
+                title="Exécuter un programme",
+                app="Xfce4-appfinder",
+                instance="xfce4-appfinder",
+            )
+        ],
+        [field],
+        focused=field,
+    )
+    decision, _ = _decide(tool, args, backend)
+    assert (decision.action, decision.risk_level) == ("confirm", 2)
+
+
+@pytest.mark.parametrize("combo", ["ctrl+alt+t", "Ctrl+Alt+T", "alt+F2", "Alt+F3"])
+def test_raccourcis_qui_ouvrent_un_terminal_ou_un_lanceur_en_niveau_2(
+    combo: str,
+) -> None:
+    # Vu en VM (validation de la v1.5) : l'ouverture du terminal refusée, le modèle
+    # passait par Ctrl+Alt+T, au niveau 1.
+    decision, _ = _decide("press_keys", {"keys": combo}, _app_backend())
+    assert (decision.action, decision.risk_level) == ("confirm", 2)
+
+
+def test_ouvrir_le_lanceur_de_commandes_en_niveau_2() -> None:
+    run = AppEntry(
+        app_id="xfce4-run",
+        name="Exécuter un programme",
+        path="/usr/share/applications/xfce4-run.desktop",
+        executable="xfce4-appfinder",
+        command="xfce4-appfinder --collapsed",
+    )
+    backend = FakeBackend([make_window()], apps={"executer": run})
+    decision, _ = _decide("open_app", {"name": "executer"}, backend)
+    assert (decision.action, decision.risk_level) == ("confirm", 2)
+
+
 def test_parametres_du_systeme_en_niveau_2() -> None:
     backend = _app_backend(
         "Souris et pavé tactile",

@@ -34,7 +34,9 @@ from typing import ClassVar
 
 from permissions.risk_levels import (
     ACTIVATION_KEYS,
+    COMMAND_LAUNCHERS,
     DESTRUCTIVE_COMBOS,
+    LAUNCHER_COMBOS,
     SYSTEM_SETTINGS_APPS,
     TERMINAL_APPS,
     app_keys,
@@ -241,13 +243,16 @@ class _ScreenTool(BaseTool):  # pylint: disable=abstract-method
         return self._target(window, element=focused)
 
     def escalate(self, args: dict) -> int:
-        """Niveau 2 pour un terminal, les paramètres du système, ou (clic) une
-        action irréversible annoncée par le libellé visé."""
+        """Niveau 2 pour un terminal ou un lanceur de commandes, les paramètres du
+        système, ou (clic) une action irréversible annoncée par le libellé visé."""
         target = args.get("target")
         if not isinstance(target, dict):
             return self.risk_level
         keys = app_keys(str(target.get("app", "")), str(target.get("instance", "")))
-        if keys & TERMINAL_APPS or target.get("role") == "terminal":
+        if (
+            keys & (TERMINAL_APPS | COMMAND_LAUNCHERS)
+            or target.get("role") == "terminal"
+        ):
             return 2
         if target.get("terminal"):  # open_app d'une entrée qui ouvre un terminal
             return 2
@@ -530,11 +535,12 @@ class PressKeys(_ScreenTool):
         return clean
 
     def escalate(self, args: dict) -> int:
-        """En plus de la cible : Maj+Suppr (suppression définitive), et Entrée ou
-        Espace sur un élément focalisé au libellé destructeur, comme son clic."""
+        """En plus de la cible : Maj+Suppr (suppression définitive), les raccourcis
+        qui ouvrent un terminal ou un lanceur de commandes (Ctrl+Alt+T, Alt+F2), et
+        Entrée ou Espace sur un élément focalisé au libellé destructeur, comme son clic."""
         level = super().escalate(args)
         keys = str(args.get("keys", ""))
-        if keys in DESTRUCTIVE_COMBOS:
+        if keys in DESTRUCTIVE_COMBOS or keys in LAUNCHER_COMBOS:
             return max(level, 2)
         _modifiers, key = combo_parts(keys)
         target = args.get("target") if isinstance(args.get("target"), dict) else {}

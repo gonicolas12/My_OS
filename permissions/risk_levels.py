@@ -144,6 +144,25 @@ TERMINAL_APPS: frozenset[str] = frozenset(
     }
 )
 
+# Lanceurs de commandes : comme dans un terminal, ce qu'on y tape est exécuté
+# (« Exécuter un programme » d'Xfce, ouvert par Alt+F2 ; KRunner, rofi…). Mêmes règles
+# que les terminaux : niveau 2.
+COMMAND_LAUNCHERS: frozenset[str] = frozenset(
+    {
+        "xfce4-appfinder",
+        "xfrun4",
+        "krunner",
+        "gmrun",
+        "grun",
+        "rofi",
+        "dmenu",
+        "ulauncher",
+        "albert",
+        "synapse",
+        "kupfer",
+    }
+)
+
 # Paramètres du système : les modifier est une « modification système » (niveau 2).
 SYSTEM_SETTINGS_APPS: frozenset[str] = frozenset(
     {
@@ -240,6 +259,10 @@ FORBIDDEN_KEYS: frozenset[str] = frozenset(
 # Combinaisons à effet irréversible (niveau 2) : Maj+Suppr supprime définitivement,
 # sans passer par la corbeille, dans les gestionnaires de fichiers.
 DESTRUCTIVE_COMBOS: frozenset[str] = frozenset({"shift+Delete"})
+# Raccourcis du bureau qui ouvrent un terminal ou un lanceur de commandes (Xfce, et les
+# mêmes sous GNOME et KDE) : niveau 2, comme ouvrir un terminal par open_app. Vu en VM :
+# après le refus de l'ouverture d'un terminal, le modèle passait par Ctrl+Alt+T.
+LAUNCHER_COMBOS: frozenset[str] = frozenset({"ctrl+alt+t", "alt+F2", "alt+F3"})
 # Touches qui activent l'élément focalisé (bouton, lien) comme un clic : sur un
 # libellé destructeur, elles escaladent comme le clic lui-même.
 ACTIVATION_KEYS: frozenset[str] = frozenset({"Return", "KP_Enter", "space"})
