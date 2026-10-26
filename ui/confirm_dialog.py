@@ -30,7 +30,7 @@ from __future__ import annotations
 import html
 import json
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import (
     QDialog,
@@ -93,6 +93,26 @@ class ConfirmDialog(QDialog):
         self.activateWindow()
         if self._deny_btn is not None:
             self._deny_btn.setFocus()
+        QTimer.singleShot(0, self.fit_contents)
+
+    def fit_contents(self) -> None:
+        """Agrandit la fenêtre à son contenu une fois affichée.
+
+        Le détail ne connaît sa hauteur qu'à sa largeur finale, après l'affichage ;
+        la fenêtre, dimensionnée avant, rognait alors le bas de la carte (vu en VM
+        sur l'accord de contrôle : la consigne d'arrêt coupée). Rien de ce que
+        l'utilisateur approuve ne doit être caché.
+
+        Hauteur nécessaire à la largeur réelle, pas ``sizeHint`` : celui-ci mesure
+        les libellés repliés à une largeur arbitraire, trop étroite, et l'excédent
+        gonflait la pastille du niveau.
+        """
+        layout = self.layout()
+        layout.invalidate()
+        layout.activate()
+        needed = self.heightForWidth(self.width())
+        if needed > self.height():
+            self.resize(self.width(), needed)
 
     @property
     def response(self) -> tuple[str, str | None]:

@@ -138,6 +138,39 @@ def test_accord_pour_le_controle_de_l_ordinateur(app: object) -> None:
     assert "Échap" in details
 
 
+def test_accord_de_controle_jamais_rogne(app: object) -> None:
+    # Vu en VM : la fenêtre, dimensionnée avant que le détail connaisse sa hauteur,
+    # coupait la dernière ligne (« … pendant tout le contrôle. »). Puis, agrandie
+    # au sizeHint, elle dépassait de ~60 px et la pastille du niveau gonflait.
+    payload = {
+        "type": "confirmation_needed",
+        "id": "m1",
+        "request_id": "r1",
+        "tool": "computer_control",
+        "args": {"demande": "Ouvre Mousepad et écris une liste de courses : pain."},
+        "risk_level": 2,
+        "summary": "Prendre le contrôle de l'ordinateur pour cette demande",
+        "requires_elevation": False,
+        "allowed_scopes": [],
+        "control": True,
+    }
+    parent = QtWidgets.QWidget()
+    dialog = ConfirmDialog(payload, parent=parent)
+    dialog.show()
+    QtWidgets.QApplication.processEvents()
+    dialog.fit_contents()
+    QtWidgets.QApplication.processEvents()
+    card = dialog.findChild(QtWidgets.QFrame, "confirmDetails")
+    details = dialog.findChild(RichText, "confirmText")
+    assert card.height() >= card.sizeHint().height()
+    assert details.viewport().height() >= details.document().size().height()
+    badge = dialog.findChild(QtWidgets.QLabel, "riskBadge")
+    assert dialog.height() == dialog.heightForWidth(dialog.width())
+    assert badge.height() == badge.sizeHint().height()
+    dialog.close()
+    parent.deleteLater()
+
+
 def test_cible_technique_de_l_ecran_non_affichee(app: object) -> None:
     payload = _payload(2, [])
     payload["tool"] = "type_text"
