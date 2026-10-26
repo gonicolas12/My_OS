@@ -132,7 +132,8 @@ chacun stable et testé avant le suivant.
   `python-pillow`), avec sa somme SHA-256 ; validée en VM (modèle local, 42 scénarios de
   permissions, interface, son au premier usage, saisie de la clé API, et contrôle de
   l'ordinateur sur processeur seul : liste écrite dans Mousepad, arrêt par Échap,
-  terminal escaladé et refusé).
+  terminal escaladé et refusé, y compris par Ctrl+Alt+T et par « Exécuter un
+  programme »).
 - [x] Le modèle **voit l'écran et agit** à la souris et au clavier (session X11) : sept
   outils (`observe_screen`, `click`, `type_text`, `press_keys`, `scroll`, `open_app`,
   `focus_window`), en **local** par défaut.
@@ -158,6 +159,10 @@ chacun stable et testé avant le suivant.
   barre d'arrêt (elle s'affiche maintenant au-dessus) ; « Dans Firefox, remplis… »
   rouvrait Firefox en double (`open_app` passe à la fenêtre d'une application déjà
   ouverte).
+- [x] Trouvé pendant la validation de l'ISO : l'ouverture d'un terminal refusée, le
+  modèle passait par Ctrl+Alt+T ; et le lanceur « Exécuter un programme » (Alt+F2), qui
+  exécute une commande sans terminal, n'était pas escaladé. Lanceurs de commandes et
+  raccourcis qui ouvrent un terminal ou un lanceur passent au niveau 2.
 
 **Mesuré avant de choisir (labo, octobre 2026).** Sur 28 tâches réparties sur 6 écrans
 réels de l'ISO (Thunar, Mousepad, « Enregistrer sous », paramètres, recherche

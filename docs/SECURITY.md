@@ -169,10 +169,12 @@ n'importe quelle action devient un clic.
   champ de mot de passe (sa valeur n'est jamais lue) ; Ctrl+Alt+Retour arrière,
   Ctrl+Alt+Suppr, Ctrl+Alt+Fn, SysRq. Une autre écriture d'une combinaison ne contourne
   pas la règle (forme canonique).
-- **Escalade (niveau 2, redemandée à chaque fois).** Terminaux (y taper, c'est exécuter :
-  le texte exact est montré), paramètres du système, libellés destructeurs ou sortants
-  (Supprimer, Vider la corbeille, Envoyer, Payer, Éteindre…), Maj+Suppr, Entrée ou Espace
-  sur un tel bouton focalisé, ouverture d'un terminal.
+- **Escalade (niveau 2, redemandée à chaque fois).** Terminaux et lanceurs de commandes
+  comme « Exécuter un programme » (y taper, c'est exécuter : le texte exact est montré),
+  paramètres du système, libellés destructeurs ou sortants (Supprimer, Vider la
+  corbeille, Envoyer, Payer, Éteindre…), Maj+Suppr, Entrée ou Espace sur un tel bouton
+  focalisé, ouverture d'un terminal ou d'un lanceur, y compris par leurs raccourcis
+  (Ctrl+Alt+T, Alt+F2, Alt+F3) : un accès refusé ne s'obtient pas par un autre chemin.
 - **Revérification juste avant d'agir.** La fenêtre visée (et, pour un élément de
   l'arbre d'accessibilité, l'élément lui-même) doit être encore là ; sinon l'action est
   annulée et le modèle doit observer à nouveau.
@@ -389,6 +391,11 @@ branche, avec le modèle local réel (qwen3.5:4b) :
   sous la barre d'arrêt, toujours au premier plan ; un dialogue plus haut en aurait
   caché les boutons. Corrigé (dialogue au-dessus de la barre, barre qui ne repasse
   jamais devant pendant la question), re-testé : boutons et barre entièrement visibles.
+- **Validation de l'ISO de la v1.5** (processeur seul) : l'ouverture du terminal
+  refusée, le modèle l'a ouvert par Ctrl+Alt+T, alors au niveau 1 (la frappe y restait
+  refusée : rien d'exécuté) ; et « Exécuter un programme » (Alt+F2), qui exécute une
+  commande sans terminal, n'était pas escaladé. Corrigé (lanceurs de commandes et
+  raccourcis qui ouvrent un terminal ou un lanceur au niveau 2), re-testé.
 
 Les règles de la menace 5 sont aussi couvertes par des tests qui branchent les vrais
 outils sur un bureau simulé (blocklist, escalade, cible forgée par le modèle ignorée,
