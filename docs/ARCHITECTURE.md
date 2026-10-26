@@ -82,7 +82,7 @@ Voir `SECURITY.md §4` pour les règles. Modules :
 
 **Invariant.** Aucune action système ne s'exécute sans passer par `policy_engine.py`. C'est le point de passage unique — un « choke point » de sécurité.
 
-### 3.3 · Contrôle de l'ordinateur (`tools/computer/`, post-v1)
+### 3.3 · Contrôle de l'ordinateur (`tools/computer/`, v1.5)
 
 Quand une demande passe par une application graphique, le modèle voit l'écran et agit à
 la souris et au clavier (session X11). **Choix : l'accessibilité d'abord, la vision en

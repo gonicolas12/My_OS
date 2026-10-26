@@ -332,7 +332,7 @@ défense en profondeur qui s'ajoute aux trois invariants, elle ne les remplace p
   Reconstruire l'ISO pour la rafraîchir.
 - Le port Wayland n'ouvre **aucune surface réseau** : l'IPC reste une socket Unix locale.
 
-### Contrôle de l'ordinateur (post-v1)
+### Contrôle de l'ordinateur (v1.5)
 
 - Aucun outil de l'écran ne s'exécute hors d'une **session accordée pour la requête**,
   qui ne s'ouvre qu'avec l'indicateur affiché et s'arrête d'un Échap ou du bouton ■ ;
@@ -370,7 +370,7 @@ pilotant l'interface réelle (clavier, souris, captures) et le daemon réel :
 Non couvert : matériel réel (rétroéclairage, Wi-Fi physique), mode cloud avec une vraie
 clé, session Wayland.
 
-**Contrôle de l'ordinateur (octobre 2026, post-v1).** Sur une ISO construite depuis la
+**Contrôle de l'ordinateur (octobre 2026, v1.5).** Sur une ISO construite depuis la
 branche, avec le modèle local réel (qwen3.5:4b) :
 
 - Mousepad : accord, ouverture, frappe d'une liste, compte rendu (43 s) ; formulaire
@@ -385,6 +385,10 @@ branche, avec le modèle local réel (qwen3.5:4b) :
   (`exo-open --launch TerminalEmulator`) passait au niveau 1 : corrigé (catégorie
   freedesktop `TerminalEmulator`), re-testé.
 - Les 42 scénarios de permissions de la v1 restent conformes (42/42).
+- **Petit écran (1280×720)** : la confirmation renforcée de l'envoi passait en partie
+  sous la barre d'arrêt, toujours au premier plan ; un dialogue plus haut en aurait
+  caché les boutons. Corrigé (dialogue au-dessus de la barre, barre qui ne repasse
+  jamais devant pendant la question), re-testé : boutons et barre entièrement visibles.
 
 Les règles de la menace 5 sont aussi couvertes par des tests qui branchent les vrais
 outils sur un bureau simulé (blocklist, escalade, cible forgée par le modèle ignorée,
