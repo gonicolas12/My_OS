@@ -189,6 +189,23 @@ QToolButton#titleButton:pressed {{
 QToolButton#closeButton:hover {{
     background-color: {p.danger_button};
 }}
+QToolButton#languageButton {{
+    background: transparent;
+    border: none;
+    border-radius: {RADIUS_SM}px;
+    padding: 2px 6px;
+    color: {p.text_2};
+    font-size: {FS_2XS}px;
+    font-weight: 700;
+}}
+QToolButton#languageButton:hover {{
+    background-color: {p.surface_hover};
+    color: {p.text};
+}}
+QToolButton#languageButton::menu-indicator {{
+    image: none;
+    width: 0px;
+}}
 
 /* ---- conversation ------------------------------------------------------ */
 QScrollArea#chatScroll, #chatViewport, #chatContent, #chatColumn {{

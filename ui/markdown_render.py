@@ -34,6 +34,7 @@ from PySide6.QtGui import (
     QTextTable,
 )
 
+from core.i18n import tr
 from ui.styles import FONT_MONO, FS_SM, PALETTE
 
 _FEATURES = (
@@ -204,7 +205,7 @@ def _style_blocks(document: QTextDocument) -> None:
         cursor = QTextCursor(document)
         cursor.setPosition(start)
         cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
-        cursor.insertText(f"[image non affichée : {name}]", quote)
+        cursor.insertText(tr("[image non affichée : {name}]", name=name), quote)
 
 
 def _spacing_after(block: QTextBlock) -> int:

@@ -475,4 +475,163 @@ MESSAGES: dict[str, str] = {
     "{tool} : '{name}' doit être un booléen (true/false)": (
         "{tool}: '{name}' must be a boolean (true/false)"
     ),
+    # ---- ui/chat_view.py -----------------------------------------------------------
+    "Copier": "Copy",
+    "Tout sélectionner": "Select all",
+    "Copier le code": "Copy code",
+    "Outil : {tool}": "Tool: {tool}",
+    "Copier la réponse": "Copy answer",
+    "Revenir au dernier message": "Back to the latest message",
+    "Terminé": "Done",
+    "Échec": "Failed",
+    "Refusé": "Denied",
+    "Bloqué": "Blocked",
+    "Votre assistant système, local et privé. Que puis-je faire ?": (
+        "Your system assistant, local and private. What can I do for you?"
+    ),
+    "{hotkey} ouvre My_OS à tout moment": "{hotkey} opens My_OS at any time",
+    "Quels processus utilisent le plus de mémoire ?": (
+        "Which processes are using the most memory?"
+    ),
+    "Liste les fichiers de mon dossier Téléchargements": (
+        "List the files in my Downloads folder"
+    ),
+    "Baisse le volume à 30 %": "Lower the volume to 30%",
+    "Cherche un paquet pour éditer des PDF": "Find a package to edit PDFs",
+    "Le modèle réfléchit": "The model is thinking",
+    # ---- ui/composer.py ------------------------------------------------------------
+    "Envoyer CETTE requête au cloud (Claude) au lieu du modèle local.\n"
+    "Opt-in, par requête. Nécessite une clé API (bouton clé).": (
+        "Send THIS request to the cloud (Claude) instead of the local model.\n"
+        "Opt-in, per request. Requires an API key (key button)."
+    ),
+    "Configurer la clé API Anthropic\n(stockée dans le trousseau du système)": (
+        "Set up the Anthropic API key\n(stored in the system keyring)"
+    ),
+    "Réponse en cours… (vous pouvez déjà écrire la suite)": (
+        "Answer in progress… (you can already type the next one)"
+    ),
+    "Envoyer (Entrée)": "Send (Enter)",
+    "Demandez quelque chose à My_OS…": "Ask My_OS anything…",
+    "édition|Annuler": "Undo",
+    "Rétablir": "Redo",
+    "Couper": "Cut",
+    "Coller": "Paste",
+    # ---- ui/confirm_dialog.py ------------------------------------------------------
+    "Confirmation requise": "Confirmation required",
+    " — privilèges élevés": " — elevated privileges",
+    "NIVEAU {level}": "LEVEL {level}",
+    "My_OS demande votre accord pour « {tool} »": (
+        "My_OS asks for your approval for “{tool}”"
+    ),
+    "Demande": "Request",
+    "Accès": "Access",
+    "Arrêt": "Stop",
+    "Outil": "Tool",
+    "Action": "Action",
+    "Arguments": "Arguments",
+    "⚠ Action sensible : nécessite une élévation de privilèges via polkit (mot de "
+    "passe administrateur) lors de l'exécution.": (
+        "⚠ Sensitive action: requires elevated privileges via polkit (administrator "
+        "password) when it runs."
+    ),
+    "Confirmation renforcée : cette action est redemandée à chaque fois.": (
+        "Enhanced confirmation: this action is asked for again every time."
+    ),
+    "Refuser": "Deny",
+    "Une fois": "Once",
+    "Pour ce dossier": "For this folder",
+    "Pour cette session": "For this session",
+    "NIVEAU 1 · CONFIRMATION": "LEVEL 1 · CONFIRMATION",
+    "NIVEAU 2 · CONFIRMATION RENFORCÉE": "LEVEL 2 · ENHANCED CONFIRMATION",
+    "Contrôle de l'ordinateur": "Computer control",
+    "My_OS demande à prendre le contrôle de l'ordinateur": (
+        "My_OS asks to take control of the computer"
+    ),
+    "Touche Échap, ou bouton ■ en bas de l'écran, à tout moment. Les bords de "
+    "l'écran brillent en orange pendant tout le contrôle.": (
+        "Esc key, or the ■ button at the bottom of the screen, at any time. The "
+        "screen edges glow orange throughout the control."
+    ),
+    "L'accord vaut pour cette demande seulement. Les actions sensibles (terminal, "
+    "suppression, envoi, paramètres du système) restent confirmées une à une ; mots "
+    "de passe et demandes d'élévation ne sont jamais touchés.": (
+        "The approval covers this request only. Sensitive actions (terminal, "
+        "deletion, sending, system settings) are still confirmed one by one; "
+        "passwords and elevation prompts are never touched."
+    ),
+    "Autoriser pour cette demande": "Allow for this request",
+    # ---- ui/control_overlay.py -----------------------------------------------------
+    "My_OS contrôle l'ordinateur": "My_OS is controlling the computer",
+    "Le modèle observe et agit pour vous…": "The model observes and acts for you…",
+    "Arrêter le contrôle de l'ordinateur (Échap)": "Stop controlling the computer (Esc)",
+    "Cliquez ici": "Click here",
+    "ou appuyez sur": "or press",
+    "Échap": "Esc",
+    "pour arrêter": "to stop",
+    # ---- ui/markdown_render.py -----------------------------------------------------
+    "[image non affichée : {name}]": "[image not shown: {name}]",
+    # ---- ui/popup.py ---------------------------------------------------------------
+    "Connexion au service My_OS perdue : la réponse est interrompue.": (
+        "Connection to the My_OS service lost: the answer was interrupted."
+    ),
+    "☁ Mode cloud actif : la prochaine requête sera envoyée à Anthropic (Claude).": (
+        "☁ Cloud mode on: the next request will be sent to Anthropic (Claude)."
+    ),
+    "Entrée : envoyer · Maj+Entrée : nouvelle ligne · Ctrl+L : nouvelle "
+    "conversation · F11 : plein écran": (
+        "Enter: send · Shift+Enter: new line · Ctrl+L: new conversation · "
+        "F11: full screen"
+    ),
+    "Erreur : {message}": "Error: {message}",
+    "Le service My_OS (myosd) ne répond pas pour l'instant.": (
+        "The My_OS service (myosd) is not responding right now."
+    ),
+    "Les requêtes partent au cloud : {model} (Anthropic).": (
+        "Requests go to the cloud: {model} (Anthropic)."
+    ),
+    "modèle de test": "test model",
+    "Modèle local ({backend}) : rien ne quitte la machine.": (
+        "Local model ({backend}): nothing leaves the machine."
+    ),
+    "Clé API Anthropic": "Anthropic API key",
+    "Clé API Anthropic (stockée dans le trousseau, jamais en clair) :": (
+        "Anthropic API key (stored in the keyring, never in plain text):"
+    ),
+    "Enregistrer": "Save",
+    "Annuler": "Cancel",
+    "Clé API": "API key",
+    "Impossible d'enregistrer la clé : {error}": "Could not save the key: {error}",
+    "En attente de votre confirmation": "Waiting for your confirmation",
+    "Regarde l'écran": "Looking at the screen",
+    "Clique": "Clicking",
+    "Tape au clavier": "Typing",
+    "Appuie sur des touches": "Pressing keys",
+    "Fait défiler": "Scrolling",
+    "Ouvre une application": "Opening an application",
+    "Change de fenêtre": "Switching windows",
+    "Le service My_OS (myosd) ne répond pas : la demande n'a pas été envoyée. "
+    "Vérifiez qu'il tourne (systemctl --user status myosd).": (
+        "The My_OS service (myosd) is not responding: the request was not sent. "
+        "Check that it is running (systemctl --user status myosd)."
+    ),
+    # ---- ui/window_chrome.py -------------------------------------------------------
+    "pour fermer": "to close",
+    "Touche Échap (Esc) : fermer le popup.\nLe raccourci clavier le rouvre.": (
+        "Esc key: close the popup.\nThe keyboard shortcut opens it again."
+    ),
+    "Langue de My_OS (interface et assistant) : {name}": (
+        "My_OS language (interface and assistant): {name}"
+    ),
+    "Nouvelle conversation (Ctrl+L)": "New conversation (Ctrl+L)",
+    "Fermer (Échap)": "Close (Esc)",
+    "Local": "Local",
+    "Hors ligne": "Offline",
+    "Quitter le plein écran (F11)": "Exit full screen (F11)",
+    "Plein écran (F11)": "Full screen (F11)",
+    "Restaurer": "Restore",
+    "Agrandir": "Maximize",
+    "Maj": "Shift",
+    "Espace": "Space",
+    "Entrée": "Enter",
 }

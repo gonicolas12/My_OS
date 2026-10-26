@@ -4,8 +4,9 @@ Le popup est *frameless* (look sombre uniforme, aucune décoration du gestionnai
 fenêtres). Ce module lui rend ce que le cadre système apportait :
 
 * :class:`TitleBar` — logo, titre, mode (local / cloud / hors ligne), rappel
-  « Échap pour fermer », boutons (nouvelle conversation, plein écran, agrandir,
-  fermer). Glisser déplace la fenêtre, double-cliquer l'agrandit.
+  « Échap pour fermer », menu de la langue (français, anglais), boutons (nouvelle
+  conversation, plein écran, agrandir, fermer). Glisser déplace la fenêtre,
+  double-cliquer l'agrandit.
 * :class:`ResizeGrips` — huit poignées invisibles (bords et coins) pour
   redimensionner à la souris.
 
@@ -13,33 +14,39 @@ Déplacement et redimensionnement passent d'abord par le gestionnaire de fenêtr
 (``QWindow.startSystemMove`` / ``startSystemResize`` : _NET_WM_MOVERESIZE sous X11,
 xdg-shell sous Wayland), qui gère aimantation et limites d'écran ; à défaut, la
 fenêtre est déplacée ou redimensionnée à la main.
+
+Les textes suivent la langue courante (:mod:`core.i18n`) ; :meth:`TitleBar.retranslate`
+les remet à jour quand l'utilisateur en change.
 """
 
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, QRect, QSize, Qt, Signal
-from PySide6.QtGui import QMouseEvent, QResizeEvent
+from PySide6.QtGui import QAction, QActionGroup, QMouseEvent, QResizeEvent
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QToolButton,
     QWidget,
 )
 
+from core.i18n import N_, SUPPORTED_LANGUAGES, current_language, language_name, tr
 from ui.icons import logo_pixmap, make_icon
 from ui.styles import PALETTE
 
+# Noms des touches du raccourci, traduits à l'affichage (« Espace », « Space »).
 _KEY_NAMES = {
     "ctrl": "Ctrl",
     "alt": "Alt",
     "alt_gr": "AltGr",
-    "shift": "Maj",
+    "shift": N_("Maj"),
     "cmd": "Super",
     "super": "Super",
-    "space": "Espace",
-    "enter": "Entrée",
-    "esc": "Échap",
+    "space": N_("Espace"),
+    "enter": N_("Entrée"),
+    "esc": N_("Échap"),
     "tab": "Tab",
 }
 
@@ -50,31 +57,32 @@ def hotkey_label(hotkey: str) -> str:
     for part in hotkey.split("+"):
         key = part.strip().strip("<>").lower()
         if key:
-            keys.append(_KEY_NAMES.get(key, key.upper() if len(key) == 1 else key))
+            name = _KEY_NAMES.get(key)
+            keys.append(tr(name) if name else (key.upper() if len(key) == 1 else key))
     return "+".join(keys)
 
 
-def _title_button(
-    name: str, tooltip: str, *, object_name: str = "titleButton"
-) -> QToolButton:
+def _title_button(name: str, *, object_name: str = "titleButton") -> QToolButton:
     button = QToolButton()
     button.setObjectName(object_name)
     hover = "#ffffff" if object_name == "closeButton" else PALETTE.text
     button.setIcon(make_icon(name, PALETTE.text_2, 16, hover=hover))
     button.setIconSize(QSize(16, 16))
     button.setFixedSize(30, 28)
-    button.setToolTip(tooltip)
     button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
     return button
 
 
 class TitleBar(QWidget):  # pylint: disable=too-many-instance-attributes
-    """Barre de titre du popup (déplacement, état de la fenêtre, rappel Échap)."""
+    """Barre de titre du popup (déplacement, état de la fenêtre, rappel Échap,
+    langue)."""
 
     new_chat_clicked = Signal()
     fullscreen_clicked = Signal()
     maximize_clicked = Signal()
     close_clicked = Signal()
+    # Langue choisie dans le menu (``"fr"``, ``"en"``).
+    language_selected = Signal(str)
 
     # En dessous de ces largeurs, la barre se compacte (fenêtre étroite).
     _PILL_MIN_WIDTH = 560
@@ -87,6 +95,8 @@ class TitleBar(QWidget):  # pylint: disable=too-many-instance-attributes
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._press: QPoint | None = None
         self._manual_offset: QPoint | None = None
+        self._mode = ("offline", "")
+        self._window_state = (False, False)  # (agrandie, plein écran)
 
         row = QHBoxLayout(self)
         row.setContentsMargins(14, 0, 8, 0)
@@ -103,30 +113,25 @@ class TitleBar(QWidget):  # pylint: disable=too-many-instance-attributes
         row.addWidget(self.mode_pill, 0, Qt.AlignmentFlag.AlignVCenter)
         row.addStretch()
 
-        self.esc_key = QLabel("Échap")
+        self.esc_key = QLabel()
         self.esc_key.setObjectName("escKey")
-        self.esc_text = QLabel("pour fermer")
+        self.esc_text = QLabel()
         self.esc_text.setObjectName("escText")
-        esc_tip = (
-            "Touche Échap (Esc) : fermer le popup.\nLe raccourci clavier le rouvre."
-        )
-        self.esc_key.setToolTip(esc_tip)
-        self.esc_text.setToolTip(esc_tip)
         row.addWidget(self.esc_key, 0, Qt.AlignmentFlag.AlignVCenter)
         row.addWidget(self.esc_text, 0, Qt.AlignmentFlag.AlignVCenter)
         row.addSpacing(6)
 
-        self.new_chat_button = _title_button(
-            "new_chat", "Nouvelle conversation (Ctrl+L)"
-        )
+        self.language_actions: dict[str, QAction] = {}
+        self.language_button = self._language_button()
+        row.addWidget(self.language_button, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        self.new_chat_button = _title_button("new_chat")
         self.new_chat_button.clicked.connect(self.new_chat_clicked)
-        self.fullscreen_button = _title_button("fullscreen", "Plein écran (F11)")
+        self.fullscreen_button = _title_button("fullscreen")
         self.fullscreen_button.clicked.connect(self.fullscreen_clicked)
-        self.maximize_button = _title_button("maximize", "Agrandir")
+        self.maximize_button = _title_button("maximize")
         self.maximize_button.clicked.connect(self.maximize_clicked)
-        self.close_button = _title_button(
-            "close", "Fermer (Échap)", object_name="closeButton"
-        )
+        self.close_button = _title_button("close", object_name="closeButton")
         self.close_button.clicked.connect(self.close_clicked)
         for button in (
             self.new_chat_button,
@@ -135,15 +140,65 @@ class TitleBar(QWidget):  # pylint: disable=too-many-instance-attributes
             self.close_button,
         ):
             row.addWidget(button)
-        self.set_mode("offline")
+        self.retranslate()
+
+    def _language_button(self) -> QToolButton:
+        """Bouton « FR » / « EN » : menu des langues, chacune dans sa langue."""
+        button = QToolButton()
+        button.setObjectName("languageButton")
+        button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        button.setIcon(make_icon("globe", PALETTE.text_2, 15, hover=PALETTE.text))
+        button.setIconSize(QSize(15, 15))
+        button.setFixedHeight(28)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        menu = QMenu(button)
+        group = QActionGroup(menu)
+        group.setExclusive(True)
+        for language in SUPPORTED_LANGUAGES:
+            action = menu.addAction(language_name(language))
+            action.setCheckable(True)
+            group.addAction(action)
+            action.triggered.connect(
+                lambda _checked=False, code=language: self.language_selected.emit(code)
+            )
+            self.language_actions[language] = action
+        button.setMenu(menu)
+        return button
+
+    def retranslate(self) -> None:
+        """Textes et infobulles dans la langue courante (et langue cochée)."""
+        self.esc_key.setText(tr("Échap"))
+        self.esc_text.setText(tr("pour fermer"))
+        esc_tip = tr(
+            "Touche Échap (Esc) : fermer le popup.\nLe raccourci clavier le rouvre."
+        )
+        self.esc_key.setToolTip(esc_tip)
+        self.esc_text.setToolTip(esc_tip)
+        language = current_language()
+        self.language_button.setText(language.upper())
+        self.language_button.setToolTip(
+            tr(
+                "Langue de My_OS (interface et assistant) : {name}",
+                name=language_name(language),
+            )
+        )
+        self.language_actions[language].setChecked(True)
+        self.new_chat_button.setToolTip(tr("Nouvelle conversation (Ctrl+L)"))
+        self.close_button.setToolTip(tr("Fermer (Échap)"))
+        self.set_mode(*self._mode)
+        maximized, fullscreen = self._window_state
+        self.set_window_state(maximized=maximized, fullscreen=fullscreen)
 
     def set_mode(self, mode: str, tooltip: str = "") -> None:
         """Pastille de mode : ``local``, ``cloud`` ou ``offline`` (service injoignable)."""
+        self._mode = (mode, tooltip)
         dot = {"local": PALETTE.success, "offline": PALETTE.error}
         label = {
-            "local": "Local",
+            "local": tr("Local"),
             "cloud": "☁&nbsp;&nbsp;Cloud",
-            "offline": "Hors ligne",
+            "offline": tr("Hors ligne"),
         }
         text = label.get(mode, mode)
         if mode in dot:
@@ -156,6 +211,7 @@ class TitleBar(QWidget):  # pylint: disable=too-many-instance-attributes
 
     def set_window_state(self, *, maximized: bool, fullscreen: bool) -> None:
         """Adapte les icônes et infobulles à l'état de la fenêtre."""
+        self._window_state = (maximized, fullscreen)
         self.fullscreen_button.setIcon(
             make_icon(
                 "exit_fullscreen" if fullscreen else "fullscreen",
@@ -165,7 +221,9 @@ class TitleBar(QWidget):  # pylint: disable=too-many-instance-attributes
             )
         )
         self.fullscreen_button.setToolTip(
-            "Quitter le plein écran (F11)" if fullscreen else "Plein écran (F11)"
+            tr("Quitter le plein écran (F11)")
+            if fullscreen
+            else tr("Plein écran (F11)")
         )
         self.maximize_button.setIcon(
             make_icon(
@@ -175,7 +233,9 @@ class TitleBar(QWidget):  # pylint: disable=too-many-instance-attributes
                 hover=PALETTE.text,
             )
         )
-        self.maximize_button.setToolTip("Restaurer" if maximized else "Agrandir")
+        self.maximize_button.setToolTip(
+            tr("Restaurer") if maximized else tr("Agrandir")
+        )
         self.maximize_button.setEnabled(not fullscreen)
 
     def resizeEvent(self, event: QResizeEvent) -> None:

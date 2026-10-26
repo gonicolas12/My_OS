@@ -23,6 +23,9 @@ Présentation : pastille du niveau (orange au niveau 1, rouge au niveau 2), dét
 l'action dans une carte, « Refuser » à gauche (bouton par défaut, focus), les
 approbations à droite (« Une fois » en orange, en rouge au niveau 2). L'ordre de
 tabulation reste Refuser → Une fois → Pour ce dossier → Pour cette session.
+
+Les libellés sont dans la langue de l'interface ; le résumé de l'action
+(``summary``) arrive du daemon, dans la langue de la requête.
 """
 
 from __future__ import annotations
@@ -42,24 +45,28 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.i18n import N_, tr
 from ui.chat_view import RichText
 from ui.icons import logo_icon
 from ui.styles import build_stylesheet
 
-_LEVEL_BADGE = {1: "NIVEAU 1 · CONFIRMATION", 2: "NIVEAU 2 · CONFIRMATION RENFORCÉE"}
+_LEVEL_BADGE = {
+    1: N_("NIVEAU 1 · CONFIRMATION"),
+    2: N_("NIVEAU 2 · CONFIRMATION RENFORCÉE"),
+}
 # Demande d'accord pour le contrôle de l'ordinateur (payload ``control``).
-CONTROL_TITLE = "Contrôle de l'ordinateur"
-CONTROL_HEADING = "My_OS demande à prendre le contrôle de l'ordinateur"
-CONTROL_STOP = (
+CONTROL_TITLE = N_("Contrôle de l'ordinateur")
+CONTROL_HEADING = N_("My_OS demande à prendre le contrôle de l'ordinateur")
+CONTROL_STOP = N_(
     "Touche Échap, ou bouton ■ en bas de l'écran, à tout moment. Les bords de "
     "l'écran brillent en orange pendant tout le contrôle."
 )
-CONTROL_HINT = (
+CONTROL_HINT = N_(
     "L'accord vaut pour cette demande seulement. Les actions sensibles (terminal, "
     "suppression, envoi, paramètres du système) restent confirmées une à une ; mots "
     "de passe et demandes d'élévation ne sont jamais touchés."
 )
-CONTROL_APPROVE = "Autoriser pour cette demande"
+CONTROL_APPROVE = N_("Autoriser pour cette demande")
 # Libellés sur une ligne ; valeurs qui se replient (jamais tronquées) : l'utilisateur
 # doit voir le chemin COMPLET de ce qu'il approuve, même très long.
 _LABEL_CELL = (
@@ -157,9 +164,9 @@ class ConfirmDialog(QDialog):
         allowed_scopes = self._payload.get("allowed_scopes") or []
         control = bool(self._payload.get("control", False))
 
-        title = CONTROL_TITLE if control else "Confirmation requise"
+        title = tr(CONTROL_TITLE) if control else tr("Confirmation requise")
         if requires_elevation:
-            title += " — privilèges élevés"
+            title += tr(" — privilèges élevés")
         self.setWindowTitle(title)
         self.setModal(True)
         self.setMinimumWidth(520)
@@ -169,7 +176,10 @@ class ConfirmDialog(QDialog):
         layout.setSpacing(10)
 
         badge_row = QHBoxLayout()
-        level_label = QLabel(_LEVEL_BADGE.get(risk_level, f"NIVEAU {risk_level}"))
+        badge = _LEVEL_BADGE.get(risk_level)
+        level_label = QLabel(
+            tr(badge) if badge else tr("NIVEAU {level}", level=risk_level)
+        )
         level_label.setObjectName("riskBadge")
         level_label.setProperty("level", str(min(max(risk_level, 1), 2)))
         badge_row.addWidget(level_label)
@@ -177,9 +187,9 @@ class ConfirmDialog(QDialog):
         layout.addLayout(badge_row)
 
         heading = QLabel(
-            CONTROL_HEADING
+            tr(CONTROL_HEADING)
             if control
-            else f"My_OS demande votre accord pour « {tool} »"
+            else tr("My_OS demande votre accord pour « {tool} »", tool=tool)
         )
         heading.setObjectName("dialogTitle")
         heading.setTextFormat(Qt.TextFormat.PlainText)
@@ -200,11 +210,15 @@ class ConfirmDialog(QDialog):
         if control:
             # La demande montrée est celle que l'utilisateur a tapée (cf. daemon).
             request = str(args.get("demande", "")) if isinstance(args, dict) else ""
+            quoted = tr("« {text} »", text=request)
             details.setHtml(
                 '<table cellspacing="0" cellpadding="4">'
-                f"<tr>{_LABEL_CELL}Demande</td>{_VALUE_CELL}« {html.escape(request)} »</td></tr>"
-                f"<tr>{_LABEL_CELL}Accès</td>{_VALUE_CELL}{html.escape(summary)}</td></tr>"
-                f"<tr>{_LABEL_CELL}Arrêt</td>{_VALUE_CELL}{html.escape(CONTROL_STOP)}</td></tr>"
+                f"<tr>{_LABEL_CELL}{html.escape(tr('Demande'))}</td>"
+                f"{_VALUE_CELL}{html.escape(quoted)}</td></tr>"
+                f"<tr>{_LABEL_CELL}{html.escape(tr('Accès'))}</td>"
+                f"{_VALUE_CELL}{html.escape(summary)}</td></tr>"
+                f"<tr>{_LABEL_CELL}{html.escape(tr('Arrêt'))}</td>"
+                f"{_VALUE_CELL}{html.escape(tr(CONTROL_STOP))}</td></tr>"
                 "</table>"
             )
         else:
@@ -219,10 +233,11 @@ class ConfirmDialog(QDialog):
             args_str = json.dumps(shown, ensure_ascii=False, indent=2)
             details.setHtml(
                 '<table cellspacing="0" cellpadding="4">'
-                f"<tr>{_LABEL_CELL}Outil</td>"
+                f"<tr>{_LABEL_CELL}{html.escape(tr('Outil'))}</td>"
                 f'<td style="font-family:monospace">{html.escape(tool)}</td></tr>'
-                f"<tr>{_LABEL_CELL}Action</td>{_VALUE_CELL}{html.escape(summary)}</td></tr>"
-                f"<tr>{_LABEL_CELL}Arguments</td>"
+                f"<tr>{_LABEL_CELL}{html.escape(tr('Action'))}</td>"
+                f"{_VALUE_CELL}{html.escape(summary)}</td></tr>"
+                f"<tr>{_LABEL_CELL}{html.escape(tr('Arguments'))}</td>"
                 f'<td style="white-space:pre-wrap; font-family:monospace">'
                 f"{html.escape(args_str)}</td></tr>"
                 "</table>"
@@ -231,8 +246,10 @@ class ConfirmDialog(QDialog):
 
         if requires_elevation:
             warning = QLabel(
-                "⚠ Action sensible : nécessite une élévation de privilèges "
-                "via polkit (mot de passe administrateur) lors de l'exécution."
+                tr(
+                    "⚠ Action sensible : nécessite une élévation de privilèges "
+                    "via polkit (mot de passe administrateur) lors de l'exécution."
+                )
             )
             warning.setObjectName("elevationWarning")
             warning.setWordWrap(True)
@@ -240,9 +257,11 @@ class ConfirmDialog(QDialog):
 
         if risk_level >= 2:
             reinforced = QLabel(
-                CONTROL_HINT
+                tr(CONTROL_HINT)
                 if control
-                else "Confirmation renforcée : cette action est redemandée à chaque fois."
+                else tr(
+                    "Confirmation renforcée : cette action est redemandée à chaque fois."
+                )
             )
             reinforced.setObjectName("dialogHint")
             reinforced.setWordWrap(True)
@@ -252,7 +271,7 @@ class ConfirmDialog(QDialog):
         button_row = QHBoxLayout()
         button_row.setSpacing(8)
 
-        deny_btn = QPushButton("Refuser")
+        deny_btn = QPushButton(tr("Refuser"))
         deny_btn.setObjectName("denyButton")
         deny_btn.clicked.connect(lambda: self._respond("deny", None))
         # Entrée = Refuser : la fenêtre peut s'ouvrir pendant la frappe, une
@@ -262,7 +281,7 @@ class ConfirmDialog(QDialog):
         button_row.addStretch()
         self._deny_btn = deny_btn
 
-        once_btn = QPushButton(CONTROL_APPROVE if control else "Une fois")
+        once_btn = QPushButton(tr(CONTROL_APPROVE) if control else tr("Une fois"))
         once_btn.setObjectName("approveButton")
         once_btn.setProperty("danger", "true" if risk_level >= 2 else "false")
         once_btn.clicked.connect(lambda: self._respond("approve_once", None))
@@ -271,14 +290,14 @@ class ConfirmDialog(QDialog):
         # Portées de grant : seulement celles proposées par le daemon (aucune au
         # niveau 2). Le daemon ignore de toute façon une portée non proposée.
         if "this_folder" in allowed_scopes:
-            folder_btn = QPushButton("Pour ce dossier")
+            folder_btn = QPushButton(tr("Pour ce dossier"))
             folder_btn.clicked.connect(
                 lambda: self._respond("approve_scope", "this_folder")
             )
             button_row.addWidget(folder_btn)
 
         if "session" in allowed_scopes:
-            session_btn = QPushButton("Pour cette session")
+            session_btn = QPushButton(tr("Pour cette session"))
             session_btn.clicked.connect(
                 lambda: self._respond("approve_scope", "session")
             )
