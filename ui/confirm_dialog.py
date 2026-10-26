@@ -47,6 +47,19 @@ from ui.icons import logo_icon
 from ui.styles import build_stylesheet
 
 _LEVEL_BADGE = {1: "NIVEAU 1 · CONFIRMATION", 2: "NIVEAU 2 · CONFIRMATION RENFORCÉE"}
+# Demande d'accord pour le contrôle de l'ordinateur (payload ``control``).
+CONTROL_TITLE = "Contrôle de l'ordinateur"
+CONTROL_HEADING = "My_OS demande à prendre le contrôle de l'ordinateur"
+CONTROL_STOP = (
+    "Touche Échap, ou bouton ■ en bas de l'écran, à tout moment. Les bords de "
+    "l'écran brillent en orange pendant tout le contrôle."
+)
+CONTROL_HINT = (
+    "L'accord vaut pour cette demande seulement. Les actions sensibles (terminal, "
+    "suppression, envoi, paramètres du système) restent confirmées une à une ; mots "
+    "de passe et demandes d'élévation ne sont jamais touchés."
+)
+CONTROL_APPROVE = "Autoriser pour cette demande"
 # Libellés sur une ligne ; valeurs qui se replient (jamais tronquées) : l'utilisateur
 # doit voir le chemin COMPLET de ce qu'il approuve, même très long.
 _LABEL_CELL = (
@@ -97,8 +110,9 @@ class ConfirmDialog(QDialog):
         # mot de passe qui ne sera pas demandé tromperait l'utilisateur.
         requires_elevation = bool(self._payload.get("requires_elevation", False))
         allowed_scopes = self._payload.get("allowed_scopes") or []
+        control = bool(self._payload.get("control", False))
 
-        title = "Confirmation requise"
+        title = CONTROL_TITLE if control else "Confirmation requise"
         if requires_elevation:
             title += " — privilèges élevés"
         self.setWindowTitle(title)
@@ -117,7 +131,11 @@ class ConfirmDialog(QDialog):
         badge_row.addStretch()
         layout.addLayout(badge_row)
 
-        heading = QLabel(f"My_OS demande votre accord pour « {tool} »")
+        heading = QLabel(
+            CONTROL_HEADING
+            if control
+            else f"My_OS demande votre accord pour « {tool} »"
+        )
         heading.setObjectName("dialogTitle")
         heading.setTextFormat(Qt.TextFormat.PlainText)
         heading.setWordWrap(True)
@@ -129,19 +147,33 @@ class ConfirmDialog(QDialog):
         card.setObjectName("confirmDetails")
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(10, 8, 10, 8)
-        details = RichText(object_name="confirmText", max_height=240)
-        card_layout.addWidget(details)
-        args_str = json.dumps(args, ensure_ascii=False, indent=2)
-        details.setHtml(
-            '<table cellspacing="0" cellpadding="4">'
-            f"<tr>{_LABEL_CELL}Outil</td>"
-            f'<td style="font-family:monospace">{html.escape(tool)}</td></tr>'
-            f"<tr>{_LABEL_CELL}Action</td>{_VALUE_CELL}{html.escape(summary)}</td></tr>"
-            f"<tr>{_LABEL_CELL}Arguments</td>"
-            f'<td style="white-space:pre-wrap; font-family:monospace">'
-            f"{html.escape(args_str)}</td></tr>"
-            "</table>"
+        # Demande de contrôle : texte court et fixe, montré en entier (sans défilement).
+        details = RichText(
+            object_name="confirmText", max_height=None if control else 240
         )
+        card_layout.addWidget(details)
+        if control:
+            # La demande montrée est celle que l'utilisateur a tapée (cf. daemon).
+            request = str(args.get("demande", "")) if isinstance(args, dict) else ""
+            details.setHtml(
+                '<table cellspacing="0" cellpadding="4">'
+                f"<tr>{_LABEL_CELL}Demande</td>{_VALUE_CELL}« {html.escape(request)} »</td></tr>"
+                f"<tr>{_LABEL_CELL}Accès</td>{_VALUE_CELL}{html.escape(summary)}</td></tr>"
+                f"<tr>{_LABEL_CELL}Arrêt</td>{_VALUE_CELL}{html.escape(CONTROL_STOP)}</td></tr>"
+                "</table>"
+            )
+        else:
+            args_str = json.dumps(args, ensure_ascii=False, indent=2)
+            details.setHtml(
+                '<table cellspacing="0" cellpadding="4">'
+                f"<tr>{_LABEL_CELL}Outil</td>"
+                f'<td style="font-family:monospace">{html.escape(tool)}</td></tr>'
+                f"<tr>{_LABEL_CELL}Action</td>{_VALUE_CELL}{html.escape(summary)}</td></tr>"
+                f"<tr>{_LABEL_CELL}Arguments</td>"
+                f'<td style="white-space:pre-wrap; font-family:monospace">'
+                f"{html.escape(args_str)}</td></tr>"
+                "</table>"
+            )
         layout.addWidget(card)
 
         if requires_elevation:
@@ -155,7 +187,9 @@ class ConfirmDialog(QDialog):
 
         if risk_level >= 2:
             reinforced = QLabel(
-                "Confirmation renforcée : cette action est redemandée à chaque fois."
+                CONTROL_HINT
+                if control
+                else "Confirmation renforcée : cette action est redemandée à chaque fois."
             )
             reinforced.setObjectName("dialogHint")
             reinforced.setWordWrap(True)
@@ -175,7 +209,7 @@ class ConfirmDialog(QDialog):
         button_row.addStretch()
         self._deny_btn = deny_btn
 
-        once_btn = QPushButton("Une fois")
+        once_btn = QPushButton(CONTROL_APPROVE if control else "Une fois")
         once_btn.setObjectName("approveButton")
         once_btn.setProperty("danger", "true" if risk_level >= 2 else "false")
         once_btn.clicked.connect(lambda: self._respond("approve_once", None))

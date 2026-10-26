@@ -20,6 +20,7 @@ docs/SECURITY.md §2.2).
 
 from __future__ import annotations
 
+import gc
 import signal
 import socket
 import sys
@@ -51,6 +52,7 @@ from models import secrets
 from ui.chat_view import AssistantMessage, ChatView
 from ui.composer import Composer
 from ui.confirm_dialog import ConfirmDialog
+from ui.control_overlay import ControlOverlay
 from ui.icons import logo_icon
 from ui.styles import CHAT_COLUMN_MAX, build_stylesheet
 from ui.wayland_layer import is_wayland, prepare_layer_shell
@@ -66,6 +68,17 @@ _KEPT_STATES = Qt.WindowState.WindowFullScreen | Qt.WindowState.WindowMaximized
 
 STATUS_THINKING = "Le modèle réfléchit"
 STATUS_CONFIRMING = "En attente de votre confirmation"
+STATUS_CONTROLLING = "My_OS contrôle l'ordinateur"
+# Libellé de la barre d'arrêt pendant que le modèle choisit l'action suivante.
+_CONTROL_STATUS = {
+    "observe_screen": "Regarde l'écran",
+    "click": "Clique",
+    "type_text": "Tape au clavier",
+    "press_keys": "Appuie sur des touches",
+    "scroll": "Fait défiler",
+    "open_app": "Ouvre une application",
+    "focus_window": "Change de fenêtre",
+}
 MESSAGE_OFFLINE = (
     "Le service My_OS (myosd) ne répond pas : la demande n'a pas été envoyée. "
     "Vérifiez qu'il tourne (systemctl --user status myosd)."
@@ -183,6 +196,10 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         # Réponses en cours, par id de requête : un message du daemon n'est routé
         # que vers SA réponse (les fragments d'une requête oubliée sont ignorés).
         self._turns: dict[str, AssistantMessage] = {}
+        # Contrôle de l'ordinateur : requête qui pilote l'écran, et son indicateur
+        # (bords lumineux + barre d'arrêt), créé à la demande.
+        self._control_request: str | None = None
+        self._overlay: ControlOverlay | None = None
         self._build_window()
         self._build_ui()
 
@@ -461,6 +478,9 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         if mtype == "confirmation_needed":
             self._show_confirmation_dialog(message)
             return
+        if mtype == "control_state":
+            self._on_control_state(message)
+            return
         request_id = str(message.get("id", ""))
         turn = self._turns.get(request_id)
         if turn is None:
@@ -468,11 +488,11 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         if mtype == "token":
             turn.append_text(str(message.get("text", "")))
         elif mtype == "tool_result":
-            turn.add_tool_result(
-                str(message.get("tool", "")),
-                str(message.get("status", "")),
-                str(message.get("text", "")),
-            )
+            tool = str(message.get("tool", ""))
+            text = str(message.get("text", ""))
+            turn.add_tool_result(tool, str(message.get("status", "")), text)
+            if request_id == self._control_request:
+                self._show_control_step(tool, text)
         elif mtype == "notice":
             turn.add_notice(
                 str(message.get("level", "info")), str(message.get("text", ""))
@@ -486,10 +506,81 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
     def _on_connection_changed(self, connected: bool) -> None:
         self._connected = connected
         if not connected:
+            # Daemon perdu : son contrôle de l'écran s'arrête avec lui.
+            self._end_control()
             for request_id, turn in list(self._turns.items()):
                 turn.add_notice("error", MESSAGE_CONNECTION_LOST)
                 self._finish(request_id)
         self._refresh_mode()
+
+    # ---- contrôle de l'ordinateur ----------------------------------------------
+    def _on_control_state(self, message: dict) -> None:
+        """Allume ou éteint l'indicateur du contrôle de l'ordinateur.
+
+        Allumage : le popup se cache (il masquerait l'écran piloté), les bords
+        brillent et la barre d'arrêt apparaît, puis le daemon reçoit l'accusé
+        ``control_ready`` avec le rectangle du bouton ■ — sans cet accusé, il ne
+        commence pas. Seule une requête en cours de CETTE conversation l'obtient.
+        """
+        request_id = str(message.get("id", ""))
+        if not message.get("active"):
+            if request_id == self._control_request:
+                self._end_control()
+            return
+        turn = self._turns.get(request_id)
+        if turn is None or not self._connected:
+            return  # requête oubliée : pas d'indicateur, donc pas de contrôle
+        self._control_request = request_id
+        turn.set_status(STATUS_CONTROLLING)
+        self.hide()
+        # Cycles Python libérés ici, à un moment sûr : le ramasse-miettes, s'il se
+        # déclenchait pendant l'initialisation paresseuse des types PySide6 de
+        # l'indicateur, ferait planter shiboken (vu dans les tests, Python 3.14).
+        gc.collect()
+        if self._overlay is None:
+            self._overlay = ControlOverlay(self)
+            self._overlay.stop_clicked.connect(self._stop_control)
+        button = self._overlay.show_overlay(
+            QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
+        )
+        bar_area = self._overlay.bar_rect() or button
+        self._client.send(
+            {
+                "type": "control_ready",
+                "id": request_id,
+                "stop_rect": [button.x(), button.y(), button.width(), button.height()],
+                "bar_rect": [
+                    bar_area.x(),
+                    bar_area.y(),
+                    bar_area.width(),
+                    bar_area.height(),
+                ],
+            }
+        )
+
+    def _show_control_step(self, tool: str, text: str) -> None:
+        """Dernière action du modèle, sous le titre de la barre d'arrêt."""
+        if self._overlay is None:
+            return
+        first = text.strip().splitlines()[0] if text.strip() else ""
+        label = _CONTROL_STATUS.get(tool, tool)
+        self._overlay.set_status(f"{label} · {first}" if first else label)
+
+    def _stop_control(self) -> None:
+        """Bouton ■ : le daemon arrête aussitôt d'agir (l'indicateur s'éteint déjà)."""
+        self._client.send({"type": "stop_control"})
+
+    def _end_control(self) -> None:
+        """Fin du contrôle : l'indicateur s'éteint en fondu, le popup revient."""
+        if self._control_request is None:
+            return
+        request_id, self._control_request = self._control_request, None
+        if self._overlay is not None:
+            self._overlay.hide_overlay()
+        turn = self._turns.get(request_id)
+        if turn is not None:
+            turn.set_status(STATUS_THINKING)
+        self.present()
 
     def _refresh_mode(self) -> None:
         model = self._config.model
@@ -563,7 +654,8 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
     def _show_confirmation_dialog(self, payload: dict) -> None:
         """Affiche le dialog modal et renvoie la réponse au daemon."""
         request_id = str(payload.get("request_id", ""))
-        turn = self._turns.get(str(payload.get("id", "")))
+        turn_id = str(payload.get("id", ""))
+        turn = self._turns.get(turn_id)
         if turn is None:
             # Action d'une requête abandonnée (nouvelle conversation entre-temps) :
             # refusée d'office, jamais exécutée sans un accord donné en contexte.
@@ -577,8 +669,10 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
             )
             return
         turn.set_status(STATUS_CONFIRMING)
-        if not self.isVisible():
+        if not self.isVisible() and self._control_request is None:
             self.present()  # la demande s'affiche sur la conversation qui la motive
+        # Pendant le contrôle de l'écran, le popup reste caché : la confirmation
+        # s'ouvre seule, au-dessus de l'application pilotée.
         dialog = ConfirmDialog(payload, parent=self)
         dialog.exec()
         decision, scope = dialog.response
@@ -591,7 +685,9 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
             response["scope"] = scope
         self._client.send(response)
         # Reprise : l'exécution de l'action suit la confirmation.
-        turn.set_status(STATUS_THINKING)
+        turn.set_status(
+            STATUS_CONTROLLING if self._control_request == turn_id else STATUS_THINKING
+        )
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Arrête proprement le thread IPC avant la fermeture de la fenêtre."""

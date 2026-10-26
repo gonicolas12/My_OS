@@ -113,3 +113,26 @@ def test_chemin_long_jamais_tronque(app: object) -> None:
         label = table.cellAt(row, 0).firstCursorPosition().block()
         assert label.layout().lineCount() == 1, label.text()
     dialog.close()
+
+
+def test_accord_pour_le_controle_de_l_ordinateur(app: object) -> None:
+    payload = {
+        "type": "confirmation_needed",
+        "id": "m1",
+        "request_id": "r1",
+        "tool": "computer_control",
+        "args": {"demande": "écris une liste de courses"},
+        "risk_level": 2,
+        "summary": "Prendre le contrôle de l'ordinateur pour cette demande",
+        "requires_elevation": False,
+        "allowed_scopes": [],
+        "control": True,
+    }
+    dialog = ConfirmDialog(payload)
+    buttons = _buttons(dialog)
+    assert set(buttons) == {"Refuser", "Autoriser pour cette demande"}
+    assert buttons["Refuser"].isDefault()
+    assert dialog.windowTitle() == "Contrôle de l'ordinateur"
+    details = dialog.findChild(RichText, "confirmText").toPlainText()
+    assert "écris une liste de courses" in details
+    assert "Échap" in details
