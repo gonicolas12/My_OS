@@ -331,6 +331,20 @@ def test_suggestion_remplit_la_saisie(popup: Popup) -> None:
     assert popup.composer.text() == "Baisse le volume à 30 %"
 
 
+@pytest.mark.parametrize("lines", [1, 3, 6, 9])
+def test_longue_demande_n_ecrase_pas_l_accueil(popup: Popup, lines: int) -> None:
+    # Démo du contrôle en 1280x720 : une demande de trois lignes écrasait les
+    # suggestions de l'accueil (bas du texte coupé). Même dans la fenêtre minimale.
+    request = "\n".join(["Dans Firefox, remplis le formulaire"] * lines)
+    for size in ((720, 540), (380, 320)):
+        popup.resize(*size)
+        popup.show()
+        popup.composer.set_text(request)
+        QtWidgets.QApplication.processEvents()
+        for button in popup.chat.empty_state.buttons:
+            assert button.height() >= button.sizeHint().height(), (size, lines)
+
+
 def test_taille_et_position_memorisees(app: object, settings: object) -> None:
     first = Popup(Config(), session_type="x11", client=FakeClient(), settings=settings)
     first.present()

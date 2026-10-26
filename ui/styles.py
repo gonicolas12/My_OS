@@ -208,7 +208,8 @@ QToolButton#languageButton::menu-indicator {{
 }}
 
 /* ---- conversation ------------------------------------------------------ */
-QScrollArea#chatScroll, #chatViewport, #chatContent, #chatColumn {{
+QScrollArea#chatScroll, #chatViewport, #chatContent, #chatColumn,
+QScrollArea#emptyScroll, #emptyViewport, #emptyContent {{
     background: transparent;
     border: none;
 }}

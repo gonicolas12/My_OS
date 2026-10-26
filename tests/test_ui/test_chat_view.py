@@ -16,6 +16,7 @@ from ui.chat_view import (
     AssistantMessage,
     ChatView,
     CodeBlock,
+    EmptyState,
     MarkdownView,
     Notice,
     RichText,
@@ -143,3 +144,29 @@ def test_accueil_puis_conversation_puis_accueil(app: object) -> None:
     view.clear()
     assert view.is_empty() and view.currentWidget() is view.empty_state
     assert not view.message_widgets()
+
+
+def test_accueil_jamais_ecrase(app: object) -> None:
+    # Longue demande en cours de saisie ou petite fenêtre : le logo s'efface, puis
+    # l'accueil défile ; les suggestions ne perdent jamais de hauteur (écrasées, le
+    # bas de leur texte était coupé : vu dans la démo du contrôle, en 1280x720).
+    state = EmptyState("Ctrl+Alt+Espace")
+    scroll = state.findChild(QtWidgets.QScrollArea).verticalScrollBar()
+    state.resize(600, 700)
+    state.show()
+    QtWidgets.QApplication.processEvents()
+    assert state.logo.isVisible() and scroll.maximum() == 0
+
+    sans_logo = []
+    for height in range(700, 90, -10):
+        state.resize(600, height)
+        QtWidgets.QApplication.processEvents()
+        assert all(b.height() >= b.sizeHint().height() for b in state.buttons), height
+        if state.logo.isHidden():
+            sans_logo.append(scroll.maximum())
+    assert sans_logo[0] == 0  # le logo s'efface avant qu'il faille défiler
+    assert sans_logo[-1] > 0  # tout petit : l'accueil défile
+
+    state.resize(600, 700)
+    QtWidgets.QApplication.processEvents()
+    assert state.logo.isVisible() and scroll.maximum() == 0

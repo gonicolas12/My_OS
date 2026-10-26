@@ -730,20 +730,37 @@ class _ScrollPage(QWidget):
 
 
 class EmptyState(QWidget):
-    """Écran d'accueil : logo, invitation et suggestions cliquables."""
+    """Écran d'accueil : logo, invitation et suggestions cliquables.
+
+    Quand la hauteur manque (petite fenêtre, longue demande en cours de saisie), le
+    logo s'efface, puis l'accueil défile : les suggestions gardent toujours leur
+    hauteur (écrasées, le bas de leur texte était coupé).
+    """
 
     suggestion_clicked = Signal(str)
 
     def __init__(self, hotkey_label: str = "", parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        outer = QVBoxLayout(self)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setObjectName("emptyScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.viewport().setObjectName("emptyViewport")
+        layout.addWidget(scroll)
+        self._content = QWidget()
+        self._content.setObjectName("emptyContent")
+        outer = QVBoxLayout(self._content)
         outer.setContentsMargins(24, 16, 24, 16)
         outer.addStretch(3)
-        logo = QLabel()
-        logo.setPixmap(logo_pixmap(52))
-        logo.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        outer.addWidget(logo)
-        outer.addSpacing(12)
+        self.logo = QLabel()
+        self.logo.setPixmap(logo_pixmap(52))
+        self.logo.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        # Écart avec le titre, effacé avec le logo.
+        self.logo.setContentsMargins(0, 0, 0, 12)
+        outer.addWidget(self.logo)
         title = QLabel("My_OS")
         title.setObjectName("emptyTitle")
         title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
@@ -754,14 +771,28 @@ class EmptyState(QWidget):
         self._subtitle.setWordWrap(True)
         outer.addWidget(self._subtitle)
         outer.addSpacing(18)
+        self.buttons: list[QPushButton] = []
+        centered = QHBoxLayout()
+        centered.addStretch(1)
+        centered.addWidget(self._suggestion_box(), 100)
+        centered.addStretch(1)
+        outer.addLayout(centered)
+        outer.addStretch(4)
+        self._reminder = QLabel()
+        self._reminder.setObjectName("footerHint")
+        self._reminder.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        outer.addWidget(self._reminder)
+        scroll.setWidget(self._content)
+        self.retranslate(hotkey_label)
 
+    def _suggestion_box(self) -> QWidget:
+        """Colonne des suggestions (boutons rangés dans ``self.buttons``)."""
         box = QWidget()
         box.setMaximumWidth(460)
         box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         column = QVBoxLayout(box)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(8)
-        self.buttons: list[QPushButton] = []
         for suggestion in SUGGESTIONS:
             button = QPushButton()
             button.setObjectName("suggestion")
@@ -774,17 +805,7 @@ class EmptyState(QWidget):
             )
             column.addWidget(button)
             self.buttons.append(button)
-        centered = QHBoxLayout()
-        centered.addStretch(1)
-        centered.addWidget(box, 100)
-        centered.addStretch(1)
-        outer.addLayout(centered)
-        outer.addStretch(4)
-        self._reminder = QLabel()
-        self._reminder.setObjectName("footerHint")
-        self._reminder.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        outer.addWidget(self._reminder)
-        self.retranslate(hotkey_label)
+        return box
 
     def retranslate(self, hotkey_label: str = "") -> None:
         """Textes de l'accueil dans la langue courante (``hotkey_label`` : raccourci
@@ -798,6 +819,24 @@ class EmptyState(QWidget):
             tr("{hotkey} ouvre My_OS à tout moment", hotkey=hotkey_label)
         )
         self._reminder.setVisible(bool(hotkey_label))
+        self._fit()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        """Efface le logo quand l'accueil complet ne tient plus en hauteur."""
+        super().resizeEvent(event)
+        self._fit()
+
+    def _fit(self) -> None:
+        content = self._content
+        width = self.width()
+        needed = (
+            content.heightForWidth(width)
+            if content.hasHeightForWidth()
+            else content.sizeHint().height()
+        )
+        if self.logo.isHidden():
+            needed += self.logo.sizeHint().height()
+        self.logo.setVisible(self.height() >= needed)
 
 
 class ChatView(QStackedWidget):
