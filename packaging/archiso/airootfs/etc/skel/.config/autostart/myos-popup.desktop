@@ -1,7 +1,8 @@
 [Desktop Entry]
 Type=Application
 Name=My_OS
-Comment=Assistant IA résident (popup ouvert au raccourci global)
+Comment=Resident AI assistant (popup opened by the global shortcut)
+Comment[fr]=Assistant IA résident (popup ouvert au raccourci global)
 Exec=myos-popup
 Terminal=false
 X-GNOME-Autostart-enabled=true

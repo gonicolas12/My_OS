@@ -23,6 +23,7 @@ d'[archiso](https://wiki.archlinux.org/title/Archiso).
 | **Dépendances Python** | venv `--system-site-packages` au 1er boot | les paquets système (`pyside6`, `python-dbus`, `python-gobject`…) viennent de pacman ; seul le **PyPI-only** (`pynput`, `anthropic`, `ollama`) passe par `pip`. |
 | **Utilisateur** | `myos`, **non-root**, créé au 1er boot | le daemon ne tourne **jamais** en root (cf. [SECURITY.md](../docs/SECURITY.md) menace 3). Élévation ponctuelle via polkit/`pkexec`. |
 | **Autologin** | LightDM → session Xfce de `myos` | démo immédiate ; le service utilisateur `myosd` et le popup démarrent dans la session. |
+| **Langue** | aucune locale posée → bureau **et My_OS en anglais** | My_OS suit la langue du système (français seulement si la session est en français) ; le bouton 🌐 du popup le passe en français en un clic, choix mémorisé. |
 | **Dépôts pacman** | **instantané daté** de l'[Arch Linux Archive](https://wiki.archlinux.org/title/Arch_Linux_Archive) (build ET live) | mkarchiso retire les bases pacman de l'image ; elles sont resynchronisées au démarrage **sur le même instantané que le build**, donc cohérentes avec les paquets installés : `pacman -S` marche en live sans mise à jour partielle, quel que soit l'âge de l'ISO. Compromis : pas de mises à jour en live, et l'Archive est plus lente qu'un miroir. |
 
 Mot de passe par défaut de l'utilisateur live : **`myos`** (défini par
@@ -143,7 +144,8 @@ vérifier au boot :
 1. Menu de démarrage « My_OS live », puis autologin vers Xfce, utilisateur `myos`
    (non-root : `whoami` → `myos`).
 2. Fin du 1er run (venv + `ollama pull` ; voir `~/.local/share/my_os/model-pull.log`).
-3. **Ctrl+Alt+Espace** ouvre le popup, centré et au-dessus de tout.
+3. **Ctrl+Alt+Espace** ouvre le popup, centré et au-dessus de tout, en anglais ; le
+   bouton 🌐 de sa barre de titre le passe en français.
 4. Une requête simple (« liste mon dossier home ») fonctionne en local.
 5. Une action sensible déclenche bien une **confirmation** (polkit pour l'élévation).
 6. Contexte du modèle en 8 bits : après une requête,
