@@ -172,7 +172,14 @@ en plus (10,8 s), mais **3 sur 28** quand il doit donner des coordonnées sur la
 brute. La note qui suit (« nécessite un modèle cloud ») était donc juste pour le
 *grounding* au pixel d'un petit modèle, fausse pour un contrôle par éléments numérotés.
 
-### Français et anglais — post-v1.5 (octobre 2026, version à venir)
+### v1.6 — français et anglais (octobre 2026)
+- [x] ISO publiée : [release `v1.6`](https://github.com/gonicolas12/My_OS/releases/tag/v1.6)
+  (instantané Arch Linux Archive du 2026-10-20, les mêmes paquets que la v1.5), avec sa
+  somme SHA-256 ; validée en VM sur processeur seul, avec le modèle local : My_OS en
+  anglais au premier lancement de l'ISO, demandes au modèle dans les deux langues,
+  contrôle de l'ordinateur en anglais puis en français (Mousepad, arrêt par Échap,
+  terminal et lanceur de commandes refusés), 42 scénarios de permissions dans chaque
+  langue, son au premier usage, saisie de la clé API.
 - [x] **Toute l'application dans les deux langues** : interface du popup (barre de
   titre, suggestions, statuts, cartes d'outils, confirmations, accord et barre d'arrêt
   du contrôle), réponses du modèle local et du cloud (un prompt système et des
@@ -187,19 +194,33 @@ brute. La note qui suit (« nécessite un modèle cloud ») était donc juste po
 - [x] **Sécurité inchangée** : la langue ne décide de rien, mêmes niveaux et mêmes
   décisions ; libellés destructeurs et combinaisons reconnus dans les deux langues,
   quelle que soit celle de My_OS. Cf. [SECURITY.md](SECURITY.md) §4, règle 9.
-- [x] **Le français ne change pas** : prompts et textes français identiques à ceux de la
-  v1.5, comparés avant et après.
+- [x] **Le français ne change pas** : prompts et textes français repris à l'identique de
+  la v1.5 (comparés avant et après) ; seule une consigne de l'écran s'y ajoute
+  (formulaire : pas d'Entrée dans un champ).
 - [x] Validé en VM (ISO de la v1.5 avec le code de la branche, modèle local sur l'iGPU
   du labo) : 42 scénarios de permissions dans chaque langue, mêmes décisions ;
   13 demandes en langage naturel, bon outil 13 fois sur 13 dans chaque langue ;
   contrôle de l'ordinateur en anglais (Mousepad ; terminal escaladé et refusé par
-  toutes les voies) ; ~850 tests sous Linux.
+  toutes les voies) ; ~860 tests sous Linux.
 - [x] Trouvés pendant la validation, corrigés et re-testés : les exemples entre
   guillemets droits des descriptions d'outils anglaises étaient recopiés par le modèle
   (« Open a terminal and run ls » ouvrait Mousepad 11 fois sur 20 ; 0 sur 20 sans
   guillemets) ; après un passage du français à l'anglais en cours de conversation, le
   modèle répondait parfois dans l'ancienne langue (environ 1 fois sur 10 ; 25 sur 25
   avec un rappel de la langue à chaque demande quand la conversation en mélange deux).
+- [x] Trouvés en tournant les médias du README, corrigés et re-testés : « Submit », le
+  libellé anglais le plus courant d'un envoi de formulaire, n'était pas escaladé comme
+  « Envoyer » et « Send » ; le modèle tapait un champ avec Entrée, ce qui envoyait le
+  formulaire dès le premier champ, sans la confirmation renforcée de son bouton : Entrée
+  dans un champ d'une ligne est désormais escaladée quand la fenêtre montre un bouton
+  sensible, et le prompt demande de cliquer le bouton (démo anglaise refaite : champs
+  remplis sans Entrée, « Submit » confirmé au niveau 2) ; l'écran d'accueil écrasait ses
+  suggestions quand la demande en cours de saisie faisait plusieurs lignes (bas du texte
+  coupé sur la première image de la démo du contrôle) : le logo s'efface, puis
+  l'accueil défile.
+- [x] **README en anglais** ([README.md](../README.md)) et en français
+  ([README.fr.md](../README.fr.md)), captures et démos refaites dans les deux langues,
+  bouton de langue visible.
 
 ### Encore à éprouver
 - [ ] Un vrai PC (pilotes Wi-Fi, rétroéclairage, cartes graphiques ; son et Wi-Fi ont été
@@ -250,8 +271,9 @@ Plus modestes, et directement issues de l'usage réel :
 - **Contrôle de l'ordinateur plus rapide** : chaque étape coûte un tour du modèle
   (~5 à 25 s sur l'iGPU du labo selon ce qu'il écrit). Pistes : plusieurs actions par
   tour quand elles ne dépendent pas l'une de l'autre, observation plus courte.
-- **Valider un formulaire par Entrée** n'est pas escaladé (seuls les boutons au libellé
-  reconnu le sont) ; une icône sans libellé non plus.
+- **Valider un formulaire par Entrée** n'est escaladé (v1.6) que si la fenêtre montre un
+  bouton au libellé reconnu ; un formulaire sans bouton nommé, ou une icône sans
+  libellé, ne l'est pas.
 - **Temps de réponse sans GPU** : ~10 s par demande neuve en VM 8 cœurs depuis les lots
   de 256 tokens, mais près d'une minute quand le modèle doit être chargé (première
   requête de la session, ou après 1 h sans requête) : il relit alors tout le prompt
