@@ -169,7 +169,7 @@ dans `INTERFACES.md §9`. Repli propre + diagnostic si le compositeur n'a pas
 
 ---
 
-## 5 bis · Langue : français et anglais (`core/i18n.py`)
+## 5 bis · Langue : français et anglais (`core/i18n.py`, v1.6)
 
 My_OS est bilingue. Le français est la langue de référence : tous les textes du code
 sont écrits en français et passent par `tr()` au moment d'être affichés ; en anglais,

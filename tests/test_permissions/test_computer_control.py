@@ -431,6 +431,60 @@ def test_entree_sur_un_bouton_destructeur_comme_son_clic(
     assert decision.risk_level == level
 
 
+# ---- Entrée qui enverrait un formulaire (comme le clic de son bouton) -------------
+
+
+def _form_backend(button: str = "Submit registration") -> FakeBackend:
+    field = make_element(
+        "text_field", "Last name", Rect(650, 350, 300, 30), states=("focused",)
+    )
+    return FakeBackend(
+        [make_window()], [field, make_element("button", button, BUTTON)], focused=field
+    )
+
+
+@pytest.mark.parametrize(
+    ("button", "level"),
+    [("Submit registration", 2), ("Envoyer l'inscription", 2), ("OK", 1)],
+)
+def test_entree_dans_un_champ_comme_le_clic_du_bouton(button: str, level: int) -> None:
+    # Vu dans la démo anglaise : « Smith » tapé avec Entrée envoyait le formulaire
+    # dès le premier champ, sans la confirmation renforcée de son bouton « Submit ».
+    args = {"text": "Smith", "element": 1, "enter": True}
+    decision, normalized = _decide("type_text", args, _form_backend(button))
+    assert decision.risk_level == level
+    if level == 2:
+        assert normalized["target"]["submits"] == button
+        assert decision.summary.endswith(
+            f" — Entrée peut déclencher le bouton « {button} »"
+        )
+
+
+def test_saisie_sans_entree_reste_au_niveau_1() -> None:
+    args = {"text": "Smith", "element": 1}
+    decision, normalized = _decide("type_text", args, _form_backend())
+    assert decision.risk_level == 1
+    assert "submits" not in normalized["target"]
+
+
+@pytest.mark.parametrize(("keys", "level"), [("Entrée", 2), ("Return", 2), ("Tab", 1)])
+def test_touche_entree_dans_le_champ_focalise(keys: str, level: int) -> None:
+    decision, _ = _decide("press_keys", {"keys": keys}, _form_backend())
+    assert decision.risk_level == level
+
+
+def test_entree_dans_un_document_va_a_la_ligne() -> None:
+    # Dans un éditeur (Mousepad), Entrée ne valide rien : pas d'escalade.
+    document = make_element("document", "", Rect(10, 60, 600, 400), states=("focused",))
+    backend = FakeBackend(
+        [make_window()],
+        [document, make_element("button", "Envoyer", BUTTON)],
+        focused=document,
+    )
+    decision, _ = _decide("press_keys", {"keys": "Entrée"}, backend)
+    assert decision.risk_level == 1
+
+
 # ---- confirmation de la session --------------------------------------------------
 
 

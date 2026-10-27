@@ -1,506 +1,524 @@
-# 🖥️ My_OS — Un système d'exploitation assisté par IA, local et sécurisé
+# 🖥️ My_OS — An AI-assisted operating system, local and secure
 
-**Local-first · Sécurisé par conception · Open source (MIT)**
+🇫🇷 **[Lire en français](README.fr.md)**
 
-> Une distribution Linux (base Arch) dans laquelle une IA est intégrée *au cœur du
-> système*. Un raccourci clavier global ouvre un assistant qui peut lire et organiser
-> vos fichiers, installer des logiciels, ajuster les paramètres de la machine et
-> piloter votre PC en langage naturel, en français ou en anglais — avec une
-> **confirmation systématique** pour toute action à risque. Le modèle tourne **localement** (Qwen via Ollama) ; un modèle
-> cloud (Claude) peut être activé **en option, par requête**. Vos données restent chez
-> vous par défaut.
+[![Release](https://img.shields.io/github/v/release/gonicolas12/My_OS?color=orange)](https://github.com/gonicolas12/My_OS/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776ab)
+![Arch Linux](https://img.shields.io/badge/base-Arch%20Linux-1793d1)
+![Local LLM](https://img.shields.io/badge/LLM-local%20(Ollama%20%2B%20Qwen)-222)
+![English · Français](https://img.shields.io/badge/languages-English%20%C2%B7%20Fran%C3%A7ais-555)
 
-My_OS est la suite logique de [My_AI](https://github.com/gonicolas12/My_AI) : on passe
-d'une *application* qui parle au PC à un *système* dans lequel l'IA est résidente et
-profondément intégrée.
+**Local-first · Secure by design · Open source (MIT) · English & French**
 
-> **État du projet : v1.5 publiée ([télécharger](https://github.com/gonicolas12/My_OS/releases/tag/v1.5)), validée en VM ; nouveauté : le contrôle de l'ordinateur — le modèle local voit l'écran et agit à la souris et au clavier, avec des bords lumineux et une barre d'arrêt (session X11). Elle garde le modèle local de la v1.2 et les correctifs de la v1.3 et de la v1.4 (clé API du mode cloud, premier réglage du son).** Les cinq jalons (socle →
-> fichiers/permissions → pilotage système → routeur cloud → packaging) sont terminés, et
-> l'ISO a été testée de bout en bout en VM (BIOS et UEFI) en octobre 2026 : permissions,
-> confirmations, élévation polkit, réglages, modèle local, contrôle de l'ordinateur
-> ([détails](docs/SECURITY.md#8--validation-en-vm-octobre-2026)). **X11 est pleinement
-> supporté ; le port Wayland est expérimental** (cf. [§7](#7--sécurité) et
+> A Linux distribution (Arch-based) with an AI built *into the core of the system*. A
+> global keyboard shortcut opens an assistant that can read and organize your files,
+> install software, adjust the machine's settings and drive your PC in natural
+> language, in English or in French — with a **mandatory confirmation** for every risky
+> action. The model runs **locally** (Qwen via Ollama); a cloud model (Claude) can be
+> enabled **optionally, per request**. Your data stays with you by default.
+
+My_OS is the follow-up to [My_AI](https://github.com/gonicolas12/My_AI): from an
+*application* that talks to the PC to a *system* in which the AI is resident and deeply
+integrated.
+
+> **Project status: v1.6 released ([download](https://github.com/gonicolas12/My_OS/releases/tag/v1.6)), validated in a VM. New: My_OS speaks English and French — interface, assistant (local and cloud) and computer control; it follows your Linux language at first launch, and the 🌐 button switches at any time. It keeps everything from v1.5, including computer control: the local model sees the screen and acts with the mouse and keyboard, with glowing edges and a stop bar (X11 session).** The five milestones (foundation →
+> files/permissions → system control → cloud router → packaging) are complete, and the
+> ISO was tested end to end in a VM (BIOS and UEFI) in October 2026: permissions,
+> confirmations, polkit elevation, settings, local model, computer control, both
+> languages ([details](docs/SECURITY.md#8--validation-en-vm-octobre-2026)). **X11 is
+> fully supported; the Wayland port is experimental** (see [§7](#7--security) and
 > [docs/INSTALLATION.md](docs/INSTALLATION.md)).
 
----
-
-## 📸 Aperçu
-
-Captures réelles de l'ISO My_OS (VM, modèle local Qwen 3.5 4B, octobre 2026).
-
-![Démo : « Range mon dossier Téléchargements par type »](docs/media/demo.gif)
-
-*« Range mon dossier Téléchargements par type » : le modèle liste le dossier puis propose
-chaque déplacement ; une seule confirmation « Pour cette session » suffit, il range tout
-(chaque action dans sa carte) et fait son compte rendu. Les temps d'attente sont
-raccourcis : sans GPU, le modèle a mis environ une minute et vingt secondes au total.*
-
-| | |
-|:---:|:---:|
-| ![Écran d'accueil du popup](docs/media/accueil.png) | ![Popup et réponse du modèle local](docs/media/popup.png) |
-| **Popup au raccourci** — suggestions, rappel « Échap pour fermer » ; fenêtre redimensionnable, agrandie ou en plein écran (`F11`) | **Réponse du modèle local** — le résultat de l'outil dans sa carte, puis la réponse ; « ☁ Cloud » active Claude à la demande |
-| ![Confirmation de niveau 1](docs/media/confirmation-niveau1.png) | ![Confirmation renforcée de niveau 2](docs/media/confirmation-niveau2.png) |
-| **Confirmation (niveau 1)** — écriture proposée par le modèle : une fois, ce dossier ou la session | **Confirmation renforcée (niveau 2)** — suppression : « une fois » seulement, « Refuser » par défaut |
-| ![Élévation polkit](docs/media/elevation-polkit.png) | ![Installation terminée](docs/media/installation.png) |
-| **Élévation polkit** — mot de passe pour la commande exacte, jamais de root permanent | **Installation terminée** — chaque outil dans sa carte (statut, sortie de `pacman` lisible), puis le compte rendu du modèle |
-
-### 🖱️ Contrôle de l'ordinateur *(v1.5)*
-
-![Démo : le modèle local remplit et envoie un formulaire dans Firefox](docs/media/controle.gif)
-
-*« Dans Firefox, remplis le formulaire d'inscription : nom Dupont, prénom Marie, e-mail
-marie.dupont@example.org, ville Lyon, coche la case de la lettre d'information, puis
-envoie l'inscription. » Après l'accord pour cette demande, les bords de l'écran
-s'illuminent en orange et le modèle local agit seul : il lit l'écran (éléments
-numérotés), remplit les champs, choisit la ville et coche la case ; l'envoi, action
-sensible, redemande une confirmation renforcée. Échap ou ■ arrête tout, à tout moment.
-Les temps d'attente sont raccourcis : avec la carte graphique intégrée du PC de test, la
-demande a pris un peu plus de deux minutes. Firefox, absent de l'ISO, a été installé
-pour la démo.*
-
-| | |
-|:---:|:---:|
-| ![Accord pour la demande](docs/media/controle-accord.png) | ![Pendant le contrôle de l'ordinateur](docs/media/controle-envoi.png) |
-| **Accord pour cette demande** — la demande telle que tapée, l'accès donné et comment arrêter ; « Refuser » par défaut | **Pendant le contrôle** — bords lumineux, barre d'arrêt (■ ou Échap) ; « Envoyer » redemande une confirmation renforcée, au-dessus de la barre |
-
-### 🌐 Français et anglais *(prochaine version)*
-
-| | |
-|:---:|:---:|
-| ![Menu de langue du popup](docs/media/langue-menu.png) | ![Contrôle de l'ordinateur en anglais](docs/media/controle-en.png) |
-| **Langue au choix** — au premier lancement, celle de Linux (français, sinon anglais) ; le bouton 🌐 de la barre de titre passe de l'une à l'autre, sans redémarrer | **Tout suit la langue** — réponses du modèle, confirmations, barre d'arrêt ; ici, *Open a terminal and run ls* : le raccourci du terminal reste une confirmation renforcée |
+> 📚 The detailed documentation in [`docs/`](docs/) is written in French.
 
 ---
 
-## 📑 Sommaire
+## 📸 Preview
+
+Real screenshots of My_OS in a VM (local model Qwen 3.5 4B, October 2026).
+
+![Demo: “Sort my Downloads folder by type”](docs/media/en/demo.gif)
+
+*“Sort my Downloads folder by type”: the model lists the folder, then proposes each
+move; a single “For this session” confirmation is enough, it sorts everything (each
+action in its card) and reports back. Waiting times are shortened: with the test PC's
+integrated GPU, the whole request took about a minute.*
+
+| | |
+|:---:|:---:|
+| ![Popup home screen](docs/media/en/accueil.png) | ![Popup and local model answer](docs/media/en/popup.png) |
+| **Popup on the shortcut** — suggestions, “Esc to close” hint, 🌐 language button; resizable window, maximized or full screen (`F11`) | **Local model answer** — the tool result in its card, then the answer; “☁ Cloud” enables Claude on demand |
+| ![Level 1 confirmation](docs/media/en/confirmation-niveau1.png) | ![Level 2 enhanced confirmation](docs/media/en/confirmation-niveau2.png) |
+| **Confirmation (level 1)** — a write proposed by the model: once, this folder or the session | **Enhanced confirmation (level 2)** — deletion: “once” only, “Deny” by default |
+| ![polkit elevation](docs/media/en/elevation-polkit.png) | ![Installation complete](docs/media/en/installation.png) |
+| **polkit elevation** — password for the exact command, never permanent root | **Installation complete** — each tool in its card (status, readable `pacman` output), then the model's report |
+
+### 🖱️ Computer control *(v1.5)*
+
+![Demo: the local model fills in and submits a form in Firefox](docs/media/en/controle.gif)
+
+*“In Firefox, fill in the registration form: last name Smith, first name Mary, email
+mary.smith@example.org, city London, tick the newsletter box, then submit the
+registration.” After approval for this request, the screen edges glow orange and the
+local model acts on its own: it reads the screen (numbered elements), fills in the
+fields, picks the city and ticks the box; submitting, a sensitive action, asks for an
+enhanced confirmation again. Esc or ■ stops everything, at any time. Waiting times are
+shortened: with the test PC's integrated GPU, the request took about two and a half
+minutes. Firefox, not on the ISO, was installed for the demo.*
+
+| | |
+|:---:|:---:|
+| ![Approval for the request](docs/media/en/controle-accord.png) | ![During computer control](docs/media/en/controle-envoi.png) |
+| **Approval for this request** — the request as typed, the access given and how to stop; “Deny” by default | **During control** — glowing edges, stop bar (■ or Esc); “Submit” asks for an enhanced confirmation again, above the bar |
+
+### 🌐 English and French *(v1.6)*
+
+| | |
+|:---:|:---:|
+| ![Language menu of the popup](docs/media/en/langue-menu.png) | ![Computer control in French](docs/media/controle-envoi.png) |
+| **Your language** — at first launch, your Linux language (French, otherwise English); the 🌐 button in the title bar switches between them, without restarting | **Everything follows the language** — model answers, confirmations, stop bar: here the same form in French, « Envoyer » (send) asking for confirmation |
+
+---
+
+## 📑 Contents
 
 1. [Vision](#1--vision)
-2. [Concept en une image](#2--concept-en-une-image)
-3. [Fonctionnalités](#3--fonctionnalités)
+2. [Concept at a glance](#2--concept-at-a-glance)
+3. [Features](#3--features)
 4. [Installation](#4--installation)
-5. [Utilisation](#5--utilisation)
-6. [Le moteur de permissions](#6--le-moteur-de-permissions)
-7. [Sécurité](#7--sécurité)
+5. [Usage](#5--usage)
+6. [The permission engine](#6--the-permission-engine)
+7. [Security](#7--security)
 8. [Architecture](#8--architecture)
 9. [Roadmap](#9--roadmap)
-10. [Arborescence du projet](#10--arborescence-du-projet)
-11. [Développement](#11--développement)
-12. [Contribuer](#12--contribuer)
-13. [Licence](#13--licence) · [Crédits](#14--crédits)
+10. [Project layout](#10--project-layout)
+11. [Development](#11--development)
+12. [Contributing](#12--contributing)
+13. [License](#13--license) · [Credits](#14--credits)
 
 ---
 
 ## 1 · Vision
 
-My_OS répond à une idée simple : et si l'assistant IA n'était pas une application qu'on
-ouvre, mais une **capacité du système** lui-même, disponible partout et tout le temps
-via un raccourci clavier ?
+My_OS starts from a simple idea: what if the AI assistant were not an application you
+open, but a **capability of the system** itself, available everywhere and at any time
+through a keyboard shortcut?
 
-- **Local par défaut** — le modèle Qwen tourne sur la machine via Ollama. Aucune donnée
-  ne sort sans action explicite.
-- **Cloud en option** — avec une clé API, on peut router une requête vers un modèle plus
-  puissant (Claude). Opt-in, **par requête**, visible et journalisé.
-- **Accès réel au système** — fichiers, paquets, paramètres, processus, et l'écran
-  lui-même (souris, clavier). L'IA agit, elle ne fait pas que répondre.
-- **Sûr par conception** — chaque action est classée par risque ; les actions sensibles
-  demandent confirmation ; tout est journalisé ; rien de destructeur n'est silencieux.
+- **Local by default** — the Qwen model runs on the machine via Ollama. No data leaves
+  without an explicit action.
+- **Optional cloud** — with an API key, a request can be routed to a more powerful model
+  (Claude). Opt-in, **per request**, visible and logged.
+- **Real system access** — files, packages, settings, processes, and the screen itself
+  (mouse, keyboard). The AI acts, it doesn't just answer.
+- **Safe by design** — every action is classified by risk; sensitive actions ask for
+  confirmation; everything is logged; nothing destructive is silent.
+- **In your language** — English or French, your Linux language by default.
 
-**Objectifs du projet** : portfolio technique, projet d'école (Ynov), et base open
-source réutilisable.
+**Project goals**: technical portfolio, school project (Ynov), and a reusable open
+source base.
 
 ---
 
-## 2 · Concept en une image
+## 2 · Concept at a glance
 
 ```
                     ┌─────────────────────────────┐
-   Raccourci  ───>  │   Popup My_OS (Qt/PySide6)  │
-   clavier global   │   « Tapez votre message… »  │
+   Global     ───>  │   My_OS popup (Qt/PySide6)  │
+   shortcut         │   “Ask My_OS anything…”     │
                     └──────────────┬──────────────┘
-                                   │  IPC (socket Unix)
+                                   │  IPC (Unix socket)
                     ┌──────────────▼──────────────┐
-                    │      Daemon myosd           │
-                    │   (orchestrateur résident)  │
+                    │      myosd daemon           │
+                    │   (resident orchestrator)   │
                     └──────────────┬──────────────┘
                                    │
               ┌────────────────────┼────────────────────┐
               ▼                    ▼                    ▼
       ┌───────────────┐   ┌────────────────┐   ┌─────────────────┐
-      │ Modèle local  │   │ Moteur de      │   │ Routeur cloud   │
-      │ Qwen/Ollama   │   │ permissions    │   │ Claude (opt-in) │
-      │ (défaut)      │   │ + audit        │   │                 │
+      │ Local model   │   │ Permission     │   │ Cloud router    │
+      │ Qwen/Ollama   │   │ engine         │   │ Claude (opt-in) │
+      │ (default)     │   │ + audit        │   │                 │
       └───────────────┘   └───────┬────────┘   └─────────────────┘
-                                  │ valide chaque action
+                                  │ validates every action
                           ┌───────▼────────┐
-                          │  Outils        │
-                          │ fichiers,      │
-                          │ paquets, D-Bus,│
-                          │ processus,     │
-                          │ écran          │
+                          │  Tools         │
+                          │ files,         │
+                          │ packages,      │
+                          │ D-Bus,         │
+                          │ processes,     │
+                          │ screen         │
                           └────────────────┘
 ```
 
 ---
 
-## 3 · Fonctionnalités
+## 3 · Features
 
-Toutes ces capacités sont **opérationnelles** (v1, et contrôle de l'ordinateur depuis la
-v1.5) et passent par le moteur de permissions.
+All these capabilities are **operational** (v1, computer control since v1.5, English and
+French since v1.6) and go through the permission engine.
 
-- 🗂️ **Fichiers** — lire, lister, écrire, déplacer, créer, supprimer. Ex. « range mon
-  dossier Téléchargements par type ». L'escalade de risque détecte les chemins sensibles
-  (`~/.ssh`, `/etc`…), y compris derrière un lien symbolique ou un chemin relatif.
-- 📦 **Paquets** (`pacman`) — rechercher, installer, supprimer, mettre à jour. Élévation
-  ponctuelle via polkit (`pkexec`), jamais root en permanence. Fonctionne aussi depuis
-  l'ISO live (paquets figés sur un instantané de l'Arch Linux Archive).
-- 🔧 **Réglages système** (D-Bus / `pactl`) — luminosité, volume, sourdine, Wi-Fi.
-- 📊 **Processus** (`psutil`) — lister les processus, en tuer un (avec garde-fous :
-  PID critiques bloqués).
-- 🧠 **Modèle local** — Qwen via Ollama, par défaut, **100 % sur la machine**.
-- ☁️ **Cloud opt-in** — Claude (API Anthropic), activé **par requête** via un toggle
-  visible ; clé API dans le trousseau du système (`keyring`), jamais en clair.
-- 🛡️ **Permissions & audit** — 4 niveaux de risque, confirmations (« Refuser » par
-  défaut), blocklist infranchissable, journal SQLite de chaque action.
-- ⌨️ **Raccourci global** — X11 (`pynput`, nominal) et Wayland (portal
-  `GlobalShortcuts`, **expérimental**).
-- 💬 **Popup instantané** — PySide6 + `QTextBrowser` (aucun moteur web), réponses en
-  streaming rendues en markdown, sorties d'outils dans des cartes, thème noir et orange.
-  Fenêtre redimensionnable par les bords, agrandissable, en plein écran (`F11`), qui
-  revient là où on l'a laissée.
-- 🖱️ **Contrôle de l'ordinateur** *(v1.5)* — quand une demande passe par une
-  application graphique, l'IA **voit l'écran** et agit : cliquer, taper, remplir des
-  champs, combinaisons de touches, ouvrir une application, changer de fenêtre. **En
-  local**, sans modèle de vision : l'écran lui est décrit par l'arbre d'accessibilité et
-  l'OCR, chaque élément numéroté. Pendant le contrôle, les **bords de l'écran brillent en
-  orange** et une barre rappelle comment l'arrêter (**Échap** ou bouton ■).
-- 🌐 **Français et anglais** *(prochaine version)* — interface, réponses du modèle (local
-  ou cloud) et contrôle de l'ordinateur dans l'une ou l'autre langue. Au premier
-  lancement, My_OS prend celle de Linux : français si le système est en français,
-  anglais sinon. Le bouton 🌐 de la barre de titre change de langue à tout moment.
+- 🗂️ **Files** — read, list, write, move, create, delete. E.g. “sort my Downloads folder
+  by type”. Risk escalation detects sensitive paths (`~/.ssh`, `/etc`…), even behind a
+  symbolic link or a relative path.
+- 📦 **Packages** (`pacman`) — search, install, remove, update. One-off elevation through
+  polkit (`pkexec`), never permanent root. Also works from the live ISO (packages frozen
+  on an Arch Linux Archive snapshot).
+- 🔧 **System settings** (D-Bus / `pactl`) — brightness, volume, mute, Wi-Fi.
+- 📊 **Processes** (`psutil`) — list processes, kill one (with safeguards: critical PIDs
+  blocked).
+- 🧠 **Local model** — Qwen via Ollama, by default, **100% on the machine**.
+- ☁️ **Opt-in cloud** — Claude (Anthropic API), enabled **per request** through a
+  visible toggle; API key in the system keyring (`keyring`), never in clear text.
+- 🛡️ **Permissions & audit** — 4 risk levels, confirmations (“Deny” by default),
+  unbreakable blocklist, SQLite log of every action.
+- ⌨️ **Global shortcut** — X11 (`pynput`, nominal) and Wayland (`GlobalShortcuts`
+  portal, **experimental**).
+- 💬 **Instant popup** — PySide6 + `QTextBrowser` (no web engine), streamed answers
+  rendered as markdown, tool outputs in cards, black and orange theme. The window
+  resizes from its edges, maximizes, goes full screen (`F11`) and comes back where you
+  left it.
+- 🖱️ **Computer control** *(v1.5)* — when a request goes through a graphical
+  application, the AI **sees the screen** and acts: click, type, fill in fields, key
+  combinations, open an application, switch windows. **Locally**, without a vision
+  model: the screen is described to it through the accessibility tree and OCR, each
+  element numbered. During control, the **screen edges glow orange** and a bar reminds
+  you how to stop it (**Esc** or the ■ button).
+- 🌐 **English and French** *(v1.6)* — interface, model answers (local or cloud) and
+  computer control in either language. At first launch, My_OS uses your Linux
+  language: French if the system is in French, English otherwise. The 🌐 button in the
+  title bar switches at any time.
 
 ---
 
 ## 4 · Installation
 
-Deux voies. Détails complets dans **[docs/INSTALLATION.md](docs/INSTALLATION.md)**.
+Two ways. Full details in **[docs/INSTALLATION.md](docs/INSTALLATION.md)** (in French).
 
-### a) Via l'ISO live (le plus simple)
+### a) With the live ISO (easiest)
 
-Une ISO bootable (base Arch + Xfce/X11) embarque My_OS prêt à l'emploi :
-**[télécharger l'ISO de la v1.5](https://github.com/gonicolas12/My_OS/releases/tag/v1.5)**
-(avec son fichier `.sha256`). Pour la construire vous-même, le profil
-[archiso](https://wiki.archlinux.org/title/Archiso) et le script de build sont dans
-[`packaging/`](packaging/) (`sudo ./packaging/build_iso.sh`, sur un hôte Arch). Au 1er boot, les dépendances et
-le modèle local sont récupérés (réseau requis). Prévoir **≥ 12 Go de RAM pour le modèle
-local en live** (≥ 4 Go sinon). Le modèle utilise une carte graphique dédiée AMD, Intel
-ou NVIDIA récente via Vulkan si elle est présente, sinon le processeur. Sur une clé USB : [Ventoy](https://www.ventoy.net) ou Rufus
-en mode DD, Secure Boot désactivé ([détails](docs/INSTALLATION.md)). Voir aussi
-[packaging/README.md](packaging/README.md).
+A bootable ISO (Arch base + Xfce/X11) ships My_OS ready to use:
+**[download the v1.6 ISO](https://github.com/gonicolas12/My_OS/releases/tag/v1.6)**
+(with its `.sha256` file). To build it yourself, the
+[archiso](https://wiki.archlinux.org/title/Archiso) profile and the build script are in
+[`packaging/`](packaging/) (`sudo ./packaging/build_iso.sh`, on an Arch host). On first
+boot, the dependencies and the local model are fetched (network required). Plan
+**≥ 12 GB of RAM for the local model in live mode** (≥ 4 GB otherwise). The model uses a
+recent dedicated AMD, Intel or NVIDIA graphics card through Vulkan when there is one,
+the processor otherwise. On a USB stick: [Ventoy](https://www.ventoy.net) or Rufus in DD
+mode, Secure Boot disabled ([details](docs/INSTALLATION.md)). See also
+[packaging/README.md](packaging/README.md). The live session is in English; one click
+on 🌐 switches My_OS to French.
 
-### b) Depuis les sources
+### b) From source
 
-> Prérequis : Arch Linux (ou dérivé), Python 3.10+, [Ollama](https://ollama.com/download)
-> et les paquets système listés dans [docs/INSTALLATION.md §2.1](docs/INSTALLATION.md)
-> (dont `python-evdev`, nécessaire à `pynput`).
+> Requirements: Arch Linux (or a derivative), Python 3.10+,
+> [Ollama](https://ollama.com/download) and the system packages listed in
+> [docs/INSTALLATION.md §2.1](docs/INSTALLATION.md) (including `python-evdev`, needed by
+> `pynput`).
 
 ```bash
 git clone https://github.com/gonicolas12/My_OS && cd My_OS
 pip install -r requirements.txt
-ollama pull qwen3.5:4b          # modèle local recommandé (≥ 8 Go RAM)
-./launch_dev.sh                 # lance daemon + popup (session X11)
+ollama pull qwen3.5:4b          # recommended local model (≥ 8 GB RAM)
+./launch_dev.sh                 # starts daemon + popup (X11 session)
 ```
 
-Sans GPU, une réponse du modèle 4B prend de quelques secondes à plus d'une minute selon
-la machine. Avec une carte graphique, installez le backend d'Ollama qui lui correspond
-(`ollama-cuda`, `ollama-rocm` ou `ollama-vulkan`, cf.
+Without a GPU, an answer from the 4B model takes from a few seconds to over a minute
+depending on the machine. With a graphics card, install the matching Ollama backend
+(`ollama-cuda`, `ollama-rocm` or `ollama-vulkan`, see
 [docs/INSTALLATION.md §2.3](docs/INSTALLATION.md)).
 
-Pour une installation **résidente** (service `systemd` utilisateur, autostart), suivre
-[docs/INSTALLATION.md](docs/INSTALLATION.md). **Notes X11/Wayland** : X11 fonctionne tel
-quel ; Wayland nécessite un compositeur avec `layer-shell` + portal `GlobalShortcuts` et
-reste expérimental.
+For a **resident** install (`systemd` user service, autostart), follow
+[docs/INSTALLATION.md](docs/INSTALLATION.md). **X11/Wayland notes**: X11 works out of
+the box; Wayland needs a compositor with `layer-shell` + the `GlobalShortcuts` portal
+and remains experimental.
 
 ---
 
-## 5 · Utilisation
+## 5 · Usage
 
-1. Appuyez sur **Ctrl+Alt+Espace** (raccourci par défaut, modifiable dans `config.yaml`).
-2. Le popup s'ouvre au-dessus de tout (centré la première fois, puis là où vous l'avez
-   laissé). Tapez votre demande en langage naturel : `Entrée` envoie, `Maj+Entrée` va à
-   la ligne.
-3. Pour une action sensible, une **confirmation** détaillée apparaît au premier plan.
-   Au niveau 1, vous pouvez autoriser *une fois*, *pour ce dossier* ou *pour la session* ;
-   au niveau 2 (suppression, mise à jour…), seulement *une fois*, et la question revient
-   à chaque action. **Entrée et Échap refusent** : approuver est toujours un choix
-   explicite. Le mot de passe (polkit) n'est demandé que pour `pacman`.
-4. `Échap` referme le popup (rappelé en haut à droite) ; `Ctrl+L` démarre une nouvelle
+1. Press **Ctrl+Alt+Space** (default shortcut, configurable in `config.yaml`).
+2. The popup opens on top of everything (centered the first time, then where you left
+   it). Type your request in natural language: `Enter` sends, `Shift+Enter` adds a line.
+3. For a sensitive action, a detailed **confirmation** appears in the foreground. At
+   level 1, you can allow *once*, *for this folder* or *for the session*; at level 2
+   (deletion, update…), only *once*, and the question comes back for every action.
+   **Enter and Esc deny**: approving is always an explicit choice. The password (polkit)
+   is only asked for `pacman`.
+4. `Esc` closes the popup (reminder at the top right); `Ctrl+L` starts a new
    conversation.
-5. La fenêtre se redimensionne par ses bords et ses coins et se déplace par sa barre de
-   titre ; double-cliquez sur la barre pour l'agrandir, `F11` pour le plein écran. Taille,
-   position et état sont mémorisés (`~/.config/my_os/popup.conf`).
-6. Le bouton **🌐 FR / EN** de la barre de titre change la langue de My_OS : interface,
-   réponses du modèle et contrôle de l'ordinateur passent en français ou en anglais,
-   aussitôt et sans redémarrer ; le choix est mémorisé. Avant tout choix, My_OS suit la
-   langue de Linux (réglage `language` de `config.yaml`).
+5. The window resizes from its edges and corners and moves by its title bar;
+   double-click the bar to maximize it, `F11` for full screen. Size, position and state
+   are remembered (`~/.config/my_os/popup.conf`).
+6. The **🌐 EN / FR** button in the title bar changes My_OS's language: interface, model
+   answers and computer control switch to English or French, immediately and without
+   restarting; the choice is remembered. Until you choose, My_OS follows your Linux
+   language (`language` setting in `config.yaml`).
 
-**Exemples de requêtes :**
-- « Range mon dossier Téléchargements par type. »
-- « Installe VLC. »
-- « Baisse la luminosité à 30 %. »
-- « Qu'est-ce qui mange ma RAM en ce moment ? »
-- « Résume ce fichier. » *(le contenu lu reste une donnée, jamais une instruction)*
-- En anglais : *“Install VLC.”*, *“Lower the volume to 30%.”*, *“Open Mousepad and write
-  a shopping list.”*
+**Example requests:**
+- “Sort my Downloads folder by type.”
+- “Install VLC.”
+- “Lower the brightness to 30%.”
+- “What is eating my RAM right now?”
+- “Summarize this file.” *(content read stays data, never an instruction)*
+- In French: *« Range mon dossier Téléchargements par type. »*, *« Baisse le volume à
+  30 %. »*
 
-**Contrôle de l'ordinateur (session X11) :** demandez par exemple « Ouvre Mousepad et
-écris une liste de courses » ou « Remplis ce formulaire avec mon nom ». My_OS demande
-d'abord votre accord **pour cette demande** (« Autoriser pour cette demande » ;
-« Refuser » par défaut). Le popup s'efface, les bords de l'écran brillent en orange clair
-et une barre, en bas, montre l'action en cours : **« Cliquez ici ■ ou appuyez sur Échap
-pour arrêter »**. À la fin, la lueur s'éteint et le popup revient avec le compte rendu.
-Les actions sensibles (taper dans un terminal, bouton « Supprimer » ou « Envoyer »,
-paramètres du système) restent confirmées une à une ; mots de passe, demandes
-d'élévation et écran verrouillé ne sont jamais touchés.
+**Computer control (X11 session):** ask for example “Open Mousepad and write a shopping
+list” or “Fill in this form with my name”. My_OS first asks for your approval **for this
+request** (“Allow for this request”; “Deny” by default). The popup fades out, the
+screen edges glow light orange and a bar at the bottom shows the current action:
+**“Click here ■ or press Esc to stop”**. At the end, the glow fades and the popup comes
+back with the report. Sensitive actions (typing in a terminal, a “Delete”, “Send” or
+“Submit” button, system settings) are still confirmed one by one; passwords, elevation
+prompts and the locked screen are never touched.
 
-**Mode cloud (optionnel) :** activez « ☁ Cloud » sous la zone de saisie, puis saisissez
-votre clé API Anthropic (stockée dans le trousseau) ; un indicateur signale que **cette**
-requête part au cloud. Conseil : `Ctrl+L` avant, pour minimiser les données envoyées.
-
----
-
-## 6 · Le moteur de permissions
-
-C'est le composant le plus important du projet : il garantit que **la sûreté ne dépend
-pas de la fiabilité du modèle**.
-
-| Niveau | Nom | Exemples | Comportement |
-|--------|-----|----------|--------------|
-| **0** | Auto | lire un fichier, lister, monitorer | Exécuté sans confirmation |
-| **1** | Confirmation | écrire/déplacer, installer un paquet | Dialogue simple |
-| **2** | Renforcée | supprimer, `sudo`, modifier le système, `/etc` `/boot` | Confirmation explicite + détail |
-| **3** | Bloqué | `rm -rf /`, formatage, zones critiques | **Jamais exécuté, même confirmé** |
-
-- **Statique d'abord** : le niveau vient du code (`permissions/risk_levels.py`), jamais
-  du LLM.
-- **Escalade par arguments** : ne peut qu'**augmenter** le risque (ex. écrire dans `~/.ssh`).
-- **Chemin réel** : liens symboliques, chemins relatifs, `..` et `//` sont résolus avant
-  toute décision — un lien vers `~/.ssh` est traité comme `~/.ssh`.
-- **Blocklist en premier** : le niveau 3 est vérifié avant tout et ne peut être contourné.
-- **Mémorisation** : *ce dossier* / *cette session*, **au niveau 1 seulement** — une
-  action de niveau 2 est redemandée à chaque fois.
-- **Audit** : chaque action et décision est journalisée dans `~/.local/share/my_os/audit.db` (SQLite).
-- **Écran** : le contrôle de l'ordinateur est accordé **pour une requête** (niveau 2),
-  toujours visible et arrêtable d'un Échap ; la cible jugée est celle de l'écran, jamais
-  celle que décrit le modèle ([SECURITY.md](docs/SECURITY.md), menace 5).
-- **Langue** : elle ne change aucune décision. Mêmes niveaux et mêmes confirmations en
-  français et en anglais ; à l'écran, les boutons sensibles sont reconnus dans les deux
-  langues, quelle que soit celle de My_OS.
+**Cloud mode (optional):** turn on “☁ Cloud” under the input field, then enter your
+Anthropic API key (stored in the keyring); an indicator shows that **this** request
+goes to the cloud. Tip: `Ctrl+L` first, to minimize the data sent.
 
 ---
 
-## 7 · Sécurité
+## 6 · The permission engine
 
-La sécurité de My_OS repose sur l'**architecture**, pas sur des correctifs ajoutés après
-coup. Trois invariants non négociables :
+This is the most important component of the project: it guarantees that **safety does
+not depend on the model's reliability**.
 
-1. **Le LLM ne décide jamais de son niveau de permission** — c'est du code statique. La
-   blocklist (niveau 3) est infranchissable.
-2. **Tout contenu lu (fichier, web, écran, sortie de commande) est une donnée non
-   fiable**, jamais une instruction — défense contre l'injection de prompt indirecte.
-3. **Le daemon tourne en utilisateur, jamais root** — élévation ponctuelle via polkit ;
-   IPC sur socket Unix locale ; secrets via `keyring`.
+| Level | Name | Examples | Behavior |
+|-------|------|----------|----------|
+| **0** | Auto | read a file, list, monitor | Run without confirmation |
+| **1** | Confirmation | write/move, install a package | Simple dialog |
+| **2** | Enhanced | delete, `sudo`, change the system, `/etc` `/boot` | Explicit confirmation + details |
+| **3** | Blocked | `rm -rf /`, formatting, critical areas | **Never run, even if confirmed** |
 
-Le **cloud reste opt-in par requête** et le **modèle local par défaut** (privé). Sous
-Wayland, le **confinement** de la surface (layer-shell) est un *plus* de sécurité.
+- **Static first**: the level comes from code (`permissions/risk_levels.py`), never
+  from the LLM.
+- **Escalation by arguments**: can only **raise** the risk (e.g. writing to `~/.ssh`).
+- **Real path**: symbolic links, relative paths, `..` and `//` are resolved before any
+  decision — a link to `~/.ssh` is treated as `~/.ssh`.
+- **Blocklist first**: level 3 is checked before anything and cannot be bypassed.
+- **Remembering**: *this folder* / *this session*, **at level 1 only** — a level-2
+  action is asked again every time.
+- **Audit**: every action and decision is logged in `~/.local/share/my_os/audit.db`
+  (SQLite).
+- **Screen**: computer control is granted **for one request** (level 2), always visible
+  and stoppable with Esc; the target judged is the one on screen, never the one the
+  model describes ([SECURITY.md](docs/SECURITY.md), threat 5).
+- **Language**: it decides nothing. Same levels and same confirmations in English and in
+  French; on screen, sensitive buttons are recognized in both languages, whatever
+  My_OS's language.
 
-➡️ Modèle de menaces complet : **[docs/SECURITY.md](docs/SECURITY.md)**.
+---
+
+## 7 · Security
+
+My_OS's security relies on its **architecture**, not on fixes added afterwards. Three
+non-negotiable invariants:
+
+1. **The LLM never decides its permission level** — it's static code. The blocklist
+   (level 3) cannot be crossed.
+2. **Any content read (file, web, screen, command output) is untrusted data**, never an
+   instruction — a defense against indirect prompt injection.
+3. **The daemon runs as the user, never root** — one-off elevation through polkit; IPC
+   over a local Unix socket; secrets through `keyring`.
+
+The **cloud stays opt-in per request** and the **local model the default** (private).
+Under Wayland, the surface **confinement** (layer-shell) is a security *bonus*.
+
+➡️ Full threat model: **[docs/SECURITY.md](docs/SECURITY.md)** (in French).
 
 ---
 
 ## 8 · Architecture
 
-Cinq couches, construites de bas en haut :
+Five layers, built bottom-up:
 
-| Couche | Rôle |
-|--------|------|
-| **0 · Base Arch Linux** | kernel, drivers, paquets |
-| **1 · Daemon `myosd`** | service résident, raccourci global, IPC, orchestration |
-| **2 · Outils + permissions** | outils système + moteur de permissions + audit (choke point) |
-| **3a · Modèle local** | Qwen via Ollama (défaut, privé) |
-| **3b · Routeur cloud** | Claude via clé API (opt-in) |
-| **4 · Popup Qt** | interface invoquée au raccourci |
+| Layer | Role |
+|-------|------|
+| **0 · Arch Linux base** | kernel, drivers, packages |
+| **1 · `myosd` daemon** | resident service, global shortcut, IPC, orchestration |
+| **2 · Tools + permissions** | system tools + permission engine + audit (choke point) |
+| **3a · Local model** | Qwen via Ollama (default, private) |
+| **3b · Cloud router** | Claude via API key (opt-in) |
+| **4 · Qt popup** | interface summoned by the shortcut |
 
-Daemon et popup sont **deux processus** communiquant par socket Unix. Toute action passe
-par le point de passage unique `permissions/policy_engine.py`.
+The daemon and the popup are **two processes** talking over a Unix socket. Every action
+goes through the single choke point `permissions/policy_engine.py`.
 
-➡️ Détails : **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** · contrats d'interface :
-**[docs/INTERFACES.md](docs/INTERFACES.md)**.
+➡️ Details: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** · interface contracts:
+**[docs/INTERFACES.md](docs/INTERFACES.md)** (in French).
 
 ---
 
 ## 9 · Roadmap
 
-**v1 — terminée ✅** (détails et vision long terme : [docs/ROADMAP.md](docs/ROADMAP.md)).
+**v1 — complete ✅** (details and long-term vision: [docs/ROADMAP.md](docs/ROADMAP.md)).
 
-- [x] **Jalon 1 — Socle** : daemon systemd utilisateur, raccourci global (X11), IPC socket
-  Unix, popup Qt.
-- [x] **Jalon 2 — Fichiers + permissions** : outils fichiers, moteur de permissions
-  complet, audit SQLite, confirmations, boucle agentique, Ollama.
-- [x] **Jalon 3 — Pilotage système** : paquets (`pacman`), réglages (D-Bus), processus
-  (`psutil`), élévation polkit ponctuelle.
-- [x] **Jalon 4 — Routeur cloud** : clé API via `keyring`, toggle opt-in par requête,
-  indicateur visible, journalisation.
-- [x] **Jalon 5 — Packaging** : port Wayland (expérimental), profil ISO `archiso`,
-  finalisation de la documentation.
-- [x] **Sécurité (transverse)** : daemon non-root, séparation données/instructions,
-  `SECURITY.md` tenu à jour.
-- [x] **Validation en VM** (octobre 2026) : 42 scénarios de permissions, interface,
-  élévation polkit, modèle local ; 6 contournements trouvés, corrigés et re-testés.
+- [x] **Milestone 1 — Foundation**: systemd user daemon, global shortcut (X11), Unix
+  socket IPC, Qt popup.
+- [x] **Milestone 2 — Files + permissions**: file tools, complete permission engine,
+  SQLite audit, confirmations, agentic loop, Ollama.
+- [x] **Milestone 3 — System control**: packages (`pacman`), settings (D-Bus),
+  processes (`psutil`), one-off polkit elevation.
+- [x] **Milestone 4 — Cloud router**: API key via `keyring`, opt-in per-request toggle,
+  visible indicator, logging.
+- [x] **Milestone 5 — Packaging**: Wayland port (experimental), `archiso` ISO profile,
+  documentation finalized.
+- [x] **Security (cross-cutting)**: non-root daemon, data/instruction separation,
+  `SECURITY.md` kept up to date.
+- [x] **VM validation** (October 2026): 42 permission scenarios, interface, polkit
+  elevation, local model; 6 bypasses found, fixed and re-tested.
 
-- [x] **v1.0 publiée** : [release GitHub](https://github.com/gonicolas12/My_OS/releases/tag/v1.0)
-  avec l'ISO et sa somme SHA-256.
-- [x] **v1.1 publiée** : [release GitHub](https://github.com/gonicolas12/My_OS/releases/tag/v1.1),
-  interface du popup repensée : fenêtre redimensionnable, agrandie ou en plein écran,
-  rappel « Échap pour fermer », conversation sur le gabarit de My_AI en noir et orange,
-  cartes d'outils lisibles.
-- [x] **v1.2 publiée** : [release GitHub](https://github.com/gonicolas12/My_OS/releases/tag/v1.2),
-  modèle local : conversations longues sans réponse coupée (fenêtre de 16 384 tokens),
-  carte graphique via Vulkan, réponses plus rapides sans GPU, contexte en 8 bits, Ollama
-  en local seul.
-- [x] **v1.3 publiée** : [release GitHub](https://github.com/gonicolas12/My_OS/releases/tag/v1.3),
-  correctif : la saisie de la clé API du mode cloud s'ouvre au-dessus du popup (elle
-  s'ouvrait dessous et le bloquait sans être visible).
-- [x] **v1.4 publiée** : [release GitHub](https://github.com/gonicolas12/My_OS/releases/tag/v1.4),
-  correctif : le premier réglage du son après le démarrage (volume, sourdine) n'échoue
-  plus pendant que le serveur son démarre.
-- [x] **v1.5 publiée** : [release GitHub](https://github.com/gonicolas12/My_OS/releases/tag/v1.5),
-  contrôle de l'ordinateur : voir l'écran et agir à la souris et au clavier, en local
-  (accessibilité + OCR, éléments numérotés), bords lumineux et barre d'arrêt, accord par
-  demande ; validé en VM avec le modèle local.
-- [x] **Français et anglais** *(prochaine version)* : interface, modèle local et cloud,
-  contrôle de l'ordinateur ; langue de Linux au premier lancement, bouton 🌐 FR / EN ;
-  validé en VM dans les deux langues (mêmes 42 scénarios de permissions, mêmes décisions).
+- [x] **v1.0 released**: [GitHub release](https://github.com/gonicolas12/My_OS/releases/tag/v1.0)
+  with the ISO and its SHA-256 checksum.
+- [x] **v1.1 released**: [GitHub release](https://github.com/gonicolas12/My_OS/releases/tag/v1.1),
+  redesigned popup: resizable, maximizable or full-screen window, “Esc to close” hint,
+  conversation in My_AI's layout in black and orange, readable tool cards.
+- [x] **v1.2 released**: [GitHub release](https://github.com/gonicolas12/My_OS/releases/tag/v1.2),
+  local model: long conversations without cut answers (16,384-token window), graphics
+  card through Vulkan, faster answers without a GPU, 8-bit context, Ollama local only.
+- [x] **v1.3 released**: [GitHub release](https://github.com/gonicolas12/My_OS/releases/tag/v1.3),
+  fix: the cloud-mode API key dialog opens above the popup (it opened below it and
+  blocked it, invisible).
+- [x] **v1.4 released**: [GitHub release](https://github.com/gonicolas12/My_OS/releases/tag/v1.4),
+  fix: the first sound setting after startup (volume, mute) no longer fails while the
+  sound server starts.
+- [x] **v1.5 released**: [GitHub release](https://github.com/gonicolas12/My_OS/releases/tag/v1.5),
+  computer control: see the screen and act with the mouse and keyboard, locally
+  (accessibility + OCR, numbered elements), glowing edges and stop bar, per-request
+  approval; validated in a VM with the local model.
+- [x] **v1.6 released**: [GitHub release](https://github.com/gonicolas12/My_OS/releases/tag/v1.6),
+  English and French: interface, local and cloud model, computer control; Linux
+  language at first launch, 🌐 EN / FR button; validated in a VM in both languages (same
+  42 permission scenarios, same decisions).
 
-**Encore à éprouver :** matériel réel (pilotes Wi-Fi, rétroéclairage, cartes graphiques)
-et mode cloud avec une vraie clé — retours bienvenus dans les
+**Still to prove:** real hardware (Wi-Fi drivers, backlight, graphics cards) and cloud
+mode with a real key — feedback welcome in the
 [issues](https://github.com/gonicolas12/My_OS/issues).
 
-**Au-delà (vision long terme, non promise) :** vision pure pour les applications sans
-accessibilité ni texte (modèle local spécialisé, sur carte graphique), défenses
-anti-injection avancées, Wayland natif grand public. Voir [docs/ROADMAP.md](docs/ROADMAP.md).
+**Beyond (long-term vision, not promised):** pure vision for applications without
+accessibility or text (specialized local model, on a graphics card), advanced
+anti-injection defenses, mainstream native Wayland, more languages. See
+[docs/ROADMAP.md](docs/ROADMAP.md).
 
 ---
 
-## 10 · Arborescence du projet
+## 10 · Project layout
 
 ```
 My_OS/
-├── daemon/                   # Couche 1 — cœur résident
-│   ├── myosd.py              # point d'entrée du service
-│   ├── hotkey_listener.py    # raccourci global (X11 pynput / Wayland portal)
-│   ├── ipc_server.py         # socket Unix daemon ↔ popup
-│   ├── orchestrator.py       # boucle agentique requête → modèle → outils
-│   ├── control.py            # session de contrôle de l'écran (indicateur, arrêt)
+├── daemon/                   # Layer 1 — resident core
+│   ├── myosd.py              # service entry point
+│   ├── hotkey_listener.py    # global shortcut (X11 pynput / Wayland portal)
+│   ├── ipc_server.py         # Unix socket daemon ↔ popup
+│   ├── orchestrator.py       # agentic loop request → model → tools
+│   ├── control.py            # screen control session (indicator, stop)
 │   └── confirmation_provider.py
-├── permissions/              # Couche 2 — sécurité (cœur)
-│   ├── risk_levels.py        # table statique outil → niveau
-│   ├── policy_engine.py      # décision + escalade (point de passage unique)
-│   ├── blocklist.py          # niveau 3, jamais autorisé
+├── permissions/              # Layer 2 — security (core)
+│   ├── risk_levels.py        # static table tool → level
+│   ├── policy_engine.py      # decision + escalation (single choke point)
+│   ├── blocklist.py          # level 3, never allowed
 │   ├── confirmation.py
-│   ├── session_grants.py     # une fois / dossier / session
-│   └── audit_log.py          # journal SQLite
-├── tools/                    # outils système
+│   ├── session_grants.py     # once / folder / session
+│   └── audit_log.py          # SQLite log
+├── tools/                    # system tools
 │   ├── base_tool.py          # base + risk_level
-│   ├── files.py              # fichiers
+│   ├── files.py              # files
 │   ├── packages.py           # pacman
 │   ├── system_settings.py    # D-Bus / pactl
 │   ├── processes.py          # psutil
-│   └── computer/             # contrôle de l'ordinateur : écran (accessibilité, OCR),
-│                             # souris et clavier (xdotool), applications
-├── models/                   # Couche 3 — IA
-│   ├── local_llm.py          # Qwen/Ollama (défaut)
-│   ├── prompts.py            # prompts système, un par langue
-│   ├── cloud_router.py       # routeur + API Anthropic (opt-in)
-│   ├── secrets.py            # clé API via keyring
-│   └── stub_model.py         # backend de règles (tests / sans Ollama)
-├── ui/                       # Couche 4 — popup Qt
-│   ├── popup.py              # fenêtre PySide6, client IPC, états de la fenêtre
-│   ├── chat_view.py          # conversation : bulles, réponses, cartes d'outils
-│   ├── composer.py           # zone de saisie (Cloud, clé API, envoi)
-│   ├── window_chrome.py      # barre de titre + redimensionnement (sans cadre)
-│   ├── markdown_render.py    # markdown sans HTML ni image (QTextBrowser)
-│   ├── confirm_dialog.py     # dialogue de confirmation
-│   ├── control_overlay.py    # bords lumineux + barre d'arrêt du contrôle
-│   ├── icons.py              # icônes et logo dessinés (QPainter)
-│   ├── styles.py             # jetons de design, thème noir/orange
-│   └── wayland_layer.py      # présentation Wayland (layer-shell), repli X11
+│   └── computer/             # computer control: screen (accessibility, OCR),
+│                             # mouse and keyboard (xdotool), applications
+├── models/                   # Layer 3 — AI
+│   ├── local_llm.py          # Qwen/Ollama (default)
+│   ├── prompts.py            # system prompts, one per language
+│   ├── cloud_router.py       # router + Anthropic API (opt-in)
+│   ├── secrets.py            # API key via keyring
+│   └── stub_model.py         # rule-based backend (tests / without Ollama)
+├── ui/                       # Layer 4 — Qt popup
+│   ├── popup.py              # PySide6 window, IPC client, window states
+│   ├── chat_view.py          # conversation: bubbles, answers, tool cards
+│   ├── composer.py           # input area (Cloud, API key, send)
+│   ├── window_chrome.py      # title bar (🌐 language menu) + resizing (frameless)
+│   ├── markdown_render.py    # markdown without HTML or images (QTextBrowser)
+│   ├── confirm_dialog.py     # confirmation dialog
+│   ├── control_overlay.py    # glowing edges + control stop bar
+│   ├── icons.py              # drawn icons and logo (QPainter)
+│   ├── styles.py             # design tokens, black/orange theme
+│   └── wayland_layer.py      # Wayland presentation (layer-shell), X11 fallback
 ├── core/
-│   ├── config.py             # config + résolution socket
-│   ├── ipc.py                # cadrage des messages
-│   ├── elevation.py          # exécution système + polkit (pkexec)
-│   ├── session.py            # détection X11/Wayland
-│   ├── i18n.py               # langue (français, anglais) : tr(), langue du système
-│   ├── locales/en.py         # traductions anglaises (le français est dans le code)
+│   ├── config.py             # config + socket resolution
+│   ├── ipc.py                # message framing
+│   ├── elevation.py          # system commands + polkit (pkexec)
+│   ├── session.py            # X11/Wayland detection
+│   ├── i18n.py               # language (English, French): tr(), system language
+│   ├── locales/en.py         # English translations (French lives in the code)
 │   └── logger.py
-├── docs/
+├── docs/                     # detailed documentation (in French)
 │   ├── ARCHITECTURE.md
-│   ├── SECURITY.md           # modèle de menaces + validation en VM
-│   ├── INTERFACES.md         # contrats d'interface
-│   ├── INSTALLATION.md       # install (sources + ISO) + dépannage
-│   ├── ROADMAP.md            # v1 + vision long terme
-│   └── media/                # captures d'écran du README
-├── packaging/                # ISO live (archiso)
+│   ├── SECURITY.md           # threat model + VM validation
+│   ├── INTERFACES.md         # interface contracts
+│   ├── INSTALLATION.md       # install (source + ISO) + troubleshooting
+│   ├── ROADMAP.md            # v1 + long-term vision
+│   └── media/                # README screenshots (en/ for this README)
+├── packaging/                # live ISO (archiso)
 │   ├── build_iso.sh
 │   ├── README.md
 │   └── archiso/              # profiledef, packages, airootfs
-├── tests/                    # ~850 tests (permissions en priorité)
+├── tests/                    # ~860 tests (permissions first)
 ├── config.yaml
-├── myosd.service             # service systemd utilisateur
+├── myosd.service             # systemd user service
 ├── requirements.txt
 ├── launch_dev.sh
-└── pyproject.toml
+├── pyproject.toml
+├── README.md                 # this file
+└── README.fr.md              # French version
 ```
 
 ---
 
-## 11 · Développement
+## 11 · Development
 
 ```bash
 pip install -r requirements.txt
-./launch_dev.sh                 # daemon + popup en dev (X11)
+./launch_dev.sh                 # daemon + popup in dev (X11)
 
-pytest                          # tous les tests
-pytest tests/test_permissions/  # le cœur de sécurité (prioritaire)
+pytest                          # all tests
+pytest tests/test_permissions/  # the security core (priority)
 ruff check . && ruff format .   # lint + format
 ```
 
-Conventions : Python 3.10+, type hints partout, docstrings sur les fonctions publiques.
-Tout nouvel outil hérite de `tools/base_tool.py` et **doit** déclarer un `risk_level`.
-Aucune action ne contourne `permissions/policy_engine.py`. Aucun secret en clair.
+Conventions: Python 3.10+, type hints everywhere, docstrings on public functions. Every
+new tool inherits from `tools/base_tool.py` and **must** declare a `risk_level`. No
+action bypasses `permissions/policy_engine.py`. No secret in clear text. Any text shown
+to the user or the model is written in French in the code and goes through `tr()`, with
+its English translation in `core/locales/en.py` (the tests fail otherwise).
 
 ---
 
-## 12 · Contribuer
+## 12 · Contributing
 
-Les contributions sont bienvenues !
+Contributions are welcome!
 
-1. Forkez, créez une branche de feature (`git checkout -b ma-feature`).
-2. Respectez les conventions ci-dessus et les contrats de [docs/INTERFACES.md](docs/INTERFACES.md).
-3. **Couvrez le module `permissions/` en priorité** ; `ruff` propre, tests verts.
-4. Pour la sécurité, lisez d'abord [docs/SECURITY.md](docs/SECURITY.md) — aucun changement
-   ne doit affaiblir les trois invariants.
-5. Ouvrez une Pull Request claire (un sujet = une PR).
+1. Fork, create a feature branch (`git checkout -b my-feature`).
+2. Follow the conventions above and the contracts in
+   [docs/INTERFACES.md](docs/INTERFACES.md).
+3. **Cover the `permissions/` module first**; clean `ruff`, green tests.
+4. For security, read [docs/SECURITY.md](docs/SECURITY.md) first — no change may weaken
+   the three invariants.
+5. Open a clear Pull Request (one topic = one PR).
 
-Signalements de bugs et idées : via les *issues* GitHub.
+Bug reports and ideas: through GitHub *issues*, in English or in French.
 
 ---
 
-## 13 · Licence
+## 13 · License
 
-[MIT](LICENSE). Vous êtes libre d'utiliser, modifier et redistribuer My_OS.
+[MIT](LICENSE). You are free to use, modify and redistribute My_OS.
 
-## 14 · Crédits
+## 14 · Credits
 
-Conçu dans la lignée de [My_AI](https://github.com/gonicolas12/My_AI). Construit pour
-rester **local, privé et sûr**. Merci aux projets qui le rendent possible : Arch Linux,
-archiso, Ollama, PySide6/Qt, polkit, et l'écosystème Python.
+Designed in the line of [My_AI](https://github.com/gonicolas12/My_AI). Built to stay
+**local, private and safe**. Thanks to the projects that make it possible: Arch Linux,
+archiso, Ollama, PySide6/Qt, polkit, and the Python ecosystem.

@@ -190,6 +190,7 @@ liste les fenêtres [wN] et les éléments visibles de la fenêtre active, numé
 nouvelle observation : utilise toujours les numéros de la DERNIÈRE.
 - Un long texte (plus de quelques lignes) se tape en plusieurs appels type_text \
 successifs, un paragraphe ou une strophe à la fois.
+- Formulaire : pas d'Entrée dans un champ (elle l'envoie), clique sur son bouton.
 - N'écris rien entre deux actions : appelle directement l'outil suivant (chaque \
 phrase retarde l'action). Vérifie l'effet de chaque action dans l'observation ; \
 une fenêtre inattendue (dialogue) se traite comme le reste. Une phrase de compte \
@@ -211,6 +212,7 @@ lists the windows [wN] and the visible elements of the active window, numbered [
 new observation: always use the numbers from the LATEST one.
 - A long text (more than a few lines) is typed in several successive type_text \
 calls, one paragraph or one stanza at a time.
+- Forms: no Enter in a field (it submits the form), click its button.
 - Write nothing between two actions: call the next tool directly (every \
 sentence delays the action). Check the effect of each action in the observation; \
 an unexpected window (dialog) is handled like the rest. One sentence of \

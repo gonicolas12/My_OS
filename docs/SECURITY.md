@@ -172,9 +172,11 @@ n'importe quelle action devient un clic.
 - **Escalade (niveau 2, redemandée à chaque fois).** Terminaux et lanceurs de commandes
   comme « Exécuter un programme » (y taper, c'est exécuter : le texte exact est montré),
   paramètres du système, libellés destructeurs ou sortants (Supprimer, Vider la
-  corbeille, Envoyer, Submit, Payer, Éteindre…), Maj+Suppr, Entrée ou Espace sur un tel bouton
-  focalisé, ouverture d'un terminal ou d'un lanceur, y compris par leurs raccourcis
-  (Ctrl+Alt+T, Alt+F2, Alt+F3) : un accès refusé ne s'obtient pas par un autre chemin.
+  corbeille, Envoyer, Submit, Payer, Éteindre…), Maj+Suppr, Entrée ou Espace sur un tel
+  bouton focalisé, Entrée dans un champ d'une ligne quand la fenêtre montre un tel bouton
+  (elle enverrait le formulaire, comme son clic ; v1.6), ouverture d'un terminal ou d'un
+  lanceur, y compris par leurs raccourcis (Ctrl+Alt+T, Alt+F2, Alt+F3) : un accès refusé
+  ne s'obtient pas par un autre chemin.
 - **Revérification juste avant d'agir.** La fenêtre visée (et, pour un élément de
   l'arbre d'accessibilité, l'élément lui-même) doit être encore là ; sinon l'action est
   annulée et le modèle doit observer à nouveau.
@@ -192,7 +194,8 @@ n'importe quelle action devient un clic.
 seule, libellé dans une autre langue que le français et l'anglais, les deux seules que
 la liste connaît) reste au niveau 1 dans la session accordée : l'utilisateur la voit
 se faire et peut tout arrêter, c'est pourquoi la session est par requête et toujours
-visible. Valider un formulaire par Entrée dans un champ texte n'est pas escaladé. Un
+visible. Valider un formulaire par Entrée n'est escaladé que si la fenêtre montre un
+bouton au libellé reconnu (un formulaire sans bouton nommé ne l'est pas). Un
 texte lu par OCR n'est pas relu avant le clic (seule sa fenêtre l'est). Sous X11, tout
 programme peut lire l'écran et injecter des événements : le garde de My_OS borne le
 modèle, pas un autre programme hostile (cf. §5.1).
@@ -360,7 +363,7 @@ défense en profondeur qui s'ajoute aux trois invariants, elle ne les remplace p
 - X11 seulement : sous Wayland, capture et injection restent interdites par le
   compositeur.
 
-### Français et anglais
+### Français et anglais (v1.6)
 
 - La langue ne décide de rien (§4, règle 9) : aucune condition de permission ne lit
   la langue de la requête ; un test vérifie que les mêmes actions donnent les mêmes
@@ -421,7 +424,7 @@ Les règles de la menace 5 sont aussi couvertes par des tests qui branchent les 
 outils sur un bureau simulé (blocklist, escalade, cible forgée par le modèle ignorée,
 revérification avant le clic).
 
-**Français et anglais (octobre 2026).** Sur l'ISO de la v1.5 avec le code bilingue, le
+**Français et anglais (octobre 2026, v1.6).** Sur l'ISO de la v1.5 avec le code bilingue, le
 modèle local réel (qwen3.5:4b, sur la carte graphique du PC de test) :
 
 - **Matrice des 42 scénarios** rejouée avec des requêtes en français puis en anglais :
@@ -441,3 +444,13 @@ modèle local réel (qwen3.5:4b, sur la carte graphique du PC de test) :
   passage du français à l'anglais au milieu d'une conversation, le modèle répondait
   parfois en français (environ 1 fois sur 10) : chaque demande lui rappelle désormais
   sa langue quand la conversation en mélange deux (25 sur 25).
+- Trouvé en préparant la démo anglaise du README : « Submit », le libellé anglais le
+  plus courant d'un envoi de formulaire, manquait aux libellés sortants (« Envoyer »
+  et « Send » y étaient) : un formulaire anglais partait sans confirmation renforcée.
+  Ajouté et testé ; la démo anglaise montre l'envoi escaladé au niveau 2.
+- Trouvé en tournant cette démo : le modèle tapait « Smith » avec `enter: true` dans le
+  premier champ, ce qui envoyait le formulaire aussitôt, sans passer par la
+  confirmation renforcée de « Submit ». Entrée dans un champ d'une ligne est désormais
+  jugée comme le clic du bouton sensible que montre la fenêtre (niveau 2, bouton nommé
+  dans la confirmation) ; le prompt demande aussi de remplir un formulaire sans Entrée.
+  Démo refaite dans les deux langues : champs remplis sans Entrée, envoi confirmé.

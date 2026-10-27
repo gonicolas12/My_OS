@@ -668,7 +668,10 @@ l'écran (une `target` fournie par le modèle est écrasée) : `window`, `window
 l'outil `role`, `name`, `source` (`a11y`/`ocr`), `x`, `y`, `stop_button` ; pour
 `open_app` : `app` (identifiant `.desktop`), `instance` (binaire), `desktop_file`,
 `command` (ligne `Exec`), `terminal` (l'entrée ouvre un terminal : catégorie
-`TerminalEmulator`, lanceur générique ou `Terminal=true`). La blocklist, l'escalade, la
+`TerminalEmulator`, lanceur générique ou `Terminal=true`) ; pour `type_text` avec
+`enter` et `press_keys` Entrée dans un champ d'une ligne : `submits`, libellé du bouton
+sortant ou destructeur de la fenêtre qu'Entrée déclencherait (escalade au niveau 2,
+comme son clic). La blocklist, l'escalade, la
 confirmation et l'audit jugent cette cible ; `run` revérifie juste avant d'agir que la
 fenêtre (et l'élément accessible) visés sont toujours là. Chaque outil décrit son action
 en clair (`describe`, §2) : « Cliquer sur [30] bouton « Envoyer l'inscription » dans
@@ -745,7 +748,7 @@ class ComputerConfig:
 
 ---
 
-## 11 · Langue : français et anglais (`core/i18n.py`)
+## 11 · Langue : français et anglais (`core/i18n.py`, v1.6)
 
 My_OS parle **français** (langue de référence : les textes du code sont en français)
 et **anglais**. Toute l'expérience suit la langue choisie : interface, modèle (prompt
