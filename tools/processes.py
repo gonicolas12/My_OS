@@ -25,6 +25,7 @@ import os
 from dataclasses import dataclass
 from typing import ClassVar, Protocol
 
+from core.i18n import tr
 from tools.base_tool import BaseTool, ToolResult
 
 _DEFAULT_LIMIT = 10
@@ -124,14 +125,16 @@ def _coerce_pid(value: object) -> int | None:
 def _kill_error_message(pid: int, exc: OSError) -> str:
     """Message lisible selon le type d'erreur rencontré en tuant ``pid``."""
     if isinstance(exc, PermissionError):
-        return (
-            f"kill_process : permission refusée pour le PID {pid} "
-            "(processus d'un autre utilisateur ou root — nécessiterait des "
-            "privilèges administrateur)"
+        return tr(
+            "kill_process : permission refusée pour le PID {pid} (processus d'un "
+            "autre utilisateur ou root — nécessiterait des privilèges administrateur)",
+            pid=pid,
         )
     if isinstance(exc, ProcessLookupError):
-        return f"kill_process : le PID {pid} a disparu avant l'envoi du signal"
-    return f"kill_process : {exc}"
+        return tr(
+            "kill_process : le PID {pid} a disparu avant l'envoi du signal", pid=pid
+        )
+    return tr("{tool} : {error}", tool="kill_process", error=exc)
 
 
 class ListProcesses(BaseTool):
@@ -163,7 +166,7 @@ class ListProcesses(BaseTool):
         try:
             processes = self._provider.list_processes()
         except OSError as exc:
-            return _err(f"list_processes : {exc}")
+            return _err(tr("{tool} : {error}", tool="list_processes", error=exc))
 
         key = (
             (lambda p: p.cpu_percent)
@@ -173,7 +176,9 @@ class ListProcesses(BaseTool):
         processes.sort(key=key, reverse=True)
         top = processes[:limit]
 
-        header = f"Top {len(top)} processus par {sort_by} :"
+        header = tr(
+            "Top {count} processus par {criterion} :", count=len(top), criterion=sort_by
+        )
         lines = [
             f"{p.pid:>7}  {p.memory_percent:5.1f}% RAM  "
             f"{p.cpu_percent:5.1f}% CPU  {p.name} ({p.username})"
@@ -198,13 +203,19 @@ class KillProcess(BaseTool):
     def run(self, args: dict) -> ToolResult:
         pid = _coerce_pid(args.get("pid"))
         if pid is None:
-            return _err("kill_process : argument 'pid' manquant ou invalide")
+            return _err(
+                tr(
+                    "{tool} : argument '{name}' manquant ou invalide",
+                    tool="kill_process",
+                    name="pid",
+                )
+            )
         if pid <= 1 or pid == os.getpid():
             # Défense en profondeur : la blocklist a déjà dû refuser, mais on ne
             # s'auto-tue pas et on ne touche pas à init même si elle est contournée.
-            return _err(f"kill_process : PID protégé, refusé : {pid}")
+            return _err(tr("kill_process : PID protégé, refusé : {pid}", pid=pid))
         if not self._provider.pid_exists(pid):
-            return _err(f"kill_process : aucun processus avec le PID {pid}")
+            return _err(tr("kill_process : aucun processus avec le PID {pid}", pid=pid))
         try:
             self._provider.kill(pid)
         except OSError as exc:
@@ -212,7 +223,9 @@ class KillProcess(BaseTool):
             # un seul except, message adapté au type (limite les points de sortie).
             return _err(_kill_error_message(pid, exc))
         return ToolResult(
-            success=True, output=f"Signal d'arrêt envoyé au PID {pid}", reversible=False
+            success=True,
+            output=tr("Signal d'arrêt envoyé au PID {pid}", pid=pid),
+            reversible=False,
         )
 
 

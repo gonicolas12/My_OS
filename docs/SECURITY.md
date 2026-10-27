@@ -172,7 +172,7 @@ n'importe quelle action devient un clic.
 - **Escalade (niveau 2, redemandée à chaque fois).** Terminaux et lanceurs de commandes
   comme « Exécuter un programme » (y taper, c'est exécuter : le texte exact est montré),
   paramètres du système, libellés destructeurs ou sortants (Supprimer, Vider la
-  corbeille, Envoyer, Payer, Éteindre…), Maj+Suppr, Entrée ou Espace sur un tel bouton
+  corbeille, Envoyer, Submit, Payer, Éteindre…), Maj+Suppr, Entrée ou Espace sur un tel bouton
   focalisé, ouverture d'un terminal ou d'un lanceur, y compris par leurs raccourcis
   (Ctrl+Alt+T, Alt+F2, Alt+F3) : un accès refusé ne s'obtient pas par un autre chemin.
 - **Revérification juste avant d'agir.** La fenêtre visée (et, pour un élément de
@@ -189,7 +189,8 @@ n'importe quelle action devient un clic.
   reste de la conversation (visible, journalisé).
 
 **Limites assumées.** Une action irréversible sans libellé reconnaissable (bouton icône
-seule, autre langue) reste au niveau 1 dans la session accordée : l'utilisateur la voit
+seule, libellé dans une autre langue que le français et l'anglais, les deux seules que
+la liste connaît) reste au niveau 1 dans la session accordée : l'utilisateur la voit
 se faire et peut tout arrêter, c'est pourquoi la session est par requête et toujours
 visible. Valider un formulaire par Entrée dans un champ texte n'est pas escaladé. Un
 texte lu par OCR n'est pas relu avant le clic (seule sa fenêtre l'est). Sous X11, tout
@@ -226,6 +227,14 @@ modèle, pas un autre programme hostile (cf. §5.1).
    champ focalisé), résolue depuis l'écran comme le chemin réel de la règle 5 ; ils ne
    s'exécutent que dans une session de contrôle accordée pour la requête, qui ne couvre
    jamais le niveau 2 (cf. menace 5).
+
+9. La **langue** de My_OS (français ou anglais) ne change **aucune** décision : seuls
+   les textes changent (interface, modèle, résultats, résumés des confirmations). Ce
+   qui juge l'écran est bilingue quelle que soit la langue choisie, car l'écran est
+   dans celle du système : libellés destructeurs, noms des touches, applications. Le
+   champ `language` d'une requête n'est qu'un sélecteur (valeur inconnue : langue par
+   défaut), jamais recopié dans un prompt. Vérifié en VM : matrice de 42 scénarios
+   identique dans les deux langues (cf. §8).
 
 Ces règles 5 à 7 viennent des tests en VM du 2026-10-19 (contournements reproduits
 avec effet réel, puis corrigés et re-testés).
@@ -351,6 +360,17 @@ défense en profondeur qui s'ajoute aux trois invariants, elle ne les remplace p
 - X11 seulement : sous Wayland, capture et injection restent interdites par le
   compositeur.
 
+### Français et anglais
+
+- La langue ne décide de rien (§4, règle 9) : aucune condition de permission ne lit
+  la langue de la requête ; un test vérifie que les mêmes actions donnent les mêmes
+  niveaux et portées dans les deux langues.
+- Les règles qui lisent l'écran restent bilingues quelle que soit la langue choisie
+  (libellés destructeurs, touches, applications).
+- Le prompt anglais garde toutes les consignes de sécurité du prompt français (données
+  ≠ instructions, permissions jamais décidées par le modèle) : un test vérifie que les
+  deux prompts citent les mêmes outils.
+
 ---
 
 ## 8 · Validation en VM (octobre 2026)
@@ -400,3 +420,24 @@ branche, avec le modèle local réel (qwen3.5:4b) :
 Les règles de la menace 5 sont aussi couvertes par des tests qui branchent les vrais
 outils sur un bureau simulé (blocklist, escalade, cible forgée par le modèle ignorée,
 revérification avant le clic).
+
+**Français et anglais (octobre 2026).** Sur l'ISO de la v1.5 avec le code bilingue, le
+modèle local réel (qwen3.5:4b, sur la carte graphique du PC de test) :
+
+- **Matrice des 42 scénarios** rejouée avec des requêtes en français puis en anglais :
+  42/42 dans les deux cas, mêmes décisions journalisées (16 approuvées, 5 automatiques,
+  9 bloquées, 12 refusées), effets réels vérifiés.
+- **13 demandes en langage naturel** dans chaque langue : bon outil 13 fois sur 13 en
+  anglais comme en français ; l'injection de prompt cachée dans un fichier (version
+  anglaise) signalée et ignorée ; `glibc` bloqué.
+- **Contrôle de l'ordinateur en anglais** : accord, bords lumineux et barre d'arrêt en
+  anglais, liste écrite dans Mousepad ; « Open a terminal and run ls » : Ctrl+Alt+T,
+  ouverture du terminal et frappe escaladés au niveau 2 et refusés. Sur un écran en
+  1280×720, la confirmation anglaise reste entièrement au-dessus de la barre d'arrêt.
+- Trouvé et corrigé pendant cette validation : dans les descriptions anglaises des
+  outils, les exemples entre guillemets droits (`"Mousepad"`) étaient recopiés par le
+  modèle comme nom d'application (« Open a terminal… » ouvrait Mousepad 11 fois sur
+  20, sans danger : rien n'était exécuté) ; sans guillemets, 0 sur 20. Et après un
+  passage du français à l'anglais au milieu d'une conversation, le modèle répondait
+  parfois en français (environ 1 fois sur 10) : chaque demande lui rappelle désormais
+  sa langue quand la conversation en mélange deux (25 sur 25).

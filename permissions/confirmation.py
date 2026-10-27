@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Literal
 from uuid import uuid4
 
+from core.i18n import N_, tr
 from permissions.policy_engine import Decision, grantable_scopes
 from tools.base_tool import BaseTool
 
@@ -52,7 +53,8 @@ def build_confirmation_needed(
 
 # Pseudo-outil de la confirmation du contrôle de l'ordinateur (une par requête).
 CONTROL_TOOL = "computer_control"
-CONTROL_SUMMARY = (
+# Traduit au moment de la demande (langue de la requête) : ``tr(CONTROL_SUMMARY)``.
+CONTROL_SUMMARY = N_(
     "Prendre le contrôle de l'ordinateur pour cette demande : voir l'écran, "
     "déplacer la souris, cliquer et taper au clavier."
 )
@@ -78,7 +80,7 @@ def build_control_confirmation(
         "tool": CONTROL_TOOL,
         "args": {"demande": text},
         "risk_level": 2,
-        "summary": CONTROL_SUMMARY,
+        "summary": tr(CONTROL_SUMMARY),
         "requires_elevation": False,
         "allowed_scopes": [],
         "control": True,

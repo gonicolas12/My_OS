@@ -30,6 +30,7 @@ import re
 from typing import ClassVar
 
 from core.elevation import Runner, run_command
+from core.i18n import N_, tr
 from tools.base_tool import BaseTool, ToolResult
 
 # Nom de paquet pacman : minuscule/chiffre en tête, puis lettres, chiffres et
@@ -48,6 +49,11 @@ _MAX_SEARCH_TERMS = 5
 # Tronque la sortie pacman réinjectée pour ne pas noyer le modèle / l'UI.
 _MAX_OUTPUT_CHARS = 4000
 
+_INVALID_NAME = N_(
+    "{tool} : nom de paquet invalide (minuscules, chiffres et « @._+- », sans tiret "
+    "initial)"
+)
+
 
 def _err(message: str) -> ToolResult:
     """Construit un ToolResult d'échec lisible."""
@@ -59,7 +65,7 @@ def _clip(text: str) -> str:
     text = text.strip()
     if len(text) <= _MAX_OUTPUT_CHARS:
         return text
-    return text[:_MAX_OUTPUT_CHARS] + "\n[... sortie tronquée ...]"
+    return text[:_MAX_OUTPUT_CHARS] + tr("\n[... sortie tronquée ...]")
 
 
 def _format_result(success_prefix: str, result: object) -> ToolResult:
@@ -72,12 +78,12 @@ def _format_result(success_prefix: str, result: object) -> ToolResult:
     stdout = str(getattr(result, "stdout", ""))
     stderr = str(getattr(result, "stderr", ""))
     if ok:
-        body = _clip(stdout) or "(aucune sortie)"
+        body = _clip(stdout) or tr("(aucune sortie)")
         return ToolResult(
             success=True, output=f"{success_prefix}\n{body}", reversible=False
         )
-    detail = _clip(stderr) or _clip(stdout) or "échec sans message"
-    return _err(f"{success_prefix} : échec\n{detail}")
+    detail = _clip(stderr) or _clip(stdout) or tr("échec sans message")
+    return _err(tr("{action} : échec\n{detail}", action=success_prefix, detail=detail))
 
 
 class _PacmanTool(BaseTool):  # pylint: disable=abstract-method
@@ -118,9 +124,13 @@ class SearchPackage(_PacmanTool):
             # Message pensé pour le modèle : il doit pouvoir corriger et relancer
             # plutôt que répondre de mémoire (constat du labo : paquet inventé).
             return _err(
-                f"search_package : requête invalide « {query} ». Relance avec 1 à "
-                f"{_MAX_SEARCH_TERMS} mots-clés EN ANGLAIS sans accents (ex. « video "
-                "player ») : lettres, chiffres et « @._+- », sans tiret initial."
+                tr(
+                    "search_package : requête invalide « {query} ». Relance avec 1 à "
+                    "{max} mots-clés EN ANGLAIS sans accents (ex. « video player ») : "
+                    "lettres, chiffres et « @._+- », sans tiret initial.",
+                    query=query,
+                    max=_MAX_SEARCH_TERMS,
+                )
             )
         result = run_command(["pacman", "-Ss", *terms], runner=self._runner)
         # pacman -Ss renvoie un code != 0 quand il n'y a aucun résultat : ce
@@ -128,10 +138,14 @@ class SearchPackage(_PacmanTool):
         if not result.ok and not result.stderr.strip():
             return ToolResult(
                 success=True,
-                output=f"Aucun paquet ne correspond à « {' '.join(terms)} ».",
+                output=tr(
+                    "Aucun paquet ne correspond à « {terms} ».", terms=" ".join(terms)
+                ),
                 reversible=False,
             )
-        return _format_result(f"Recherche « {' '.join(terms)} »", result)
+        return _format_result(
+            tr("Recherche « {terms} »", terms=" ".join(terms)), result
+        )
 
 
 class InstallPackage(_PacmanTool):
@@ -148,14 +162,11 @@ class InstallPackage(_PacmanTool):
     def run(self, args: dict) -> ToolResult:
         name = args.get("name")
         if not isinstance(name, str) or not _PACKAGE_NAME_RE.match(name):
-            return _err(
-                "install_package : nom de paquet invalide (minuscules, chiffres "
-                "et « @._+- », sans tiret initial)"
-            )
+            return _err(tr(_INVALID_NAME, tool="install_package"))
         result = run_command(
             ["pacman", "-S", "--noconfirm", name], elevate=True, runner=self._runner
         )
-        return _format_result(f"Installation de « {name} »", result)
+        return _format_result(tr("Installation de « {name} »", name=name), result)
 
 
 class RemovePackage(_PacmanTool):
@@ -172,14 +183,11 @@ class RemovePackage(_PacmanTool):
     def run(self, args: dict) -> ToolResult:
         name = args.get("name")
         if not isinstance(name, str) or not _PACKAGE_NAME_RE.match(name):
-            return _err(
-                "remove_package : nom de paquet invalide (minuscules, chiffres "
-                "et « @._+- », sans tiret initial)"
-            )
+            return _err(tr(_INVALID_NAME, tool="remove_package"))
         result = run_command(
             ["pacman", "-Rns", "--noconfirm", name], elevate=True, runner=self._runner
         )
-        return _format_result(f"Désinstallation de « {name} »", result)
+        return _format_result(tr("Désinstallation de « {name} »", name=name), result)
 
 
 class UpdateSystem(_PacmanTool):
@@ -197,7 +205,7 @@ class UpdateSystem(_PacmanTool):
         result = run_command(
             ["pacman", "-Syu", "--noconfirm"], elevate=True, runner=self._runner
         )
-        return _format_result("Mise à jour du système", result)
+        return _format_result(tr("Mise à jour du système"), result)
 
 
 # Registre des outils paquets — fusionné dans le daemon (cf. daemon/myosd.py).

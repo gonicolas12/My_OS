@@ -16,6 +16,11 @@ ouverture instantanée, aucun moteur web). Les sorties d'outils arrivent en mess
 ``tool_result`` et s'affichent en texte brut dans des cartes. Le contenu affiché
 reste une DONNÉE : aucun script, aucun lien suivi, aucune ressource chargée (cf.
 docs/SECURITY.md §2.2).
+
+**Langue** (cf. :mod:`core.i18n`) : celle choisie dans le menu de la barre de titre
+(mémorisée avec la géométrie), sinon ``language`` de la config, sinon celle du
+système. L'interface change aussitôt ; chaque requête porte la langue au daemon, qui
+y répond entièrement (modèle, outils, confirmations).
 """
 
 from __future__ import annotations
@@ -45,6 +50,14 @@ from PySide6.QtWidgets import (
 )
 
 from core.config import Config, load_config
+from core.i18n import (
+    N_,
+    current_language,
+    normalize_language,
+    resolve_language,
+    set_language,
+    tr,
+)
 from core.ipc import iter_messages, send_message
 from core.logger import get_logger
 from core.session import detect_session_type
@@ -66,25 +79,33 @@ _MIN_HEIGHT = 320
 # États de fenêtre conservés d'une ouverture à l'autre.
 _KEPT_STATES = Qt.WindowState.WindowFullScreen | Qt.WindowState.WindowMaximized
 
-STATUS_THINKING = "Le modèle réfléchit"
-STATUS_CONFIRMING = "En attente de votre confirmation"
-STATUS_CONTROLLING = "My_OS contrôle l'ordinateur"
+# Textes de l'interface, en français dans le code et traduits à l'affichage (tr).
+STATUS_THINKING = N_("Le modèle réfléchit")
+STATUS_CONFIRMING = N_("En attente de votre confirmation")
+STATUS_CONTROLLING = N_("My_OS contrôle l'ordinateur")
 # Libellé de la barre d'arrêt pendant que le modèle choisit l'action suivante.
 _CONTROL_STATUS = {
-    "observe_screen": "Regarde l'écran",
-    "click": "Clique",
-    "type_text": "Tape au clavier",
-    "press_keys": "Appuie sur des touches",
-    "scroll": "Fait défiler",
-    "open_app": "Ouvre une application",
-    "focus_window": "Change de fenêtre",
+    "observe_screen": N_("Regarde l'écran"),
+    "click": N_("Clique"),
+    "type_text": N_("Tape au clavier"),
+    "press_keys": N_("Appuie sur des touches"),
+    "scroll": N_("Fait défiler"),
+    "open_app": N_("Ouvre une application"),
+    "focus_window": N_("Change de fenêtre"),
 }
-MESSAGE_OFFLINE = (
+MESSAGE_OFFLINE = N_(
     "Le service My_OS (myosd) ne répond pas : la demande n'a pas été envoyée. "
     "Vérifiez qu'il tourne (systemctl --user status myosd)."
 )
-MESSAGE_CONNECTION_LOST = (
+MESSAGE_CONNECTION_LOST = N_(
     "Connexion au service My_OS perdue : la réponse est interrompue."
+)
+_CLOUD_BANNER = N_(
+    "☁ Mode cloud actif : la prochaine requête sera envoyée à Anthropic (Claude)."
+)
+_FOOTER = N_(
+    "Entrée : envoyer · Maj+Entrée : nouvelle ligne · "
+    "Ctrl+L : nouvelle conversation · F11 : plein écran"
 )
 
 
@@ -182,9 +203,15 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         # vs surface layer-shell sous Wayland). Détecté par défaut, injectable pour
         # les tests (cf. docs/INTERFACES.md §9).
         self._session_type = session_type or detect_session_type()
-        # Taille/position/état mémorisés entre deux ouvertures (et deux sessions).
+        # Taille/position/état mémorisés entre deux ouvertures (et deux sessions), et
+        # la langue choisie par l'utilisateur.
         self._settings = (
             settings if settings is not None else QSettings("my_os", "popup")
+        )
+        # Langue de l'interface, avant tout texte : choix mémorisé, sinon config,
+        # sinon langue du système.
+        set_language(
+            resolve_language(self._settings.value("language"), config.language)
         )
         self._placed = False
         self._connected = False
@@ -241,6 +268,7 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         self.title_bar.fullscreen_clicked.connect(self.toggle_fullscreen)
         self.title_bar.maximize_clicked.connect(self.toggle_maximized)
         self.title_bar.close_clicked.connect(self.hide)
+        self.title_bar.language_selected.connect(self.set_language)
         layout.addWidget(self.title_bar)
 
         self.chat = ChatView(hotkey_label(self._config.hotkey))
@@ -260,9 +288,7 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
 
         # Indicateur « mode cloud actif » : très visible, caché tant que la bascule
         # est OFF. Rend l'envoi cloud VISIBLE (cf. SECURITY menace 2).
-        self._cloud_banner = QLabel(
-            "☁ Mode cloud actif : la prochaine requête sera envoyée à Anthropic (Claude)."
-        )
+        self._cloud_banner = QLabel(tr(_CLOUD_BANNER))
         self._cloud_banner.setObjectName("cloudBanner")
         self._cloud_banner.setWordWrap(True)
         self._cloud_banner.hide()
@@ -274,10 +300,7 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         self.composer.key_requested.connect(self._prompt_api_key)
         column_layout.addWidget(self.composer)
 
-        self._footer = QLabel(
-            "Entrée : envoyer · Maj+Entrée : nouvelle ligne · "
-            "Ctrl+L : nouvelle conversation · F11 : plein écran"
-        )
+        self._footer = QLabel(tr(_FOOTER))
         self._footer.setObjectName("footerHint")
         self._footer.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         column_layout.addWidget(self._footer)
@@ -433,6 +456,34 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         frame.moveCenter(available.center())
         self.move(frame.topLeft())
 
+    # ---- langue ----------------------------------------------------------------
+    def set_language(self, language: str) -> None:
+        """Change la langue de My_OS (menu de la barre de titre) et la mémorise.
+
+        L'interface change aussitôt, conversation comprise (statuts, durées,
+        infobulles) ; ce qui a été dit reste tel quel. Les requêtes suivantes
+        partent dans cette langue : le daemon y répond entièrement.
+        """
+        chosen = normalize_language(language)
+        if chosen is None:
+            return
+        self._settings.setValue("language", chosen)
+        self._settings.sync()
+        if chosen == current_language():
+            return
+        set_language(chosen)
+        _log.info("Langue de l'interface : %s", chosen)
+        self._retranslate()
+
+    def _retranslate(self) -> None:
+        self.title_bar.retranslate()
+        self.composer.retranslate()
+        self.chat.retranslate(hotkey_label(self._config.hotkey))
+        self._cloud_banner.setText(tr(_CLOUD_BANNER))
+        self._footer.setText(tr(_FOOTER))
+        self._refresh_mode()
+        self._refresh_window_state()
+
     # ---- conversation ----------------------------------------------------------
     def new_conversation(self) -> None:
         """Nouvelle conversation : vide l'affichage et l'historique du daemon."""
@@ -457,10 +508,12 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
                 # Opt-in cloud PAR REQUÊTE : porte l'état de la bascule. Le daemon reste
                 # libre de replier en local si aucune clé n'est configurée.
                 "use_cloud": self.composer.cloud_toggle.isChecked(),
+                # Langue de l'interface : le daemon y répond (modèle, outils, etc.).
+                "language": current_language(),
             }
         )
         if not sent:
-            turn.add_notice("error", MESSAGE_OFFLINE)
+            turn.add_notice("error", tr(MESSAGE_OFFLINE))
             turn.finish()
             return
         turn.set_status(STATUS_THINKING)
@@ -500,7 +553,9 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         elif mtype == "done":
             self._finish(request_id)
         elif mtype == "error":
-            turn.add_notice("error", f"Erreur : {message.get('message', '')}")
+            turn.add_notice(
+                "error", tr("Erreur : {message}", message=message.get("message", ""))
+            )
             self._finish(request_id)
 
     def _on_connection_changed(self, connected: bool) -> None:
@@ -509,7 +564,7 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
             # Daemon perdu : son contrôle de l'écran s'arrête avec lui.
             self._end_control()
             for request_id, turn in list(self._turns.items()):
-                turn.add_notice("error", MESSAGE_CONNECTION_LOST)
+                turn.add_notice("error", tr(MESSAGE_CONNECTION_LOST))
                 self._finish(request_id)
         self._refresh_mode()
 
@@ -563,7 +618,7 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         if self._overlay is None:
             return
         first = text.strip().splitlines()[0] if text.strip() else ""
-        label = _CONTROL_STATUS.get(tool, tool)
+        label = tr(_CONTROL_STATUS[tool]) if tool in _CONTROL_STATUS else tool
         self._overlay.set_status(f"{label} · {first}" if first else label)
 
     def _stop_control(self) -> None:
@@ -586,17 +641,24 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         model = self._config.model
         if not self._connected:
             self.title_bar.set_mode(
-                "offline", "Le service My_OS (myosd) ne répond pas pour l'instant."
+                "offline", tr("Le service My_OS (myosd) ne répond pas pour l'instant.")
             )
         elif self.composer.cloud_toggle.isChecked():
             self.title_bar.set_mode(
                 "cloud",
-                f"Les requêtes partent au cloud : {model.cloud_model} (Anthropic).",
+                tr(
+                    "Les requêtes partent au cloud : {model} (Anthropic).",
+                    model=model.cloud_model,
+                ),
             )
         else:
-            backend = model.name if model.backend == "ollama" else "modèle de test"
+            backend = model.name if model.backend == "ollama" else tr("modèle de test")
             self.title_bar.set_mode(
-                "local", f"Modèle local ({backend}) : rien ne quitte la machine."
+                "local",
+                tr(
+                    "Modèle local ({backend}) : rien ne quitte la machine.",
+                    backend=backend,
+                ),
             )
 
     # ---- cloud -----------------------------------------------------------------
@@ -622,13 +684,13 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         """
         dialog = QInputDialog(self)
         _keep_above(dialog)
-        dialog.setWindowTitle("Clé API Anthropic")
+        dialog.setWindowTitle(tr("Clé API Anthropic"))
         dialog.setLabelText(
-            "Clé API Anthropic (stockée dans le trousseau, jamais en clair) :"
+            tr("Clé API Anthropic (stockée dans le trousseau, jamais en clair) :")
         )
         dialog.setTextEchoMode(QLineEdit.EchoMode.Password)
-        dialog.setOkButtonText("Enregistrer")
-        dialog.setCancelButtonText("Annuler")
+        dialog.setOkButtonText(tr("Enregistrer"))
+        dialog.setCancelButtonText(tr("Annuler"))
         dialog.setMinimumWidth(460)
         if not dialog.exec():
             return False
@@ -640,8 +702,8 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             alert = QMessageBox(
                 QMessageBox.Icon.Warning,
-                "Clé API",
-                f"Impossible d'enregistrer la clé : {exc}",
+                tr("Clé API"),
+                tr("Impossible d'enregistrer la clé : {error}", error=exc),
                 QMessageBox.StandardButton.Ok,
                 self,
             )

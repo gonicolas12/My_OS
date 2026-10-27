@@ -23,12 +23,16 @@ from pathlib import Path
 
 import yaml
 
+from core.i18n import normalize_language
+
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _DEFAULT_CONFIG_PATH = _PROJECT_ROOT / "config.yaml"
 _LOCAL_CONFIG_PATH = _PROJECT_ROOT / "config.local.yaml"
 
 DEFAULT_HOTKEY = "<ctrl>+<alt>+<space>"
 SOCKET_NAME = "myos.sock"
+# Langue par défaut : celle du système (cf. core.i18n.resolve_language).
+LANGUAGE_AUTO = "auto"
 
 
 def resolve_socket_path() -> Path:
@@ -105,9 +109,15 @@ def default_audit_db_path() -> Path:
 
 @dataclass
 class Config:
-    """Configuration résolue de My_OS."""
+    """Configuration résolue de My_OS.
+
+    ``language`` : ``"fr"``, ``"en"`` ou ``"auto"`` (langue du système). Langue de
+    départ du popup tant que l'utilisateur n'en a pas choisi une, et langue du daemon
+    pour une requête qui n'en précise pas.
+    """
 
     hotkey: str = DEFAULT_HOTKEY
+    language: str = LANGUAGE_AUTO
     socket_path: Path = field(default_factory=resolve_socket_path)
     audit_db_path: Path = field(default_factory=default_audit_db_path)
     ui: UIConfig = field(default_factory=UIConfig)
@@ -180,6 +190,8 @@ def load_config(path: Path | None = None) -> Config:
 
     return Config(
         hotkey=data.get("hotkey", DEFAULT_HOTKEY),
+        # Langue inconnue (ou « auto ») : celle du système.
+        language=normalize_language(data.get("language")) or LANGUAGE_AUTO,
         socket_path=resolve_socket_path(),
         audit_db_path=default_audit_db_path(),
         ui=ui,

@@ -24,29 +24,31 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.i18n import N_, tr, trc
 from ui.icons import make_icon
 from ui.styles import PALETTE
 
 _MAX_LINES = 6
-PLACEHOLDER = "Demandez quelque chose à My_OS…"
+PLACEHOLDER = N_("Demandez quelque chose à My_OS…")
 
 
 class _InputEdit(QTextEdit):
-    """Champ multiligne en texte brut, avec un menu contextuel en français."""
+    """Champ multiligne en texte brut, avec un menu contextuel dans la langue de
+    l'interface."""
 
     def contextMenuEvent(self, event: QContextMenuEvent) -> None:
         """Annuler, Rétablir, Couper, Copier, Coller, Tout sélectionner."""
         has_selection = self.textCursor().hasSelection()
         menu = QMenu(self)
         for label, slot, enabled in (
-            ("Annuler", self.undo, self.document().isUndoAvailable()),
-            ("Rétablir", self.redo, self.document().isRedoAvailable()),
+            (trc("édition", "Annuler"), self.undo, self.document().isUndoAvailable()),
+            (tr("Rétablir"), self.redo, self.document().isRedoAvailable()),
             (None, None, False),
-            ("Couper", self.cut, has_selection),
-            ("Copier", self.copy, has_selection),
-            ("Coller", self.paste, self.canPaste()),
+            (tr("Couper"), self.cut, has_selection),
+            (tr("Copier"), self.copy, has_selection),
+            (tr("Coller"), self.paste, self.canPaste()),
             (None, None, False),
-            ("Tout sélectionner", self.selectAll, not self.document().isEmpty()),
+            (tr("Tout sélectionner"), self.selectAll, not self.document().isEmpty()),
         ):
             if label is None:
                 menu.addSeparator()
@@ -80,7 +82,6 @@ class Composer(QWidget):
         self.input = _InputEdit()
         self.input.setObjectName("composerInput")
         self.input.setAcceptRichText(False)
-        self.input.setPlaceholderText(PLACEHOLDER)
         self.input.setFrameShape(QFrame.Shape.NoFrame)
         self.input.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.input.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -101,10 +102,6 @@ class Composer(QWidget):
         self.cloud_toggle.setText("☁  Cloud")
         self.cloud_toggle.setCheckable(True)
         self.cloud_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.cloud_toggle.setToolTip(
-            "Envoyer CETTE requête au cloud (Claude) au lieu du modèle local.\n"
-            "Opt-in, par requête. Nécessite une clé API (bouton clé)."
-        )
         self.cloud_toggle.toggled.connect(self.cloud_toggled)
         actions.addWidget(self.cloud_toggle)
 
@@ -115,9 +112,6 @@ class Composer(QWidget):
         )
         self.key_button.setIconSize(QSize(16, 16))
         self.key_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.key_button.setToolTip(
-            "Configurer la clé API Anthropic\n(stockée dans le trousseau du système)"
-        )
         self.key_button.clicked.connect(self.key_requested)
         actions.addWidget(self.key_button)
         actions.addStretch()
@@ -134,9 +128,26 @@ class Composer(QWidget):
 
         outer.addWidget(self.frame)
         self._fit_height()
-        self._refresh_send()
+        self.retranslate()
 
     # ---- API -----------------------------------------------------------------
+    def retranslate(self) -> None:
+        """Texte d'invite et infobulles dans la langue courante."""
+        self.input.setPlaceholderText(tr(PLACEHOLDER))
+        self.cloud_toggle.setToolTip(
+            tr(
+                "Envoyer CETTE requête au cloud (Claude) au lieu du modèle local.\n"
+                "Opt-in, par requête. Nécessite une clé API (bouton clé)."
+            )
+        )
+        self.key_button.setToolTip(
+            tr(
+                "Configurer la clé API Anthropic\n"
+                "(stockée dans le trousseau du système)"
+            )
+        )
+        self._refresh_send()
+
     def text(self) -> str:
         """Texte saisi, sans espaces superflus autour."""
         return self.input.toPlainText().strip()
@@ -200,9 +211,9 @@ class Composer(QWidget):
         enabled = bool(self.text()) and not self._busy
         self.send_button.setEnabled(enabled)
         if self._busy:
-            tip = "Réponse en cours… (vous pouvez déjà écrire la suite)"
+            tip = tr("Réponse en cours… (vous pouvez déjà écrire la suite)")
         else:
-            tip = "Envoyer (Entrée)"
+            tip = tr("Envoyer (Entrée)")
         self.send_button.setToolTip(tip)
         color = PALETTE.on_accent if enabled else PALETTE.text_3
         self.send_button.setIcon(make_icon("send", color, 18))

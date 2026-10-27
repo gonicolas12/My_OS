@@ -39,6 +39,9 @@ def test_rappel_echap_et_boutons(app: object) -> None:
 
 def test_barre_compacte_quand_la_fenetre_est_etroite(app: object) -> None:
     bar = TitleBar()
+    # Comme dans le popup, qui impose sa largeur minimale (380 px) : seule, une
+    # fenêtre ne descendrait pas sous la largeur de tout son contenu.
+    bar.setMinimumSize(380, 44)
     bar.resize(900, 44)
     bar.show()
     QtWidgets.QApplication.processEvents()
@@ -47,6 +50,11 @@ def test_barre_compacte_quand_la_fenetre_est_etroite(app: object) -> None:
     QtWidgets.QApplication.processEvents()
     assert not bar.mode_pill.isVisible() and not bar.esc_text.isVisible()
     assert bar.esc_key.isVisible()  # la touche Échap reste toujours rappelée
+    bar.resize(380, 44)
+    QtWidgets.QApplication.processEvents()
+    # Au plus étroit, tout tient encore, menu de la langue compris.
+    assert bar.layout().minimumSize().width() <= bar.width()
+    assert bar.language_button.isVisible()
     bar.close()
 
 

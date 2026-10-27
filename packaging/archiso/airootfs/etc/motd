@@ -1,4 +1,3 @@
-
   My_OS — assistant IA local, privé et sécurisé
   ------------------------------------------------
   Appuyez sur Ctrl+Alt+Espace pour ouvrir l'assistant.
@@ -6,6 +5,19 @@
   • Modèle LOCAL par défaut (Qwen via Ollama) — vos données restent chez vous.
   • Le cloud (Claude) est opt-in, par requête, et visible.
   • Toute action sensible demande confirmation ; rien de destructeur n'est silencieux.
+  • Français ou anglais : bouton FR/EN de la barre de titre de l'assistant.
 
   1er démarrage : installation des dépendances et téléchargement du modèle
   (réseau requis, quelques minutes). Voir /opt/my_os/docs/INSTALLATION.md.
+
+  My_OS — local, private and secure AI assistant
+  ------------------------------------------------
+  Press Ctrl+Alt+Space to open the assistant.
+
+  • LOCAL model by default (Qwen via Ollama) — your data stays with you.
+  • The cloud (Claude) is opt-in, per request, and visible.
+  • Every sensitive action asks for confirmation; nothing destructive is silent.
+  • French or English: FR/EN button in the assistant's title bar.
+
+  First boot: dependencies are installed and the model is downloaded
+  (network required, a few minutes).

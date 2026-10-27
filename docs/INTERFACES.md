@@ -18,9 +18,15 @@ Communication sur une **socket Unix locale**. Le daemon est le **serveur** (cré
   "type": "user_message",
   "id": "uuid-de-la-requête",
   "content": "range mes Téléchargements par type",
-  "use_cloud": false
+  "use_cloud": false,
+  "language": "fr"
 }
 ```
+
+`language` (`"fr"` ou `"en"`) : langue de la requête, celle de l'interface du popup.
+Le daemon y répond **entièrement** : prompt système et outils décrits au modèle,
+sorties d'outils, résumés des confirmations, notices, erreurs (cf. §11). Absente ou
+inconnue : langue par défaut du daemon. Elle ne change aucune décision de permission.
 
 ### Messages daemon → popup (streaming)
 ```json
@@ -405,7 +411,7 @@ class Plan:
 TokenCallback = Callable[[str], None]
 
 # Historique conversationnel (Message) :
-#   {"role": "user", "content": str}
+#   {"role": "user", "content": str, "language": str}  # langue de la requête (§11)
 #   {"role": "assistant", "content": str, "tool_calls": list[ToolCall]}
 #   {"role": "tool", "tool": str, "content": str}   # résultat réinjecté
 #   {"role": "tool", "tool": str, "content": str, "image": bytes}  # outils de l'écran
@@ -432,6 +438,13 @@ local (`models.local_llm.OllamaClient`, Ollama) **et** par le cloud
 `Model` (pas d'un backend concret) ; il sélectionne le backend **par requête**
 selon `use_cloud` (cf. §5.3), sans rien changer à la boucle agentique ni à la
 mémoire conversationnelle.
+
+**Langue.** `respond` envoie le prompt système et les descriptions d'outils de la
+langue de la requête (`core.i18n.current_language()`, posée par l'orchestrator, §11) :
+la signature de `Model` ne change pas. Une conversation qui a changé de langue reçoit,
+à la fin de chaque demande `user`, un rappel de SA langue (« (Réponds en français.) »,
+« (Answer in English.) ») : sans lui, qwen3.5:4b poursuivait parfois dans la langue
+des tours précédents. Une conversation dans une seule langue est envoyée telle quelle.
 
 **Captures d'écran.** Un résultat d'outil de l'écran peut porter une capture annotée
 (`image`, JPEG ~1 280 px de large) ; l'orchestrator ne garde que la **dernière** dans
@@ -729,6 +742,78 @@ class ComputerConfig:
     vision: str = "auto"      # capture jointe au modèle local : auto | on | off
     ocr: str = "auto"         # Tesseract : auto | off
 ```
+
+---
+
+## 11 · Langue : français et anglais (`core/i18n.py`)
+
+My_OS parle **français** (langue de référence : les textes du code sont en français)
+et **anglais**. Toute l'expérience suit la langue choisie : interface, modèle (prompt
+système, descriptions des outils), sorties d'outils, observations de l'écran,
+confirmations, notices, indicateur du contrôle de l'ordinateur.
+
+### 11.1 · API
+
+```python
+SUPPORTED_LANGUAGES = ("fr", "en")
+DEFAULT_LANGUAGE = "fr"                  # langue des textes sources
+
+def normalize_language(value: object) -> str | None: ...   # "fr_CA.UTF-8" → "fr"
+def system_language(environ: Mapping[str, str] | None = None) -> str: ...
+def resolve_language(choice: object = None, configured: object = "auto",
+                     environ: Mapping[str, str] | None = None) -> str: ...
+def current_language() -> str: ...       # langue du thread (requête), sinon du processus
+def set_language(language: str) -> None: ...                # langue du processus
+@contextmanager
+def use_language(language: str | None) -> Iterator[str]: ...  # pour le thread courant
+
+def tr(message: str, /, **values: object) -> str: ...       # dans la langue courante
+def trc(context: str, message: str, /, **values: object) -> str: ...  # selon l'usage
+def translate(message: str, language: str, /, **values: object) -> str: ...
+def N_(message: str) -> str: ...         # marque un texte traduit plus tard (constante)
+```
+
+- **Textes.** Un texte montré à l'utilisateur ou au modèle est écrit en français et
+  passe par `tr` au moment de l'afficher ; en anglais, `tr` renvoie sa traduction, prise
+  dans `core/locales/en.py` (clé = le texte français). Les valeurs `{nom}` sont remplies
+  après la traduction : `tr("Volume réglé à {percent} %", percent=30)`. Une constante de
+  module est marquée `N_("…")` et traduite là où elle sert : `tr(CONSTANTE)`. `trc`
+  distingue un même texte français aux traductions différentes (« Annuler » : *Undo*
+  dans un menu d'édition, *Cancel* sur un bouton ; clé `"contexte|texte"`). Un texte
+  absent du catalogue reste en français ; les tests vérifient qu'aucun ne manque,
+  qu'aucune traduction n'est orpheline et que les valeurs `{nom}` correspondent.
+- **Prompts du modèle.** Un prompt système par langue (`BASE_SYSTEM_PROMPTS`,
+  `SCREEN_PROMPTS` et `system_prompt()` dans `models/prompts.py` ; note de chaque
+  backend dans `models/local_llm.py` et `models/cloud_router.py`), rédigés ensemble ;
+  les descriptions des outils passent par le catalogue (`tools_schema(language)`).
+  Noms d'outils et paramètres ne changent jamais. Le prompt français est celui d'avant
+  le bilinguisme, inchangé.
+
+### 11.2 · Quelle langue ?
+
+- **Popup** (`ui/popup.py`) : le choix de l'utilisateur (menu de la barre de titre,
+  mémorisé dans `~/.config/my_os/popup.conf`, clé `language`), sinon `language` de
+  `config.yaml` (`fr`, `en` ou `auto`), sinon la **langue du système** :
+  `system_language()` lit `LC_ALL`, puis `LC_MESSAGES`, puis `LANG` (ordre de gettext) ;
+  hors locale `C`/`POSIX`, la première langue de `LANGUAGE` l'emporte (GNOME, KDE).
+  Français → français ; **toute autre langue**, `C`/`POSIX` et locale absente →
+  anglais. Changer de langue retraduit l'interface aussitôt, conversation comprise
+  (statuts, durées, infobulles ; ce qui a été dit reste tel quel).
+- **Daemon** : chaque `user_message` porte sa langue (§1). L'orchestrator traite toute
+  la requête sous `use_language(langue)` : chaque requête a son thread, la langue est
+  posée pour lui seul et ne déborde jamais sur la suivante. Sans langue valide, celle
+  du daemon : `language` de la config, sinon la langue de son environnement (service
+  systemd, `/etc/locale.conf`).
+
+### 11.3 · Ce que la langue ne change pas
+
+Aucune décision de permission : niveaux, liste de blocage, escalade, grants, audit
+restent du code statique. Les règles qui lisent l'écran ou l'utilisateur sont
+**bilingues quelle que soit la langue de My_OS** (l'écran est dans celle du système) :
+libellés destructeurs (`DESTRUCTIVE_LABELS`, français et anglais), noms des touches
+(`tools/computer/keys.py`), catalogue des applications (noms français et anglais).
+La cible d'une action à l'écran est la même dans les deux langues ; seule sa
+description change.
 
 ---
 

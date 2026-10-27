@@ -10,6 +10,9 @@ supposent qu'ils ont déjà été autorisés quand :meth:`run` est appelé.
 
 Pas de ``subprocess(shell=True)`` : on utilise exclusivement ``pathlib`` et
 ``shutil`` (cf. SECURITY checklist §7).
+
+Les messages (succès et échecs, lus par le modèle et affichés à l'utilisateur) sont
+dans la langue de la requête (:func:`core.i18n.tr`).
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ import shutil
 from pathlib import Path
 from typing import ClassVar
 
+from core.i18n import tr
 from permissions.risk_levels import is_sensitive_path
 from tools.base_tool import BaseTool, ToolResult
 
@@ -33,6 +37,18 @@ def _err(message: str) -> ToolResult:
     return ToolResult(success=False, output=message, reversible=False)
 
 
+def _missing(tool: str, name: str) -> ToolResult:
+    """Échec : argument ``name`` absent ou invalide."""
+    return _err(
+        tr("{tool} : argument '{name}' manquant ou invalide", tool=tool, name=name)
+    )
+
+
+def _failure(tool: str, error: object) -> ToolResult:
+    """Échec du système (message de l'exception)."""
+    return _err(tr("{tool} : {error}", tool=tool, error=error))
+
+
 def _not_found(label: str, path: str) -> ToolResult:
     """Échec « introuvable » enrichi du contenu du dossier parent.
 
@@ -41,13 +57,17 @@ def _not_found(label: str, path: str) -> ToolResult:
     suggestion et il peut réessayer. ``list_dir`` du parent étant de toute
     façon une lecture autorisée, on n'expose rien de plus.
     """
-    message = f"{label} : introuvable : {path}"
+    message = tr("{tool} : introuvable : {path}", tool=label, path=path)
     parent = Path(path).parent
     try:
         if parent.is_dir():
             entries = sorted(p.name for p in parent.iterdir())[:_MAX_SUGGESTIONS]
             if entries:
-                message += f". Le dossier {parent} contient : {', '.join(entries)}"
+                message += tr(
+                    ". Le dossier {folder} contient : {entries}",
+                    folder=parent,
+                    entries=", ".join(entries),
+                )
     except OSError:
         pass
     return _err(message)
@@ -117,24 +137,30 @@ class ReadFile(BaseTool):
     def run(self, args: dict) -> ToolResult:
         path = args.get("path")
         if not isinstance(path, str) or not path:
-            return _err("read_file : argument 'path' manquant ou invalide")
+            return _missing("read_file", "path")
         target = Path(path)
         if not target.exists():
             return _not_found("read_file", path)
         if not target.is_file():
-            return _err(f"read_file : pas un fichier : {path}")
+            return _err(
+                tr("{tool} : pas un fichier : {path}", tool="read_file", path=path)
+            )
         try:
             data = target.read_bytes()
         except OSError as exc:
-            return _err(f"read_file : {exc}")
+            return _failure("read_file", exc)
         truncated = ""
         if len(data) > _MAX_READ_BYTES:
             data = data[:_MAX_READ_BYTES]
-            truncated = f"\n[... contenu tronqué à {_MAX_READ_BYTES} octets ...]"
+            truncated = tr(
+                "\n[... contenu tronqué à {size} octets ...]", size=_MAX_READ_BYTES
+            )
         try:
             text = data.decode("utf-8")
         except UnicodeDecodeError:
-            return _err(f"read_file : contenu non-UTF8 : {path}")
+            return _err(
+                tr("{tool} : contenu non-UTF8 : {path}", tool="read_file", path=path)
+            )
         return ToolResult(success=True, output=text + truncated, reversible=False)
 
 
@@ -156,16 +182,18 @@ class ListDir(BaseTool):
     def run(self, args: dict) -> ToolResult:
         path = args.get("path")
         if not isinstance(path, str) or not path:
-            return _err("list_dir : argument 'path' manquant ou invalide")
+            return _missing("list_dir", "path")
         target = Path(path)
         if not target.exists():
             return _not_found("list_dir", path)
         if not target.is_dir():
-            return _err(f"list_dir : pas un répertoire : {path}")
+            return _err(
+                tr("{tool} : pas un répertoire : {path}", tool="list_dir", path=path)
+            )
         try:
             entries = sorted(p.name for p in target.iterdir())
         except OSError as exc:
-            return _err(f"list_dir : {exc}")
+            return _failure("list_dir", exc)
         return ToolResult(success=True, output="\n".join(entries), reversible=False)
 
 
@@ -197,18 +225,26 @@ class WriteFile(BaseTool):
         path = args.get("path")
         content = args.get("content", "")
         if not isinstance(path, str) or not path:
-            return _err("write_file : argument 'path' manquant ou invalide")
+            return _missing("write_file", "path")
         if not isinstance(content, str):
-            return _err("write_file : argument 'content' doit être une chaîne")
+            return _err(
+                tr(
+                    "{tool} : argument '{name}' doit être une chaîne",
+                    tool="write_file",
+                    name="content",
+                )
+            )
         target = Path(path)
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8")
         except OSError as exc:
-            return _err(f"write_file : {exc}")
+            return _failure("write_file", exc)
         return ToolResult(
             success=True,
-            output=f"Écrit {len(content)} caractères dans {path}",
+            output=tr(
+                "Écrit {count} caractères dans {path}", count=len(content), path=path
+            ),
             reversible=False,
         )
 
@@ -237,16 +273,20 @@ class CreateFile(BaseTool):
     def run(self, args: dict) -> ToolResult:
         path = args.get("path")
         if not isinstance(path, str) or not path:
-            return _err("create_file : argument 'path' manquant ou invalide")
+            return _missing("create_file", "path")
         target = Path(path)
         if target.exists():
-            return _err(f"create_file : existe déjà : {path}")
+            return _err(
+                tr("{tool} : existe déjà : {path}", tool="create_file", path=path)
+            )
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.touch()
         except OSError as exc:
-            return _err(f"create_file : {exc}")
-        return ToolResult(success=True, output=f"Créé : {path}", reversible=False)
+            return _failure("create_file", exc)
+        return ToolResult(
+            success=True, output=tr("Créé : {path}", path=path), reversible=False
+        )
 
 
 class MoveFile(BaseTool):
@@ -286,9 +326,9 @@ class MoveFile(BaseTool):
         src = args.get("src")
         dst = args.get("dst")
         if not isinstance(src, str) or not src:
-            return _err("move_file : argument 'src' manquant ou invalide")
+            return _missing("move_file", "src")
         if not isinstance(dst, str) or not dst:
-            return _err("move_file : argument 'dst' manquant ou invalide")
+            return _missing("move_file", "dst")
         source = Path(src)
         if not source.exists():
             return _not_found("move_file (source)", src)
@@ -297,10 +337,10 @@ class MoveFile(BaseTool):
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(source), str(destination))
         except (OSError, shutil.Error) as exc:
-            return _err(f"move_file : {exc}")
+            return _failure("move_file", exc)
         return ToolResult(
             success=True,
-            output=f"Déplacé : {src} → {dst}",
+            output=tr("Déplacé : {src} → {dst}", src=src, dst=dst),
             reversible=False,
         )
 
@@ -324,20 +364,26 @@ class DeleteFile(BaseTool):
     def run(self, args: dict) -> ToolResult:
         path = args.get("path")
         if not isinstance(path, str) or not path:
-            return _err("delete_file : argument 'path' manquant ou invalide")
+            return _missing("delete_file", "path")
         target = Path(path)
         if not target.exists():
             return _not_found("delete_file", path)
         if target.is_dir():
             return _err(
-                f"delete_file : refuse de supprimer un répertoire : {path} "
-                "(utilisez un outil dédié au jalon 3)"
+                tr(
+                    "{tool} : refuse de supprimer un répertoire : {path} "
+                    "(utilisez un outil dédié au jalon 3)",
+                    tool="delete_file",
+                    path=path,
+                )
             )
         try:
             target.unlink()
         except OSError as exc:
-            return _err(f"delete_file : {exc}")
-        return ToolResult(success=True, output=f"Supprimé : {path}", reversible=False)
+            return _failure("delete_file", exc)
+        return ToolResult(
+            success=True, output=tr("Supprimé : {path}", path=path), reversible=False
+        )
 
 
 # Registre des outils fichiers — utilisé par l'orchestrator pour résoudre

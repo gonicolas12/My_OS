@@ -112,6 +112,12 @@ def _alert(p: QPainter) -> None:
     _lines(p, ((12, 7.5), (12, 12.5)), ((12, 16), (12, 16.2)))
 
 
+def _globe(p: QPainter) -> None:
+    p.drawEllipse(QPointF(12, 12), 9, 9)
+    p.drawEllipse(QPointF(12, 12), 4, 9)
+    _lines(p, ((3, 12), (21, 12)))
+
+
 _ICONS: dict[str, Painter] = {
     "close": _close,
     "maximize": _maximize,
@@ -127,6 +133,7 @@ _ICONS: dict[str, Painter] = {
     "terminal": _terminal,
     "ban": _ban,
     "alert": _alert,
+    "globe": _globe,
 }
 
 ICON_NAMES = frozenset(_ICONS)

@@ -32,6 +32,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from core.i18n import tr
 from permissions.blocklist import is_blocked
 from permissions.risk_levels import COMPUTER_TOOLS
 from tools.base_tool import BaseTool
@@ -70,9 +71,14 @@ def _effective_risk(tool: BaseTool, args: dict) -> int:
 
 
 def _summary(tool: BaseTool, args: dict, level: int) -> str:
-    """Résumé de l'action : la phrase de l'outil (``describe``), sinon ``outil(args)``."""
+    """Résumé de l'action : la phrase de l'outil (``describe``), sinon ``outil(args)``,
+    dans la langue de la requête."""
     description = tool.describe(args)
-    return f"[niveau {level}] {description or f'{tool.name}({args})'}"
+    return tr(
+        "[niveau {level}] {action}",
+        level=level,
+        action=description or f"{tool.name}({args})",
+    )
 
 
 def evaluate(tool: BaseTool, args: dict, grants: Grants) -> Decision:

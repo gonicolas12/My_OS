@@ -11,6 +11,10 @@ les résultats d'outils dans des cartes, chaque échange séparé du suivant.
   cartes d'outils (texte brut, jamais interprété), notices, indicateur d'activité.
 * :class:`ChatView` — écran d'accueil (suggestions) ou fil des messages, avec
   défilement collé en bas pendant une réponse, sauf si l'utilisateur est remonté.
+
+Les textes de l'interface suivent la langue courante (:mod:`core.i18n`) ; les
+méthodes ``retranslate`` les remettent à jour quand l'utilisateur en change, sans
+toucher à la conversation elle-même (demandes, réponses, sorties d'outils).
 """
 
 from __future__ import annotations
@@ -54,6 +58,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.i18n import N_, current_language, tr
 from ui.icons import icon_pixmap, logo_pixmap, make_icon
 from ui.markdown_render import mono_font, render_markdown, split_markdown
 from ui.styles import CHAT_COLUMN_MAX, PALETTE
@@ -68,24 +73,29 @@ _BOTTOM_THRESHOLD = 48
 _USER_BUBBLE_RATIO = 0.8
 
 _TOOL_STATUS = {
-    "ok": ("check", "Terminé", PALETTE.success),
-    "error": ("alert", "Échec", PALETTE.error),
-    "denied": ("close", "Refusé", PALETTE.warning),
-    "blocked": ("ban", "Bloqué", PALETTE.error),
+    "ok": ("check", N_("Terminé"), PALETTE.success),
+    "error": ("alert", N_("Échec"), PALETTE.error),
+    "denied": ("close", N_("Refusé"), PALETTE.warning),
+    "blocked": ("ban", N_("Bloqué"), PALETTE.error),
 }
 
+# Suggestions de l'écran d'accueil (traduites à l'affichage).
 SUGGESTIONS = (
-    "Quels processus utilisent le plus de mémoire ?",
-    "Liste les fichiers de mon dossier Téléchargements",
-    "Baisse le volume à 30 %",
-    "Cherche un paquet pour éditer des PDF",
+    N_("Quels processus utilisent le plus de mémoire ?"),
+    N_("Liste les fichiers de mon dossier Téléchargements"),
+    N_("Baisse le volume à 30 %"),
+    N_("Cherche un paquet pour éditer des PDF"),
 )
+_THINKING = N_("Le modèle réfléchit")
 
 
 def format_duration(seconds: float) -> str:
-    """Durée lisible en français : ``3,2 s``, ``1 min 52 s``."""
+    """Durée lisible : ``3,2 s`` (``3.2 s`` en anglais), ``1 min 52 s``."""
     if seconds < 60:
-        return f"{seconds:.1f} s".replace(".", ",")
+        value = f"{seconds:.1f}"
+        if current_language() == "fr":
+            value = value.replace(".", ",")
+        return f"{value} s"
     minutes, rest = divmod(round(seconds), 60)
     return f"{minutes} min {rest:02d} s"
 
@@ -192,12 +202,12 @@ class RichText(QTextBrowser):
         super().wheelEvent(event)
 
     def contextMenuEvent(self, event: QContextMenuEvent) -> None:
-        """Menu contextuel en français : Copier, Tout sélectionner."""
+        """Menu contextuel dans la langue courante : Copier, Tout sélectionner."""
         menu = QMenu(self)
-        copy = menu.addAction("Copier")
+        copy = menu.addAction(tr("Copier"))
         copy.setEnabled(self.textCursor().hasSelection())
         copy.triggered.connect(self.copy)
-        menu.addAction("Tout sélectionner").triggered.connect(self.selectAll)
+        menu.addAction(tr("Tout sélectionner")).triggered.connect(self.selectAll)
         menu.exec(event.globalPos())
         menu.deleteLater()
 
@@ -312,12 +322,17 @@ class _CopyButton(QToolButton):
     def __init__(self, tooltip: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("ghostButton")
-        self.setToolTip(tooltip)
+        self._tooltip = tooltip  # texte français, traduit à l'affichage
+        self.retranslate()
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setIconSize(QSize(14, 14))
         self.setIcon(make_icon("copy", PALETTE.text_3, 14, hover=PALETTE.text))
         self._source: object = None
         self.clicked.connect(self._copy)
+
+    def retranslate(self) -> None:
+        """Infobulle dans la langue courante."""
+        self.setToolTip(tr(self._tooltip))
 
     def set_source(self, source: object) -> None:
         """``source`` : fonction sans argument qui renvoie le texte à copier."""
@@ -353,7 +368,7 @@ class CodeBlock(QFrame):
         self._lang.setObjectName("codeLang")
         header_row.addWidget(self._lang)
         header_row.addStretch()
-        self._copy = _CopyButton("Copier le code")
+        self._copy = _CopyButton(N_("Copier le code"))
         self._copy.set_source(lambda: self._code)
         header_row.addWidget(self._copy)
         layout.addWidget(header)
@@ -371,6 +386,10 @@ class CodeBlock(QFrame):
         if code != self._code:
             self._code = code
             self._text.set_plain(code)
+
+    def retranslate(self) -> None:
+        """Infobulle du bouton Copier dans la langue courante."""
+        self._copy.retranslate()
 
 
 class MarkdownView(QWidget):
@@ -408,6 +427,12 @@ class MarkdownView(QWidget):
         self._truncate(len(segments))
         self.setVisible(bool(segments))
 
+    def retranslate(self) -> None:
+        """Blocs de code : infobulles dans la langue courante."""
+        for _kind, widget in self._parts:
+            if isinstance(widget, CodeBlock):
+                widget.retranslate()
+
     def _truncate(self, count: int) -> None:
         while len(self._parts) > count:
             _, widget = self._parts.pop()
@@ -423,10 +448,11 @@ class ToolCard(QFrame):
     ) -> None:
         super().__init__(parent)
         self.setObjectName("toolCard")
-        icon_name, label, color = _TOOL_STATUS.get(
+        icon_name, _label, color = _TOOL_STATUS.get(
             status, ("alert", status or "?", PALETTE.text_2)
         )
         self.status = status
+        self._tool = tool
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -439,20 +465,20 @@ class ToolCard(QFrame):
         term = QLabel()
         term.setPixmap(icon_pixmap("terminal", PALETTE.text_3, 14))
         row.addWidget(term)
-        name = QLabel(_elide(tool, 48))
-        name.setObjectName("toolName")
-        name.setTextFormat(Qt.TextFormat.PlainText)
-        name.setToolTip(f"Outil : {_elide(tool, 200)}")
-        row.addWidget(name)
+        self._name = QLabel(_elide(tool, 48))
+        self._name.setObjectName("toolName")
+        self._name.setTextFormat(Qt.TextFormat.PlainText)
+        row.addWidget(self._name)
         row.addStretch()
         status_icon = QLabel()
         status_icon.setPixmap(icon_pixmap(icon_name, color, 13))
         row.addWidget(status_icon)
-        self.status_label = QLabel(label)
+        self.status_label = QLabel()
         self.status_label.setObjectName("toolStatus")
         self.status_label.setProperty("status", status)
         row.addWidget(self.status_label)
         layout.addWidget(header)
+        self.retranslate()
 
         self.output = RichText(object_name="toolText", max_height=_TOOL_OUTPUT_MAX)
         self.output.document().setDefaultFont(mono_font())
@@ -463,6 +489,12 @@ class ToolCard(QFrame):
         layout.addLayout(body)
         if not text.strip():
             self.output.hide()
+
+    def retranslate(self) -> None:
+        """Statut et infobulle dans la langue courante (la sortie reste telle quelle)."""
+        label = _TOOL_STATUS[self.status][1] if self.status in _TOOL_STATUS else None
+        self.status_label.setText(tr(label) if label else self.status or "?")
+        self._name.setToolTip(tr("Outil : {tool}", tool=_elide(self._tool, 200)))
 
 
 class Notice(QLabel):
@@ -528,11 +560,13 @@ class AssistantMessage(QWidget):  # pylint: disable=too-many-instance-attributes
         name = QLabel("My_OS")
         name.setObjectName("assistantName")
         header.addWidget(name)
-        self._meta = QLabel(time.strftime("%H:%M"))
+        self._clock = time.strftime("%H:%M")
+        self._elapsed: float | None = None  # durée de la réponse, une fois finie
+        self._meta = QLabel(self._clock)
         self._meta.setObjectName("assistantMeta")
         header.addWidget(self._meta)
         header.addStretch()
-        self._copy = _CopyButton("Copier la réponse")
+        self._copy = _CopyButton(N_("Copier la réponse"))
         self._copy.set_source(lambda: self.text)
         self._copy.hide()
         header.addWidget(self._copy)
@@ -544,13 +578,14 @@ class AssistantMessage(QWidget):  # pylint: disable=too-many-instance-attributes
         self._texts: list[MarkdownView] = []
 
         self._status = ShimmerLabel()
+        self._status_message: str | None = None  # texte français de l'indicateur
         self._layout.addWidget(self._status)
         self._render_timer = QTimer(self)
         self._render_timer.setSingleShot(True)
         self._render_timer.setInterval(_RENDER_DELAY_MS)
         self._render_timer.timeout.connect(self._render_current)
         self.finished = False
-        self.set_status("Le modèle réfléchit")
+        self.set_status(_THINKING)
 
     # ---- contenu -------------------------------------------------------------
     @property
@@ -593,13 +628,19 @@ class AssistantMessage(QWidget):  # pylint: disable=too-many-instance-attributes
         self._add_part(notice)
         return notice
 
-    def set_status(self, text: str | None) -> None:
-        """Affiche (ou cache, si ``None``) l'indicateur d'activité."""
-        if text is None or self.finished:
+    def set_status(self, message: str | None) -> None:
+        """Affiche (ou cache, si ``None``) l'indicateur d'activité.
+
+        ``message`` est le texte français (cf. ``STATUS_*`` du popup), affiché dans
+        la langue courante et retraduit si elle change.
+        """
+        if message is None or self.finished:
+            self._status_message = None
             self._status.hide()
             self._logo.set_active(False)
             return
-        self._status.setText(text)
+        self._status_message = message
+        self._status.setText(tr(message))
         self._status.show()
         self._logo.set_active(True)
 
@@ -614,9 +655,27 @@ class AssistantMessage(QWidget):  # pylint: disable=too-many-instance-attributes
         self._close_text()
         self.set_status(None)
         self.finished = True
-        elapsed = format_duration(time.monotonic() - self._started)
-        self._meta.setText(f"{self._meta.text()} · {elapsed}")
+        self._elapsed = time.monotonic() - self._started
+        self._show_meta()
         self._copy.setVisible(bool(self.text))
+
+    def retranslate(self) -> None:
+        """Textes de l'interface dans la langue courante (la réponse reste telle
+        quelle) : indicateur d'activité, durée, infobulles, cartes d'outils."""
+        if self._status_message is not None:
+            self._status.setText(tr(self._status_message))
+        self._show_meta()
+        self._copy.retranslate()
+        for part in self._parts:
+            if isinstance(part, (ToolCard, MarkdownView)):
+                part.retranslate()
+
+    def _show_meta(self) -> None:
+        """Heure de la réponse, puis sa durée une fois finie."""
+        if self._elapsed is None:
+            self._meta.setText(self._clock)
+        else:
+            self._meta.setText(f"{self._clock} · {format_duration(self._elapsed)}")
 
     # ---- interne -------------------------------------------------------------
     def _add_part(self, widget: QWidget) -> None:
@@ -655,9 +714,13 @@ class _ScrollPage(QWidget):
             make_icon("arrow_down", PALETTE.text_2, 16, hover=PALETTE.text)
         )
         self.jump.setIconSize(QSize(16, 16))
-        self.jump.setToolTip("Revenir au dernier message")
         self.jump.setCursor(Qt.CursorShape.PointingHandCursor)
         self.jump.hide()
+        self.retranslate()
+
+    def retranslate(self) -> None:
+        """Infobulle du bouton « revenir en bas » dans la langue courante."""
+        self.jump.setToolTip(tr("Revenir au dernier message"))
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         """Garde le bouton centré en bas de la zone de lecture."""
@@ -667,62 +730,113 @@ class _ScrollPage(QWidget):
 
 
 class EmptyState(QWidget):
-    """Écran d'accueil : logo, invitation et suggestions cliquables."""
+    """Écran d'accueil : logo, invitation et suggestions cliquables.
+
+    Quand la hauteur manque (petite fenêtre, longue demande en cours de saisie), le
+    logo s'efface, puis l'accueil défile : les suggestions gardent toujours leur
+    hauteur (écrasées, le bas de leur texte était coupé).
+    """
 
     suggestion_clicked = Signal(str)
 
     def __init__(self, hotkey_label: str = "", parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        outer = QVBoxLayout(self)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setObjectName("emptyScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.viewport().setObjectName("emptyViewport")
+        layout.addWidget(scroll)
+        self._content = QWidget()
+        self._content.setObjectName("emptyContent")
+        outer = QVBoxLayout(self._content)
         outer.setContentsMargins(24, 16, 24, 16)
         outer.addStretch(3)
-        logo = QLabel()
-        logo.setPixmap(logo_pixmap(52))
-        logo.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        outer.addWidget(logo)
-        outer.addSpacing(12)
+        self.logo = QLabel()
+        self.logo.setPixmap(logo_pixmap(52))
+        self.logo.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        # Écart avec le titre, effacé avec le logo.
+        self.logo.setContentsMargins(0, 0, 0, 12)
+        outer.addWidget(self.logo)
         title = QLabel("My_OS")
         title.setObjectName("emptyTitle")
         title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         outer.addWidget(title)
-        subtitle = QLabel(
-            "Votre assistant système, local et privé. Que puis-je faire ?"
-        )
-        subtitle.setObjectName("emptySubtitle")
-        subtitle.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        subtitle.setWordWrap(True)
-        outer.addWidget(subtitle)
+        self._subtitle = QLabel()
+        self._subtitle.setObjectName("emptySubtitle")
+        self._subtitle.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self._subtitle.setWordWrap(True)
+        outer.addWidget(self._subtitle)
         outer.addSpacing(18)
+        self.buttons: list[QPushButton] = []
+        centered = QHBoxLayout()
+        centered.addStretch(1)
+        centered.addWidget(self._suggestion_box(), 100)
+        centered.addStretch(1)
+        outer.addLayout(centered)
+        outer.addStretch(4)
+        self._reminder = QLabel()
+        self._reminder.setObjectName("footerHint")
+        self._reminder.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        outer.addWidget(self._reminder)
+        scroll.setWidget(self._content)
+        self.retranslate(hotkey_label)
 
+    def _suggestion_box(self) -> QWidget:
+        """Colonne des suggestions (boutons rangés dans ``self.buttons``)."""
         box = QWidget()
         box.setMaximumWidth(460)
         box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         column = QVBoxLayout(box)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(8)
-        self.buttons: list[QPushButton] = []
         for suggestion in SUGGESTIONS:
-            button = QPushButton(suggestion)
+            button = QPushButton()
             button.setObjectName("suggestion")
             button.setCursor(Qt.CursorShape.PointingHandCursor)
+            # La suggestion envoyée est celle de la langue affichée.
             button.clicked.connect(
                 lambda _checked=False, text=suggestion: self.suggestion_clicked.emit(
-                    text
+                    tr(text)
                 )
             )
             column.addWidget(button)
             self.buttons.append(button)
-        centered = QHBoxLayout()
-        centered.addStretch(1)
-        centered.addWidget(box, 100)
-        centered.addStretch(1)
-        outer.addLayout(centered)
-        outer.addStretch(4)
-        if hotkey_label:
-            reminder = QLabel(f"{hotkey_label} ouvre My_OS à tout moment")
-            reminder.setObjectName("footerHint")
-            reminder.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-            outer.addWidget(reminder)
+        return box
+
+    def retranslate(self, hotkey_label: str = "") -> None:
+        """Textes de l'accueil dans la langue courante (``hotkey_label`` : raccourci
+        lisible, déjà dans cette langue ; vide, le rappel est caché)."""
+        self._subtitle.setText(
+            tr("Votre assistant système, local et privé. Que puis-je faire ?")
+        )
+        for button, suggestion in zip(self.buttons, SUGGESTIONS, strict=True):
+            button.setText(tr(suggestion))
+        self._reminder.setText(
+            tr("{hotkey} ouvre My_OS à tout moment", hotkey=hotkey_label)
+        )
+        self._reminder.setVisible(bool(hotkey_label))
+        self._fit()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        """Efface le logo quand l'accueil complet ne tient plus en hauteur."""
+        super().resizeEvent(event)
+        self._fit()
+
+    def _fit(self) -> None:
+        content = self._content
+        width = self.width()
+        needed = (
+            content.heightForWidth(width)
+            if content.hasHeightForWidth()
+            else content.sizeHint().height()
+        )
+        if self.logo.isHidden():
+            needed += self.logo.sizeHint().height()
+        self.logo.setVisible(self.height() >= needed)
 
 
 class ChatView(QStackedWidget):
@@ -814,6 +928,15 @@ class ChatView(QStackedWidget):
             if isinstance(widget, (UserMessage, AssistantMessage)):
                 widgets.append(widget)
         return widgets
+
+    def retranslate(self, hotkey_label: str = "") -> None:
+        """Textes de l'interface dans la langue courante : accueil, réponses (statuts,
+        durées, infobulles). Demandes, réponses et sorties d'outils ne changent pas."""
+        self.empty_state.retranslate(hotkey_label)
+        self._page.retranslate()
+        for widget in self.message_widgets():
+            if isinstance(widget, AssistantMessage):
+                widget.retranslate()
 
     # ---- défilement ------------------------------------------------------------
     def scroll_to_bottom(self, force: bool = False) -> None:

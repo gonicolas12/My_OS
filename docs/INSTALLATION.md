@@ -207,6 +207,23 @@ l'écran) l'arrête aussitôt.
 
 ---
 
+## 3 ter · Langue (français, anglais)
+
+My_OS fonctionne en français ou en anglais : interface, réponses du modèle (local comme
+cloud) et contrôle de l'ordinateur.
+
+- **Au premier lancement**, il prend la langue de Linux : français si la session est en
+  français (`LANG=fr_FR.UTF-8`, `fr_CA`, `fr_BE`…), anglais pour toute autre langue.
+  `LC_ALL` et `LC_MESSAGES` priment sur `LANG`, comme pour les autres applications.
+- **Le bouton 🌐 FR / EN** de la barre de titre du popup change de langue à tout moment,
+  sans redémarrer. Le choix est mémorisé (`~/.config/my_os/popup.conf`) et l'emporte
+  ensuite sur la langue du système.
+- **Réglage** (`config.yaml`) : `language: auto` (défaut : langue du système), `fr` ou
+  `en` pour imposer la langue de départ.
+- Les journaux (daemon, audit) restent en français, quelle que soit la langue.
+
+---
+
 ## 4 · Notes X11 / Wayland
 
 | | X11 (nominal) | Wayland (expérimental) |
@@ -255,6 +272,8 @@ octobre 2026.
 - **1er boot** (réseau requis) : autologin vers Xfce (utilisateur non-root `myos`, mot
   de passe `myos`), synchronisation des bases pacman en arrière-plan, installation des
   dépendances Python puis téléchargement du modèle (~3,3 Go, quelques minutes).
+- **Langue** : la session live n'a pas de langue configurée (bureau en anglais), donc
+  My_OS démarre en anglais ; le bouton 🌐 du popup le passe en français (§3 ter).
 
 ### Démarrer sur une clé USB
 
@@ -318,3 +337,7 @@ Procédure détaillée, décisions et limites : **[packaging/README.md](../packa
   arbre d'accessibilité. Chromium et Electron : variables du §3 bis, puis rouvrir
   l'application. Sans Tesseract (`tesseract --list-langs` doit lister `fra` ou `eng`),
   rien ne complète l'arbre.
+- **My_OS en anglais alors que Linux est en français** (ou l'inverse) : un choix fait
+  avec le bouton 🌐 l'emporte sur la langue du système (clé `language` de
+  `~/.config/my_os/popup.conf`) ; sinon, vérifiez `language` dans `config.yaml` et la
+  langue de la session (`locale`, `echo $LANG`).

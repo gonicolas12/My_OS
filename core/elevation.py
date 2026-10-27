@@ -28,6 +28,8 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from core.i18n import tr
+
 # Binaire d'élévation polkit. ``pkexec`` exécute la commande en root après
 # authentification via l'agent polkit de la session — ponctuel, par action.
 PKEXEC = "pkexec"
@@ -144,13 +146,19 @@ def run_command(
         completed = run(final_argv, timeout=timeout)
     except FileNotFoundError as exc:
         return CommandResult(
-            returncode=127, stdout="", stderr=f"commande introuvable : {exc}"
+            returncode=127,
+            stdout="",
+            stderr=tr("commande introuvable : {error}", error=exc),
         )
     except subprocess.TimeoutExpired:
         return CommandResult(
             returncode=124,
             stdout="",
-            stderr=f"délai dépassé ({timeout:.0f}s) : {' '.join(final_argv)}",
+            stderr=tr(
+                "délai dépassé ({seconds}s) : {command}",
+                seconds=f"{timeout:.0f}",
+                command=" ".join(final_argv),
+            ),
         )
     return CommandResult(
         returncode=int(completed.returncode),

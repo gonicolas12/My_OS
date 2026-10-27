@@ -26,6 +26,7 @@ from collections.abc import Callable
 from typing import Any, Protocol
 
 from core.elevation import CommandResult, run_command
+from core.i18n import tr
 from core.logger import get_logger
 from core.session import SESSION_WAYLAND, detect_session_type
 from tools.computer.screen import Rect, Window
@@ -70,12 +71,12 @@ def unavailable_reason(environ: dict[str, str] | None = None) -> str | None:
     """Pourquoi le bureau X11 est inaccessible (``None`` s'il l'est)."""
     env = os.environ if environ is None else environ
     if detect_session_type(env) == SESSION_WAYLAND:
-        return (
+        return tr(
             "le contrôle de l'écran demande une session X11 : sous Wayland "
             "(expérimental), le compositeur interdit la capture et l'injection"
         )
     if not env.get("DISPLAY"):
-        return "aucun écran X11 accessible (variable DISPLAY absente)"
+        return tr("aucun écran X11 accessible (variable DISPLAY absente)")
     return None
 
 
@@ -145,11 +146,15 @@ class X11Desktop:  # pylint: disable=too-many-public-methods
         try:
             from Xlib import display  # pylint: disable=import-outside-toplevel
         except ImportError as exc:
-            raise DesktopError("python-xlib est absent (dépendance de pynput)") from exc
+            raise DesktopError(
+                tr("python-xlib est absent (dépendance de pynput)")
+            ) from exc
         try:
             return display.Display()
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            raise DesktopError(f"connexion au serveur X impossible : {exc}") from exc
+            raise DesktopError(
+                tr("connexion au serveur X impossible : {error}", error=exc)
+            ) from exc
 
     def screen_rect(self) -> Rect:
         """Taille de l'écran (bureau virtuel X11 complet)."""
@@ -204,11 +209,13 @@ class X11Desktop:  # pylint: disable=too-many-public-methods
         try:
             from PIL import ImageGrab  # pylint: disable=import-outside-toplevel
         except ImportError as exc:
-            raise DesktopError("Pillow est absent (paquet python-pillow)") from exc
+            raise DesktopError(tr("Pillow est absent (paquet python-pillow)")) from exc
         try:
             return ImageGrab.grab(xdisplay=None).convert("RGB")
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            raise DesktopError(f"capture d'écran impossible : {exc}") from exc
+            raise DesktopError(
+                tr("capture d'écran impossible : {error}", error=exc)
+            ) from exc
 
     # ---- injection -----------------------------------------------------------
     def check_guard(self) -> None:
@@ -224,14 +231,20 @@ class X11Desktop:  # pylint: disable=too-many-public-methods
         )
         if not result.ok:
             detail = result.stderr.strip() or f"code {result.returncode}"
-            raise DesktopError(f"xdotool {args[0]} a échoué : {detail}")
+            raise DesktopError(
+                tr(
+                    "xdotool {command} a échoué : {detail}",
+                    command=args[0],
+                    detail=detail,
+                )
+            )
         return result
 
     def click(self, x: int, y: int, *, button: str = "left", count: int = 1) -> None:
         """Déplace le pointeur en ``(x, y)`` et clique ``count`` fois."""
         number = MOUSE_BUTTONS.get(button)
         if number is None:
-            raise DesktopError(f"bouton de souris inconnu : {button}")
+            raise DesktopError(tr("bouton de souris inconnu : {button}", button=button))
         self._xdotool(
             "mousemove",
             "--sync",
@@ -249,7 +262,12 @@ class X11Desktop:  # pylint: disable=too-many-public-methods
         """Fait défiler (molette) sous le point ``(x, y)``."""
         number = SCROLL_BUTTONS.get(direction)
         if number is None:
-            raise DesktopError(f"direction de défilement inconnue : {direction}")
+            raise DesktopError(
+                tr(
+                    "direction de défilement inconnue : {direction}",
+                    direction=direction,
+                )
+            )
         self._xdotool(
             "mousemove",
             "--sync",

@@ -17,6 +17,13 @@
 # entre chevrons, ex. "<ctrl>+<alt>+<space>", "<ctrl>+<alt>+m").
 hotkey: "<ctrl>+<alt>+<space>"
 
+# Langue de My_OS (interface, assistant, contrôle de l'ordinateur) : fr, en ou auto.
+#   auto -> celle du système : français si Linux est en français, anglais sinon.
+# Ce n'est que la langue de départ : le bouton FR/EN de la barre de titre du popup la
+# change à tout moment, et ce choix (mémorisé dans ~/.config/my_os/popup.conf)
+# l'emporte ensuite.
+language: auto
+
 # Popup Qt. width/height = taille à la première ouverture : ensuite, la taille, la
 # position et l'état (agrandi, plein écran) choisis à la souris sont mémorisés dans
 # ~/.config/my_os/popup.conf.

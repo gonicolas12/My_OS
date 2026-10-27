@@ -65,6 +65,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.i18n import N_, tr
 from ui.icons import logo_pixmap
 from ui.styles import FS_SM, FS_XS, PALETTE
 
@@ -97,8 +98,9 @@ STOP_BUTTON_SIZE = 30
 # sauf pendant une confirmation (cf. ControlOverlay.set_raising).
 _RAISE_MS = 700
 
-TITLE = "My_OS contrôle l'ordinateur"
-IDLE_STATUS = "Le modèle observe et agit pour vous…"
+# Textes de la barre, dans la langue de l'interface à l'allumage de l'indicateur.
+TITLE = N_("My_OS contrôle l'ordinateur")
+IDLE_STATUS = N_("Le modèle observe et agit pour vous…")
 
 _OVERLAY_FLAGS = (
     Qt.WindowType.FramelessWindowHint
@@ -254,7 +256,7 @@ class StopButton(_FadingWidget):
         super().__init__(input_transparent=False)
         self.setFixedSize(STOP_BUTTON_SIZE, STOP_BUTTON_SIZE)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setToolTip("Arrêter le contrôle de l'ordinateur (Échap)")
+        self.setToolTip(tr("Arrêter le contrôle de l'ordinateur (Échap)"))
         self._hover = False
         self._pressed = False
 
@@ -373,11 +375,11 @@ class StopBar(QWidget):
 
         texts = QVBoxLayout()
         texts.setSpacing(1)
-        self.title = QLabel(TITLE)
+        self.title = QLabel(tr(TITLE))
         self.title.setStyleSheet(
             f"color:{PALETTE.text}; font-weight:700; font-size:{FS_SM}px;"
         )
-        self.status = QLabel(IDLE_STATUS)
+        self.status = QLabel(tr(IDLE_STATUS))
         self.status.setStyleSheet(f"color:{PALETTE.text_2}; font-size:{FS_XS}px;")
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setMinimumWidth(230)
@@ -392,23 +394,23 @@ class StopBar(QWidget):
         outer.addWidget(divider, 0, Qt.AlignmentFlag.AlignVCenter)
 
         text_style = f"color:{PALETTE.text}; font-size:{FS_SM}px;"
-        before = QLabel("Cliquez ici")
+        before = QLabel(tr("Cliquez ici"))
         before.setStyleSheet(text_style)
         outer.addWidget(before, 0, Qt.AlignmentFlag.AlignVCenter)
         self._slot = QWidget()
         self._slot.setFixedSize(STOP_BUTTON_SIZE, STOP_BUTTON_SIZE)
         outer.addWidget(self._slot, 0, Qt.AlignmentFlag.AlignVCenter)
-        middle = QLabel("ou appuyez sur")
+        middle = QLabel(tr("ou appuyez sur"))
         middle.setStyleSheet(text_style)
         outer.addWidget(middle, 0, Qt.AlignmentFlag.AlignVCenter)
-        key = QLabel("Échap")
+        key = QLabel(tr("Échap"))
         key.setStyleSheet(
             f"color:{PALETTE.text}; background:{PALETTE.surface_hover};"
             f"border:1px solid {PALETTE.border_strong}; border-bottom-width:2px;"
             f"border-radius:5px; padding:1px 7px; font-size:{FS_XS}px; font-weight:700;"
         )
         outer.addWidget(key, 0, Qt.AlignmentFlag.AlignVCenter)
-        after = QLabel("pour arrêter")
+        after = QLabel(tr("pour arrêter"))
         after.setStyleSheet(text_style)
         outer.addWidget(after, 0, Qt.AlignmentFlag.AlignVCenter)
         self._effect = QGraphicsOpacityEffect(self._content)

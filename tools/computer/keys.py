@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import unicodedata
 
+from core.i18n import tr
+
 # Ordre canonique des modificateurs.
 MODIFIERS = ("ctrl", "alt", "shift", "super")
 _MODIFIER_NAMES = {
@@ -131,7 +133,7 @@ def _key(part: str, *, with_modifiers: bool) -> str:
         if char.isalnum():
             # Avec un modificateur, la lettre est la touche (Ctrl+S = Ctrl+s).
             return char.lower() if with_modifiers else char
-    raise ValueError(f"touche inconnue : « {part.strip()} »")
+    raise ValueError(tr("touche inconnue : « {key} »", key=part.strip()))
 
 
 def parse_combo(text: str) -> str:
@@ -141,7 +143,7 @@ def parse_combo(text: str) -> str:
     :class:`ValueError` pour une combinaison illisible.
     """
     if not isinstance(text, str) or not text.strip():
-        raise ValueError("combinaison vide")
+        raise ValueError(tr("combinaison vide"))
     raw = text.strip()
     if raw == "+":
         return "plus"
@@ -161,13 +163,16 @@ def parse_combo(text: str) -> str:
             keys.append(part)
     if len(keys) > 1:
         raise ValueError(
-            f"une seule touche par combinaison (reçu : {', '.join(keys)}) ; "
-            "appelez press_keys une fois par combinaison"
+            tr(
+                "une seule touche par combinaison (reçu : {keys}) ; appelez "
+                "press_keys une fois par combinaison",
+                keys=", ".join(keys),
+            )
         )
     ordered = [m for m in MODIFIERS if m in modifiers]
     if not keys:
         if not ordered:
-            raise ValueError("combinaison vide")
+            raise ValueError(tr("combinaison vide"))
         return "+".join(ordered)  # un modificateur seul (ex. « super »)
     return "+".join([*ordered, _key(keys[0], with_modifiers=bool(ordered))])
 

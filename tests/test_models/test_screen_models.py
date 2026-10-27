@@ -15,11 +15,11 @@ from models.cloud_router import ClaudeClient, _to_anthropic
 from models.local_llm import (
     BASE_TOOLS_SCHEMA,
     COMPUTER_TOOLS_SCHEMA,
-    SCREEN_PROMPT,
     VISION_MIN_GENERATION_RATE,
     OllamaClient,
     UnreadableResponse,
 )
+from models.prompts import SCREEN_PROMPTS
 from permissions.risk_levels import COMPUTER_TOOLS
 
 
@@ -81,10 +81,10 @@ def test_outils_et_consignes_de_l_ecran_retires_si_desactive() -> None:
     OllamaClient(client=fake, screen_control=False).respond(_screen_history())
     call = fake.calls[0]
     assert call["tools"] == BASE_TOOLS_SCHEMA
-    assert SCREEN_PROMPT not in call["messages"][0]["content"]
+    assert SCREEN_PROMPTS["fr"] not in call["messages"][0]["content"]
     with_screen = _FakeOllama()
     OllamaClient(client=with_screen).respond(_screen_history())
-    assert SCREEN_PROMPT in with_screen.calls[0]["messages"][0]["content"]
+    assert SCREEN_PROMPTS["fr"] in with_screen.calls[0]["messages"][0]["content"]
 
 
 def test_vision_off_et_on() -> None:

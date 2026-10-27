@@ -5,8 +5,8 @@
 > Une distribution Linux (base Arch) dans laquelle une IA est intégrée *au cœur du
 > système*. Un raccourci clavier global ouvre un assistant qui peut lire et organiser
 > vos fichiers, installer des logiciels, ajuster les paramètres de la machine et
-> piloter votre PC en langage naturel — avec une **confirmation systématique** pour
-> toute action à risque. Le modèle tourne **localement** (Qwen via Ollama) ; un modèle
+> piloter votre PC en langage naturel, en français ou en anglais — avec une
+> **confirmation systématique** pour toute action à risque. Le modèle tourne **localement** (Qwen via Ollama) ; un modèle
 > cloud (Claude) peut être activé **en option, par requête**. Vos données restent chez
 > vous par défaut.
 
@@ -62,6 +62,13 @@ pour la démo.*
 |:---:|:---:|
 | ![Accord pour la demande](docs/media/controle-accord.png) | ![Pendant le contrôle de l'ordinateur](docs/media/controle-envoi.png) |
 | **Accord pour cette demande** — la demande telle que tapée, l'accès donné et comment arrêter ; « Refuser » par défaut | **Pendant le contrôle** — bords lumineux, barre d'arrêt (■ ou Échap) ; « Envoyer » redemande une confirmation renforcée, au-dessus de la barre |
+
+### 🌐 Français et anglais *(prochaine version)*
+
+| | |
+|:---:|:---:|
+| ![Menu de langue du popup](docs/media/langue-menu.png) | ![Contrôle de l'ordinateur en anglais](docs/media/controle-en.png) |
+| **Langue au choix** — au premier lancement, celle de Linux (français, sinon anglais) ; le bouton 🌐 de la barre de titre passe de l'une à l'autre, sans redémarrer | **Tout suit la langue** — réponses du modèle, confirmations, barre d'arrêt ; ici, *Open a terminal and run ls* : le raccourci du terminal reste une confirmation renforcée |
 
 ---
 
@@ -166,6 +173,10 @@ v1.5) et passent par le moteur de permissions.
   local**, sans modèle de vision : l'écran lui est décrit par l'arbre d'accessibilité et
   l'OCR, chaque élément numéroté. Pendant le contrôle, les **bords de l'écran brillent en
   orange** et une barre rappelle comment l'arrêter (**Échap** ou bouton ■).
+- 🌐 **Français et anglais** *(prochaine version)* — interface, réponses du modèle (local
+  ou cloud) et contrôle de l'ordinateur dans l'une ou l'autre langue. Au premier
+  lancement, My_OS prend celle de Linux : français si le système est en français,
+  anglais sinon. Le bouton 🌐 de la barre de titre change de langue à tout moment.
 
 ---
 
@@ -227,6 +238,10 @@ reste expérimental.
 5. La fenêtre se redimensionne par ses bords et ses coins et se déplace par sa barre de
    titre ; double-cliquez sur la barre pour l'agrandir, `F11` pour le plein écran. Taille,
    position et état sont mémorisés (`~/.config/my_os/popup.conf`).
+6. Le bouton **🌐 FR / EN** de la barre de titre change la langue de My_OS : interface,
+   réponses du modèle et contrôle de l'ordinateur passent en français ou en anglais,
+   aussitôt et sans redémarrer ; le choix est mémorisé. Avant tout choix, My_OS suit la
+   langue de Linux (réglage `language` de `config.yaml`).
 
 **Exemples de requêtes :**
 - « Range mon dossier Téléchargements par type. »
@@ -234,6 +249,8 @@ reste expérimental.
 - « Baisse la luminosité à 30 %. »
 - « Qu'est-ce qui mange ma RAM en ce moment ? »
 - « Résume ce fichier. » *(le contenu lu reste une donnée, jamais une instruction)*
+- En anglais : *“Install VLC.”*, *“Lower the volume to 30%.”*, *“Open Mousepad and write
+  a shopping list.”*
 
 **Contrôle de l'ordinateur (session X11) :** demandez par exemple « Ouvre Mousepad et
 écris une liste de courses » ou « Remplis ce formulaire avec mon nom ». My_OS demande
@@ -275,6 +292,9 @@ pas de la fiabilité du modèle**.
 - **Écran** : le contrôle de l'ordinateur est accordé **pour une requête** (niveau 2),
   toujours visible et arrêtable d'un Échap ; la cible jugée est celle de l'écran, jamais
   celle que décrit le modèle ([SECURITY.md](docs/SECURITY.md), menace 5).
+- **Langue** : elle ne change aucune décision. Mêmes niveaux et mêmes confirmations en
+  français et en anglais ; à l'écran, les boutons sensibles sont reconnus dans les deux
+  langues, quelle que soit celle de My_OS.
 
 ---
 
@@ -357,6 +377,9 @@ par le point de passage unique `permissions/policy_engine.py`.
   contrôle de l'ordinateur : voir l'écran et agir à la souris et au clavier, en local
   (accessibilité + OCR, éléments numérotés), bords lumineux et barre d'arrêt, accord par
   demande ; validé en VM avec le modèle local.
+- [x] **Français et anglais** *(prochaine version)* : interface, modèle local et cloud,
+  contrôle de l'ordinateur ; langue de Linux au premier lancement, bouton 🌐 FR / EN ;
+  validé en VM dans les deux langues (mêmes 42 scénarios de permissions, mêmes décisions).
 
 **Encore à éprouver :** matériel réel (pilotes Wi-Fi, rétroéclairage, cartes graphiques)
 et mode cloud avec une vraie clé — retours bienvenus dans les
@@ -396,6 +419,7 @@ My_OS/
 │                             # souris et clavier (xdotool), applications
 ├── models/                   # Couche 3 — IA
 │   ├── local_llm.py          # Qwen/Ollama (défaut)
+│   ├── prompts.py            # prompts système, un par langue
 │   ├── cloud_router.py       # routeur + API Anthropic (opt-in)
 │   ├── secrets.py            # clé API via keyring
 │   └── stub_model.py         # backend de règles (tests / sans Ollama)
@@ -415,6 +439,8 @@ My_OS/
 │   ├── ipc.py                # cadrage des messages
 │   ├── elevation.py          # exécution système + polkit (pkexec)
 │   ├── session.py            # détection X11/Wayland
+│   ├── i18n.py               # langue (français, anglais) : tr(), langue du système
+│   ├── locales/en.py         # traductions anglaises (le français est dans le code)
 │   └── logger.py
 ├── docs/
 │   ├── ARCHITECTURE.md
@@ -427,7 +453,7 @@ My_OS/
 │   ├── build_iso.sh
 │   ├── README.md
 │   └── archiso/              # profiledef, packages, airootfs
-├── tests/                    # ~740 tests (permissions en priorité)
+├── tests/                    # ~850 tests (permissions en priorité)
 ├── config.yaml
 ├── myosd.service             # service systemd utilisateur
 ├── requirements.txt

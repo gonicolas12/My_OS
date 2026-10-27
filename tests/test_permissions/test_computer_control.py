@@ -385,6 +385,7 @@ def test_resume_lisible_dans_les_confirmations() -> None:
         "Delete",
         "Vider la corbeille",
         "Envoyer",
+        "Submit registration",
         "Shut Down",
         "Don’t Save",
         "Ne pas enregistrer",
@@ -462,6 +463,19 @@ def test_libelle_destructeur_par_mot_entier() -> None:
     assert not is_destructive_label("Removable Drives")
     assert not is_destructive_label("Deleted items")
     assert not is_destructive_label("")
+
+
+@pytest.mark.parametrize(
+    "label",
+    ["Envoyer l'inscription", "Send registration", "Submit", "Submit registration"],
+)
+def test_envoi_d_un_formulaire_dans_les_deux_langues(label: str) -> None:
+    # « Submit » est le libellé anglais le plus courant d'un envoi de formulaire.
+    assert is_destructive_label(label)
+
+
+def test_submit_par_mot_entier() -> None:
+    assert not is_destructive_label("Submitted forms")
 
 
 def test_noms_d_application_comparables() -> None:

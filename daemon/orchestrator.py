@@ -28,6 +28,10 @@ Cycle de vie (cf. docs/INTERFACES.md §6 + §6.5) :
 Les résultats d'outils réinjectés sont des DONNÉES (le system prompt du modèle
 le rappelle) : un contenu lu ne commande jamais une action (SECURITY §2.2).
 
+**Langue.** Toute la requête est traitée dans la langue de son ``user_message``
+(champ ``language``, cf. :mod:`core.i18n`) : prompt du modèle, sorties d'outils,
+résumés des confirmations et notices. Elle ne change aucune décision de permission.
+
 Le LLM réel n'est jamais appelé directement ici : on dépend d'un protocole
 :class:`Model` injecté, ce qui rend la chaîne testable avec un modèle scripté
 sans Ollama (cf. CLAUDE.md « mock-first »).
@@ -41,6 +45,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from core.i18n import N_, current_language, tr, use_language
 from core.logger import get_logger
 from permissions.audit_log import AuditLog
 from permissions.confirmation import (
@@ -77,7 +82,7 @@ class Plan:
 TokenCallback = Callable[[str], None]
 
 # Un message de l'historique conversationnel. Formes :
-#   {"role": "user", "content": str}
+#   {"role": "user", "content": str, "language": str}  # langue de la requête
 #   {"role": "assistant", "content": str, "tool_calls": list[ToolCall]}
 #   {"role": "tool", "tool": str, "content": str}   # résultat réinjecté
 Message = dict
@@ -102,9 +107,10 @@ MAX_HISTORY_MESSAGES = 40
 _cloud_log = get_logger("myosd.cloud")
 
 # Notices in-transcript (messages ``notice``, cf. INTERFACES §1) : rendent le routage
-# cloud VISIBLE dans la conversation, en plus de l'indicateur du popup.
-_CLOUD_ACTIVE_NOTICE = "☁ Requête envoyée au cloud (Claude)."
-_CLOUD_FALLBACK_NOTICE = (
+# cloud VISIBLE dans la conversation, en plus de l'indicateur du popup. Traduites à
+# l'envoi, dans la langue de la requête (comme tous les textes ``N_`` ci-dessous).
+_CLOUD_ACTIVE_NOTICE = N_("☁ Requête envoyée au cloud (Claude).")
+_CLOUD_FALLBACK_NOTICE = N_(
     "⚠ Mode cloud demandé mais aucune clé API n'est configurée : "
     "réponse générée en local."
 )
@@ -116,13 +122,13 @@ RESULT_DENIED = "denied"
 RESULT_BLOCKED = "blocked"
 
 # Contrôle de l'ordinateur (cf. daemon.control).
-_CONTROL_STOPPED_NOTICE = (
+_CONTROL_STOPPED_NOTICE = N_(
     "⏹ Contrôle de l'ordinateur arrêté : plus aucune action à l'écran."
 )
-_CONTROL_STOPPED_RESULT = (
+_CONTROL_STOPPED_RESULT = N_(
     "Arrêté par l'utilisateur : le contrôle de l'ordinateur a pris fin."
 )
-_CONTROL_UNAVAILABLE = "Contrôle de l'ordinateur indisponible"
+_DENIED = N_("Refusé par l'utilisateur : {summary}")
 
 
 class ControlProvider(Protocol):
@@ -288,7 +294,14 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
         on rappelle le modèle — jusqu'à une réponse finale sans outil ou
         ``MAX_STEPS``. Le modèle reçoit une **copie** de l'historique à chaque
         tour (snapshot), pour ne pas être affecté par une mutation concurrente.
+
+        Toute la requête est traitée dans sa langue (``language``, sinon celle du
+        daemon) : chaque requête a son thread, la langue est posée pour lui seul.
         """
+        with use_language(message.get("language")):
+            self._handle(message, reply)
+
+    def _handle(self, message: dict, reply: Reply) -> None:
         user_message_id = str(message.get("id") or "")
         content = message.get("content")
         if not isinstance(content, str) or not content.strip():
@@ -296,16 +309,19 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
                 {
                     "type": "error",
                     "id": user_message_id,
-                    "message": "message vide ou invalide",
+                    "message": tr("message vide ou invalide"),
                 }
             )
             return
 
         # Ajoute le tour utilisateur à l'historique persistant et capture la
         # référence de la conversation courante (un reset concurrent la
-        # remplacerait sans affecter ce tour en cours).
+        # remplacerait sans affecter ce tour en cours). La langue de la requête y
+        # est notée : une conversation qui change de langue le rappelle au modèle.
         with self._history_lock:
-            self._history.append({"role": "user", "content": content})
+            self._history.append(
+                {"role": "user", "content": content, "language": current_language()}
+            )
             history = self._history
 
         # Sélection du backend pour CETTE requête (une seule fois — jamais changé en
@@ -346,8 +362,11 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
                     reply,
                     request.id,
                     "warning",
-                    f"J'ai atteint la limite de {limit} étapes. Si la tâche n'est "
-                    "pas terminée, relancez-moi pour continuer.",
+                    tr(
+                        "J'ai atteint la limite de {limit} étapes. Si la tâche n'est "
+                        "pas terminée, relancez-moi pour continuer.",
+                        limit=limit,
+                    ),
                 )
                 return True
             step += 1
@@ -373,7 +392,7 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
                         request.id,
                         tool_call.tool,
                         RESULT_DENIED,
-                        _CONTROL_STOPPED_RESULT,
+                        tr(_CONTROL_STOPPED_RESULT),
                     )
                     image = None
                 else:
@@ -413,21 +432,26 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
         """
         if request.grants.control_allowed:
             if self._control_stopped(request):
-                return RESULT_DENIED, _CONTROL_STOPPED_RESULT
+                return RESULT_DENIED, tr(_CONTROL_STOPPED_RESULT)
             return None
         if self._control is None:
-            return RESULT_ERROR, f"{_CONTROL_UNAVAILABLE} dans cette installation."
+            return RESULT_ERROR, tr(
+                "Contrôle de l'ordinateur indisponible dans cette installation."
+            )
         if request.control_denied:
             return (
                 RESULT_DENIED,
-                (
-                    f"Refusé par l'utilisateur : {CONTROL_SUMMARY} Ne le redemandez "
-                    "pas dans cette requête."
+                tr(
+                    "Refusé par l'utilisateur : {summary} Ne le redemandez pas dans "
+                    "cette requête.",
+                    summary=tr(CONTROL_SUMMARY),
                 ),
             )
         reason = self._control.unavailable_reason()
         if reason:
-            return RESULT_ERROR, f"{_CONTROL_UNAVAILABLE} : {reason}."
+            return RESULT_ERROR, tr(
+                "Contrôle de l'ordinateur indisponible : {reason}.", reason=reason
+            )
         payload = build_control_confirmation(
             request_id=new_request_id(),
             user_message_id=request.id,
@@ -445,16 +469,21 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
         )
         if not approved:
             request.control_denied = True
-            return RESULT_DENIED, f"Refusé par l'utilisateur : {CONTROL_SUMMARY}"
+            return RESULT_DENIED, tr(_DENIED, summary=tr(CONTROL_SUMMARY))
         if failure:
-            return RESULT_ERROR, f"{_CONTROL_UNAVAILABLE} : {failure}."
+            return RESULT_ERROR, tr(
+                "Contrôle de l'ordinateur indisponible : {reason}.", reason=failure
+            )
         request.control_started = True
         request.grants.allow_control()
         _notice(
             reply,
             request.id,
             "info",
-            "🖱 Contrôle de l'ordinateur accordé pour cette demande (Échap pour arrêter).",
+            tr(
+                "🖱 Contrôle de l'ordinateur accordé pour cette demande "
+                "(Échap pour arrêter)."
+            ),
         )
         return None
 
@@ -465,7 +494,7 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
         request.grants.revoke_control()
         self._control.end("user" if stopped else "finished")
         if stopped:
-            _notice(reply, request.id, "warning", _CONTROL_STOPPED_NOTICE)
+            _notice(reply, request.id, "warning", tr(_CONTROL_STOPPED_NOTICE))
 
     def _run_model(
         self, model: Model, messages: list[Message], msg_id: str, reply: Reply
@@ -491,7 +520,7 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
                 {
                     "type": "error",
                     "id": msg_id,
-                    "message": f"échec du modèle : {exc}",
+                    "message": tr("échec du modèle : {error}", error=exc),
                 }
             )
             return None
@@ -516,16 +545,16 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
             return self._model, False
         router = self._cloud_router
         if router is None or not router.is_available():
-            _notice(reply, msg_id, "warning", _CLOUD_FALLBACK_NOTICE)
+            _notice(reply, msg_id, "warning", tr(_CLOUD_FALLBACK_NOTICE))
             return self._model, False
         try:
             cloud_model = router.get_cloud_model()
         except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             # Repli défensif (ex. clé retirée entre le check et la construction).
             _cloud_log.warning("Cloud indisponible (%s) ; repli local", exc)
-            _notice(reply, msg_id, "warning", _CLOUD_FALLBACK_NOTICE)
+            _notice(reply, msg_id, "warning", tr(_CLOUD_FALLBACK_NOTICE))
             return self._model, False
-        _notice(reply, msg_id, "info", _CLOUD_ACTIVE_NOTICE)
+        _notice(reply, msg_id, "info", tr(_CLOUD_ACTIVE_NOTICE))
         return cloud_model, True
 
     @staticmethod
@@ -568,7 +597,7 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
                 success=False,
                 reversible=False,
             )
-            text = f"Outil inconnu : {call.tool}"
+            text = tr("Outil inconnu : {tool}", tool=call.tool)
             return _emit_result(reply, msg_id, call.tool, RESULT_BLOCKED, text), None
 
         if tool.name in COMPUTER_TOOLS:
@@ -593,7 +622,7 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
                 success=False,
                 reversible=False,
             )
-            text = f"Bloqué : {decision.summary}"
+            text = tr("Bloqué : {summary}", summary=decision.summary)
             return _emit_result(reply, msg_id, tool.name, RESULT_BLOCKED, text), None
 
         audit_decision = "auto"
@@ -615,7 +644,7 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
                     success=False,
                     reversible=False,
                 )
-                text = f"Refusé par l'utilisateur : {decision.summary}"
+                text = tr(_DENIED, summary=decision.summary)
                 return _emit_result(reply, msg_id, tool.name, RESULT_DENIED, text), None
             # Un grant n'est enregistré que pour une portée proposée par le daemon :
             # jamais au niveau 2, même si le client renvoie approve_scope (l'action
@@ -635,7 +664,7 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
             result: ToolResult = tool.run(args)
         except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             self._audit.update_result(row_id, success=False, reversible=False)
-            text = f"Erreur d'exécution : {exc}"
+            text = tr("Erreur d'exécution : {error}", error=exc)
             return _emit_result(reply, msg_id, tool.name, RESULT_ERROR, text), None
         self._audit.update_result(
             row_id, success=result.success, reversible=result.reversible

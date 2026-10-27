@@ -22,6 +22,7 @@ import threading
 from collections.abc import Callable
 from typing import Protocol
 
+from core.i18n import tr
 from core.logger import get_logger
 from core.session import SESSION_WAYLAND, detect_session_type
 
@@ -252,7 +253,7 @@ class _DBusPortalTransport:
                 dbus.String(shortcut_id),
                 dbus.Dictionary(
                     {
-                        "description": dbus.String("Ouvrir l'assistant My_OS"),
+                        "description": dbus.String(tr("Ouvrir l'assistant My_OS")),
                         "preferred_trigger": dbus.String(_hotkey_to_trigger(hotkey)),
                     },
                     signature="sv",

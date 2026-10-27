@@ -22,7 +22,9 @@ La liste de blocage, l'escalade, la confirmation et l'audit jugent cette cible �
 comme le chemin réel des outils fichiers. Juste avant d'agir, ``run`` revérifie que
 la cible n'a pas changé (une fenêtre surgie entre-temps fait échouer l'action).
 
-Aucune vérification de permission ici (rôle exclusif du ``policy_engine``).
+Aucune vérification de permission ici (rôle exclusif du ``policy_engine``). Les
+textes (résultats, descriptions des actions) sont dans la langue de la requête ; la
+cible, elle, ne dépend pas de la langue.
 """
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import ClassVar
 
+from core.i18n import N_, tr
 from permissions.risk_levels import (
     ACTIVATION_KEYS,
     COMMAND_LAUNCHERS,
@@ -53,6 +56,8 @@ from tools.computer.screen import (
     Window,
     describe_window,
     format_observation,
+    quoted,
+    role_label,
 )
 from tools.computer.x11 import ControlStopped, DesktopError
 
@@ -105,19 +110,27 @@ _BUTTONS = {
     "droit": "right",
     "middle": "middle",
 }
-NO_OBSERVATION = (
+# Messages renvoyés au modèle, traduits à l'envoi (``tr``).
+NO_OBSERVATION = N_(
     "Aucune observation de l'écran en cours : appelez d'abord observe_screen, puis "
     "utilisez les numéros de la DERNIÈRE observation."
 )
-STOPPED = "Contrôle arrêté par l'utilisateur : aucune action n'a été faite."
-SCREEN_CHANGED = (
+STOPPED = N_("Contrôle arrêté par l'utilisateur : aucune action n'a été faite.")
+SCREEN_CHANGED = N_(
     "L'écran a changé depuis l'observation (une autre fenêtre est maintenant "
     "visée) : action annulée. Observez à nouveau l'écran."
 )
-ELEMENT_MOVED = (
+ELEMENT_MOVED = N_(
     "L'élément visé n'est plus à cet endroit (l'écran a changé depuis "
     "l'observation) : action annulée. Observez à nouveau l'écran."
 )
+# Directions de défilement, dans une phrase (« Faire défiler vers le bas »).
+_DIRECTION_LABELS = {
+    "up": N_("le haut"),
+    "down": N_("le bas"),
+    "left": N_("la gauche"),
+    "right": N_("la droite"),
+}
 # Caractères tapés : retour à la ligne et tabulation, jamais d'autre caractère de
 # contrôle (un Échap tapé dans le texte couperait le contrôle, par exemple).
 _TYPABLE_CONTROLS = frozenset("\n\t")
@@ -164,15 +177,20 @@ def _target_of(args: dict) -> dict:
 def _element_phrase(args: dict) -> str:
     """« [3] bouton « Supprimer » » : l'élément visé tel que l'utilisateur le voit."""
     target = _target_of(args)
-    label = ROLE_LABELS.get(str(target.get("role", "")), "élément")
-    name = f" « {target['name']} »" if target.get("name") else ""
+    role = str(target.get("role", ""))
+    label = role_label(role) if role in ROLE_LABELS else tr("élément")
+    name = f" {quoted(str(target['name']))}" if target.get("name") else ""
     number = f"[{args['element']}] " if args.get("element") is not None else ""
     return f"{number}{label}{name}"
 
 
 def _in_window(args: dict) -> str:
-    window = _target_of(args).get("window")
-    return f" dans {window}" if window and window != "bureau" else " sur le bureau"
+    """« dans « Fenêtre » (app) », ou « sur le bureau » (aucune fenêtre visée)."""
+    target = _target_of(args)
+    window = target.get("window")
+    if window and target.get("window_id"):
+        return tr(" dans {window}", window=window)
+    return tr(" sur le bureau")
 
 
 def _as_bool(value: object) -> bool:
@@ -205,7 +223,7 @@ class _ScreenTool(BaseTool):  # pylint: disable=abstract-method
     ) -> dict:
         """Cible réelle d'une action, telle que la jugent les permissions."""
         target: dict = {
-            "window": describe_window(window) if window else "bureau",
+            "window": describe_window(window) if window else tr("bureau"),
             "window_id": window.id if window else 0,
             "app": window.app if window else "",
             "instance": window.instance if window else "",
@@ -268,7 +286,7 @@ class _ScreenTool(BaseTool):  # pylint: disable=abstract-method
         expected = target.get("window_id", 0)
         current = window.id if window else 0
         if expected != current:
-            return SCREEN_CHANGED
+            return tr(SCREEN_CHANGED)
         return None
 
     def _moved(self, target: dict) -> str | None:
@@ -286,7 +304,7 @@ class _ScreenTool(BaseTool):  # pylint: disable=abstract-method
         same = any(
             e.name == target["name"] and e.role == target.get("role") for e in found
         )
-        return None if same else ELEMENT_MOVED
+        return None if same else tr(ELEMENT_MOVED)
 
     def _refocus(self, target: dict) -> None:
         """Rend le focus à la fenêtre visée s'il l'a perdu (une confirmation vient de
@@ -306,7 +324,12 @@ class _ScreenTool(BaseTool):  # pylint: disable=abstract-method
             observation = self._backend.observe()
         except DesktopError as exc:
             return ToolResult(
-                success=True, output=f"{summary}\n(Observation impossible : {exc}.)"
+                success=True,
+                output=tr(
+                    "{summary}\n(Observation impossible : {error}.)",
+                    summary=summary,
+                    error=exc,
+                ),
             )
         return ToolResult(
             success=True,
@@ -318,9 +341,9 @@ class _ScreenTool(BaseTool):  # pylint: disable=abstract-method
         try:
             return action()
         except ControlStopped:
-            return _err(STOPPED)
+            return _err(tr(STOPPED))
         except DesktopError as exc:
-            return _err(f"{self.name} : {exc}")
+            return _err(tr("{tool} : {error}", tool=self.name, error=exc))
 
 
 class ObserveScreen(_ScreenTool):
@@ -340,7 +363,7 @@ class ObserveScreen(_ScreenTool):
 
     def describe(self, args: dict) -> str | None:
         """« Regarder l'écran »."""
-        return "Regarder l'écran (fenêtres et éléments visibles)"
+        return tr("Regarder l'écran (fenêtres et éléments visibles)")
 
     def run(self, args: dict) -> ToolResult:
         def act() -> ToolResult:
@@ -383,19 +406,26 @@ class Click(_ScreenTool):
         """« Cliquer sur [3] bouton « Supprimer » dans « Fenêtre » (app) »."""
         if not _target_of(args):
             return None
-        verb = "Double-cliquer sur" if args.get("double") else "Cliquer sur"
+        verb = (
+            N_("Double-cliquer sur {element}{where}")
+            if args.get("double")
+            else N_("Cliquer sur {element}{where}")
+        )
         if args.get("button") == "right":
-            verb = "Clic droit sur"
-        return f"{verb} {_element_phrase(args)}{_in_window(args)}"
+            verb = N_("Clic droit sur {element}{where}")
+        return tr(verb, element=_element_phrase(args), where=_in_window(args))
 
     def run(self, args: dict) -> ToolResult:
         target = args.get("target")
         if self._backend.last is None:
-            return _err(NO_OBSERVATION)
+            return _err(tr(NO_OBSERVATION))
         if not isinstance(target, dict):
             return _err(
-                f"click : numéro d'élément inconnu ({args.get('element')}). "
-                "Utilisez un numéro de la dernière observation."
+                tr(
+                    "click : numéro d'élément inconnu ({number}). Utilisez un numéro "
+                    "de la dernière observation.",
+                    number=args.get("element"),
+                )
             )
 
         def act() -> ToolResult:
@@ -408,12 +438,16 @@ class Click(_ScreenTool):
             self._backend.click(
                 x, y, button=str(args.get("button", "left")), count=count
             )
-            what = "Double-clic" if count == 2 else "Clic"
+            what = (
+                N_("Double-clic sur [{number}] « {name} ».")
+                if count == 2
+                else N_("Clic sur [{number}] « {name} ».")
+            )
             if args.get("button") == "right":
-                what = "Clic droit"
+                what = N_("Clic droit sur [{number}] « {name} ».")
             name = target.get("name") or target.get("role", "")
             return self._observed(
-                f"{what} sur [{args['element']}] « {name} ».", SETTLE_CLICK
+                tr(what, number=args["element"], name=name), SETTLE_CLICK
             )
 
         return self._guarded(act)
@@ -455,33 +489,49 @@ class TypeText(_ScreenTool):
         texte exact, en entier."""
         if not _target_of(args):
             return None
-        enter = " puis Entrée" if args.get("enter") else ""
-        field = (
-            f" dans le champ {_element_phrase(args)}"
+        enter = tr(" puis Entrée") if args.get("enter") else ""
+        in_field = (
+            tr(" dans le champ {element}", element=_element_phrase(args))
             if args.get("element") is not None
             else ""
         )
-        return f"Taper « {args.get('text', '')} »{enter}{field}{_in_window(args)}"
+        return tr(
+            "Taper « {text} »{enter}{field}{where}",
+            text=args.get("text", ""),
+            enter=enter,
+            field=in_field,
+            where=_in_window(args),
+        )
 
     def run(self, args: dict) -> ToolResult:
         text = str(args.get("text", ""))
         if not text and not args.get("enter"):
-            return _err("type_text : texte vide.")
+            return _err(tr("type_text : texte vide."))
         if any(ord(c) < 32 and c not in _TYPABLE_CONTROLS for c in text):
             return _err(
-                "type_text : caractère de contrôle refusé (seuls le retour à la ligne "
-                "et la tabulation se tapent ; pour une touche, utilisez press_keys)."
+                tr(
+                    "type_text : caractère de contrôle refusé (seuls le retour à la "
+                    "ligne et la tabulation se tapent ; pour une touche, utilisez "
+                    "press_keys)."
+                )
             )
         if len(text) > MAX_TEXT:
             return _err(
-                f"type_text : texte trop long ({len(text)} > {MAX_TEXT} caractères)."
+                tr(
+                    "type_text : texte trop long ({count} > {max} caractères).",
+                    count=len(text),
+                    max=MAX_TEXT,
+                )
             )
         target = args.get("target")
         if not isinstance(target, dict):
             if self._backend.last is None:
-                return _err(NO_OBSERVATION)
+                return _err(tr(NO_OBSERVATION))
             return _err(
-                f"type_text : numéro d'élément inconnu ({args.get('element')})."
+                tr(
+                    "type_text : numéro d'élément inconnu ({number}).",
+                    number=args.get("element"),
+                )
             )
 
         def act() -> ToolResult:
@@ -502,9 +552,14 @@ class TypeText(_ScreenTool):
                 self._backend.type_text(text[start : start + _CHUNK])
             if args.get("enter"):
                 self._backend.key("Return")
-            suffix = " puis Entrée" if args.get("enter") else ""
+            suffix = tr(" puis Entrée") if args.get("enter") else ""
             return self._observed(
-                f"Texte tapé ({len(text)} caractères){suffix}.", SETTLE_TYPE
+                tr(
+                    "Texte tapé ({count} caractères){enter}.",
+                    count=len(text),
+                    enter=suffix,
+                ),
+                SETTLE_TYPE,
             )
 
         return self._guarded(act)
@@ -555,15 +610,21 @@ class PressKeys(_ScreenTool):
         repeat = int(args.get("repeat", 1) or 1)
         times = f" ×{repeat}" if repeat > 1 else ""
         focus = (
-            f", focus sur {_element_phrase(args)}"
+            tr(", focus sur {element}", element=_element_phrase(args))
             if _target_of(args).get("name")
             else ""
         )
-        return f"Appuyer sur « {args.get('keys', '')} »{times}{_in_window(args)}{focus}"
+        return tr(
+            "Appuyer sur « {keys} »{times}{where}{focus}",
+            keys=args.get("keys", ""),
+            times=times,
+            where=_in_window(args),
+            focus=focus,
+        )
 
     def run(self, args: dict) -> ToolResult:
         if args.get("invalid"):
-            return _err(f"press_keys : {args['invalid']}.")
+            return _err(tr("press_keys : {error}.", error=args["invalid"]))
         target = args.get("target") or {}
 
         def act() -> ToolResult:
@@ -573,7 +634,10 @@ class PressKeys(_ScreenTool):
                 return _err(problem)
             self._backend.key(str(args["keys"]), repeat=int(args.get("repeat", 1)))
             times = f" ×{args['repeat']}" if int(args.get("repeat", 1)) > 1 else ""
-            return self._observed(f"Touches « {args['keys']} »{times}.", SETTLE_KEYS)
+            return self._observed(
+                tr("Touches « {keys} »{times}.", keys=args["keys"], times=times),
+                SETTLE_KEYS,
+            )
 
         return self._guarded(act)
 
@@ -617,21 +681,25 @@ class Scroll(_ScreenTool):
         """« Faire défiler vers le bas ×3 dans « Fenêtre » (app) »."""
         if not _target_of(args):
             return None
-        directions = {
-            "up": "le haut",
-            "down": "le bas",
-            "left": "la gauche",
-            "right": "la droite",
-        }
-        way = directions.get(str(args.get("direction")), str(args.get("direction")))
-        return f"Faire défiler vers {way} ×{args.get('amount', 3)}{_in_window(args)}"
+        direction = str(args.get("direction"))
+        way = (
+            tr(_DIRECTION_LABELS[direction])
+            if direction in _DIRECTION_LABELS
+            else direction
+        )
+        return tr(
+            "Faire défiler vers {direction} ×{amount}{where}",
+            direction=way,
+            amount=args.get("amount", 3),
+            where=_in_window(args),
+        )
 
     def run(self, args: dict) -> ToolResult:
         if args.get("direction") not in ("up", "down", "left", "right"):
-            return _err("scroll : direction attendue up, down, left ou right.")
+            return _err(tr("scroll : direction attendue up, down, left ou right."))
         target = args.get("target")
         if not isinstance(target, dict) or "x" not in target:
-            return _err("scroll : rien à faire défiler (aucune fenêtre active).")
+            return _err(tr("scroll : rien à faire défiler (aucune fenêtre active)."))
 
         def act() -> ToolResult:
             x, y = int(target["x"]), int(target["y"])
@@ -640,7 +708,12 @@ class Scroll(_ScreenTool):
                 return _err(problem)
             self._backend.scroll(x, y, str(args["direction"]), int(args["amount"]))
             return self._observed(
-                f"Défilement {args['direction']} ×{args['amount']}.", SETTLE_SCROLL
+                tr(
+                    "Défilement {direction} ×{amount}.",
+                    direction=args["direction"],
+                    amount=args["amount"],
+                ),
+                SETTLE_SCROLL,
             )
 
         return self._guarded(act)
@@ -671,19 +744,25 @@ class FocusWindow(_ScreenTool):
     def describe(self, args: dict) -> str | None:
         """« Passer à la fenêtre « Titre » (app) »."""
         window = _target_of(args).get("window")
-        return f"Passer à la fenêtre {window}" if window else None
+        return tr("Passer à la fenêtre {window}", window=window) if window else None
 
     def run(self, args: dict) -> ToolResult:
         target = args.get("target")
         if self._backend.last is None:
-            return _err(NO_OBSERVATION)
+            return _err(tr(NO_OBSERVATION))
         if not isinstance(target, dict):
-            return _err(f"focus_window : fenêtre inconnue (w{args.get('window')}).")
+            return _err(
+                tr(
+                    "focus_window : fenêtre inconnue (w{number}).",
+                    number=args.get("window"),
+                )
+            )
 
         def act() -> ToolResult:
             self._backend.activate(int(target["window_id"]))
             return self._observed(
-                f"Fenêtre {target['window']} au premier plan.", SETTLE_FOCUS
+                tr("Fenêtre {window} au premier plan.", window=target["window"]),
+                SETTLE_FOCUS,
             )
 
         return self._guarded(act)
@@ -712,7 +791,7 @@ class OpenApp(_ScreenTool):
         entry = self._backend.find_app(name) if name else None
         if entry is not None:
             clean["target"] = {
-                "window": entry.name,
+                "window": entry.label,
                 "app": entry.app_id,
                 "instance": entry.executable,
                 "desktop_file": entry.path,
@@ -728,7 +807,11 @@ class OpenApp(_ScreenTool):
         if not target:
             return None
         command = f" ({target['command']})" if target.get("command") else ""
-        return f"Ouvrir l'application « {target.get('window', '')} »{command}"
+        return tr(
+            "Ouvrir l'application « {name} »{command}",
+            name=target.get("window", ""),
+            command=command,
+        )
 
     def run(self, args: dict) -> ToolResult:
         name = str(args.get("name", ""))
@@ -737,10 +820,16 @@ class OpenApp(_ScreenTool):
         if entry is None or not isinstance(target, dict):
             known = ", ".join(self._backend.app_names())
             return _err(
-                f"open_app : aucune application « {name} ». Installées : {known}."
+                tr(
+                    "open_app : aucune application « {name} ». Installées : {known}.",
+                    name=name,
+                    known=known,
+                )
             )
         if entry.path != target.get("desktop_file"):
-            return _err("open_app : le catalogue d'applications a changé, réessayez.")
+            return _err(
+                tr("open_app : le catalogue d'applications a changé, réessayez.")
+            )
 
         def act() -> ToolResult:
             existing = self._open_window(entry)
@@ -748,9 +837,12 @@ class OpenApp(_ScreenTool):
                 if not existing.active:
                     self._backend.activate(existing.id)
                 return self._observed(
-                    f"{entry.name} est déjà ouvert : fenêtre "
-                    f"{describe_window(existing)} au premier plan (pas de nouvelle "
-                    "fenêtre).",
+                    tr(
+                        "{app} est déjà ouvert : fenêtre {window} au premier plan (pas "
+                        "de nouvelle fenêtre).",
+                        app=entry.label,
+                        window=describe_window(existing),
+                    ),
                     SETTLE_FOCUS,
                 )
             before = {w.id for w in self._backend.windows()}
@@ -765,13 +857,17 @@ class OpenApp(_ScreenTool):
                 )
             if new is None:
                 return self._observed(
-                    f"{entry.name} lancé, mais aucune nouvelle fenêtre n'est apparue "
-                    f"en {APP_WINDOW_TIMEOUT:.0f} s (déjà ouvert ?).",
+                    tr(
+                        "{app} lancé, mais aucune nouvelle fenêtre n'est apparue en "
+                        "{seconds} s (déjà ouvert ?).",
+                        app=entry.label,
+                        seconds=f"{APP_WINDOW_TIMEOUT:.0f}",
+                    ),
                     0.0,
                 )
             if not new.active:
                 self._backend.activate(new.id)
-            return self._observed(f"{entry.name} ouvert.", SETTLE_FOCUS)
+            return self._observed(tr("{app} ouvert.", app=entry.label), SETTLE_FOCUS)
 
         return self._guarded(act)
 

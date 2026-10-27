@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 
+from core.i18n import tr
 from daemon.orchestrator import Plan, TokenCallback, ToolCall
 
 _PATH = r"(?P<path>[\w./~\-]+)"
@@ -32,7 +33,8 @@ _PATTERNS: list[tuple[re.Pattern[str], str, list[str]]] = [
     # écris X dans /chemin — write_file
     (
         re.compile(
-            rf"\b(?:écris|ecris|écrit|ecrit|write)\s+(?P<content>.+?)\s+dans\s+{_PATH}\b"
+            rf"\b(?:écris|ecris|écrit|ecrit|write)\s+(?P<content>.+?)"
+            rf"\s+(?:dans|into|in)\s+{_PATH}\b"
         ),
         "write_file",
         ["content", "path"],
@@ -84,7 +86,7 @@ class StubRuleModel:
         """
         last = messages[-1] if messages else {}
         if last.get("role") == "tool":
-            return self._final("C'est fait.", on_token)
+            return self._final(tr("C'est fait."), on_token)
 
         user_message = self._last_user_content(messages)
         for pattern, tool_name, keys in _PATTERNS:
@@ -92,7 +94,7 @@ class StubRuleModel:
             if match is None:
                 continue
             args = {key: match.group(key) for key in keys}
-            narration = f"OK — je vais exécuter {tool_name}({args})."
+            narration = tr("OK — je vais exécuter {call}.", call=f"{tool_name}({args})")
             if on_token is not None:
                 on_token(narration)
             return Plan(
@@ -100,9 +102,11 @@ class StubRuleModel:
             )
 
         return self._final(
-            "Je n'ai pas compris (modèle stub : essayez « lis /chemin », "
-            "« écris hello dans /tmp/x », « supprime /tmp/x », "
-            "« déplace /a vers /b »).",
+            tr(
+                "Je n'ai pas compris (modèle stub : essayez « lis /chemin », "
+                "« écris hello dans /tmp/x », « supprime /tmp/x », "
+                "« déplace /a vers /b »)."
+            ),
             on_token,
         )
 
