@@ -54,7 +54,7 @@ plus d'une minute.*
 | ![Élévation polkit](docs/media/elevation-polkit.png) | ![Installation terminée](docs/media/installation.png) |
 | **Élévation polkit** — mot de passe pour la commande exacte, jamais de root permanent | **Installation terminée** — chaque outil dans sa carte (statut, sortie de `pacman` lisible), puis le compte rendu du modèle |
 
-### 🖱️ Contrôle de l'ordinateur *(v1.5)*
+### 🖱️ Contrôle de l'ordinateur
 
 ![Démo : le modèle local remplit et envoie un formulaire dans Firefox](docs/media/controle.gif)
 
@@ -73,7 +73,7 @@ pour la démo.*
 | ![Accord pour la demande](docs/media/controle-accord.png) | ![Pendant le contrôle de l'ordinateur](docs/media/controle-envoi.png) |
 | **Accord pour cette demande** — la demande telle que tapée, l'accès donné et comment arrêter ; « Refuser » par défaut | **Pendant le contrôle** — bords lumineux, barre d'arrêt (■ ou Échap) ; « Envoyer » redemande une confirmation renforcée, au-dessus de la barre |
 
-### 🌐 Français et anglais *(v1.6)*
+### 🌐 Français et anglais
 
 | | |
 |:---:|:---:|
@@ -155,8 +155,7 @@ source réutilisable.
 
 ## 3 · Fonctionnalités
 
-Toutes ces capacités sont **opérationnelles** (v1, contrôle de l'ordinateur depuis la
-v1.5, français et anglais depuis la v1.6) et passent par le moteur de permissions.
+Toutes ces capacités sont **opérationnelles** et passent par le moteur de permissions.
 
 - 🗂️ **Fichiers** — lire, lister, écrire, déplacer, créer, supprimer. Ex. « range mon
   dossier Téléchargements par type ». L'escalade de risque détecte les chemins sensibles
@@ -178,13 +177,13 @@ v1.5, français et anglais depuis la v1.6) et passent par le moteur de permissio
   streaming rendues en markdown, sorties d'outils dans des cartes, thème noir et orange.
   Fenêtre redimensionnable par les bords, agrandissable, en plein écran (`F11`), qui
   revient là où on l'a laissée.
-- 🖱️ **Contrôle de l'ordinateur** *(v1.5)* — quand une demande passe par une
+- 🖱️ **Contrôle de l'ordinateur** — quand une demande passe par une
   application graphique, l'IA **voit l'écran** et agit : cliquer, taper, remplir des
   champs, combinaisons de touches, ouvrir une application, changer de fenêtre. **En
   local**, sans modèle de vision : l'écran lui est décrit par l'arbre d'accessibilité et
   l'OCR, chaque élément numéroté. Pendant le contrôle, les **bords de l'écran brillent en
   orange** et une barre rappelle comment l'arrêter (**Échap** ou bouton ■).
-- 🌐 **Français et anglais** *(v1.6)* — interface, réponses du modèle (local ou cloud)
+- 🌐 **Français et anglais** — interface, réponses du modèle (local ou cloud)
   et contrôle de l'ordinateur dans l'une ou l'autre langue. Au premier lancement, My_OS
   prend celle de Linux : français si le système est en français, anglais sinon. Le
   bouton 🌐 de la barre de titre change de langue à tout moment.
@@ -442,7 +441,7 @@ My_OS/
 │   ├── popup.py              # fenêtre PySide6, client IPC, états de la fenêtre
 │   ├── chat_view.py          # conversation : bulles, réponses, cartes d'outils
 │   ├── composer.py           # zone de saisie (Cloud, clé API, envoi)
-│   ├── window_chrome.py      # barre de titre (menu de langue 🌐) + redimensionnement
+│   ├── window_chrome.py      # barre de titre (menu de langue) + redimensionnement
 │   ├── markdown_render.py    # markdown sans HTML ni image (QTextBrowser)
 │   ├── confirm_dialog.py     # dialogue de confirmation
 │   ├── control_overlay.py    # bords lumineux + barre d'arrêt du contrôle

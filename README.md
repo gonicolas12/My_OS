@@ -54,7 +54,7 @@ integrated GPU, the whole request took about a minute.*
 | ![polkit elevation](docs/media/en/elevation-polkit.png) | ![Installation complete](docs/media/en/installation.png) |
 | **polkit elevation** — password for the exact command, never permanent root | **Installation complete** — each tool in its card (status, readable `pacman` output), then the model's report |
 
-### 🖱️ Computer control *(v1.5)*
+### 🖱️ Computer control
 
 ![Demo: the local model fills in and submits a form in Firefox](docs/media/en/controle.gif)
 
@@ -72,7 +72,7 @@ minutes. Firefox, not on the ISO, was installed for the demo.*
 | ![Approval for the request](docs/media/en/controle-accord.png) | ![During computer control](docs/media/en/controle-envoi.png) |
 | **Approval for this request** — the request as typed, the access given and how to stop; “Deny” by default | **During control** — glowing edges, stop bar (■ or Esc); “Submit” asks for an enhanced confirmation again, above the bar |
 
-### 🌐 English and French *(v1.6)*
+### 🌐 English and French
 
 | | |
 |:---:|:---:|
@@ -155,8 +155,7 @@ source base.
 
 ## 3 · Features
 
-All these capabilities are **operational** (v1, computer control since v1.5, English and
-French since v1.6) and go through the permission engine.
+All these capabilities are **operational** and go through the permission engine.
 
 - 🗂️ **Files** — read, list, write, move, create, delete. E.g. “sort my Downloads folder
   by type”. Risk escalation detects sensitive paths (`~/.ssh`, `/etc`…), even behind a
@@ -178,13 +177,13 @@ French since v1.6) and go through the permission engine.
   rendered as markdown, tool outputs in cards, black and orange theme. The window
   resizes from its edges, maximizes, goes full screen (`F11`) and comes back where you
   left it.
-- 🖱️ **Computer control** *(v1.5)* — when a request goes through a graphical
+- 🖱️ **Computer control** — when a request goes through a graphical
   application, the AI **sees the screen** and acts: click, type, fill in fields, key
   combinations, open an application, switch windows. **Locally**, without a vision
   model: the screen is described to it through the accessibility tree and OCR, each
   element numbered. During control, the **screen edges glow orange** and a bar reminds
   you how to stop it (**Esc** or the ■ button).
-- 🌐 **English and French** *(v1.6)* — interface, model answers (local or cloud) and
+- 🌐 **English and French** — interface, model answers (local or cloud) and
   computer control in either language. At first launch, My_OS uses your Linux
   language: French if the system is in French, English otherwise. The 🌐 button in the
   title bar switches at any time.
@@ -440,7 +439,7 @@ My_OS/
 │   ├── popup.py              # PySide6 window, IPC client, window states
 │   ├── chat_view.py          # conversation: bubbles, answers, tool cards
 │   ├── composer.py           # input area (Cloud, API key, send)
-│   ├── window_chrome.py      # title bar (🌐 language menu) + resizing (frameless)
+│   ├── window_chrome.py      # title bar (language menu) + resizing (frameless)
 │   ├── markdown_render.py    # markdown without HTML or images (QTextBrowser)
 │   ├── confirm_dialog.py     # confirmation dialog
 │   ├── control_overlay.py    # glowing edges + control stop bar
