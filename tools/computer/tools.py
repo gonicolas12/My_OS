@@ -134,6 +134,11 @@ _DIRECTION_LABELS = {
 # Caractères tapés : retour à la ligne et tabulation, jamais d'autre caractère de
 # contrôle (un Échap tapé dans le texte couperait le contrôle, par exemple).
 _TYPABLE_CONTROLS = frozenset("\n\t")
+# Champs d'une ligne : Entrée y envoie le formulaire (ou active le bouton par défaut
+# du dialogue), comme un clic sur son bouton.
+_SUBMITTING_FIELDS = frozenset({"text_field", "password", "spin"})
+_ENTER_KEYS = frozenset({"Return", "KP_Enter"})
+_SUBMITS = N_(" — Entrée peut déclencher le bouton « {button} »")
 
 
 @dataclass
@@ -191,6 +196,11 @@ def _in_window(args: dict) -> str:
     if window and target.get("window_id"):
         return tr(" dans {window}", window=window)
     return tr(" sur le bureau")
+
+
+def _submits(target: dict) -> str:
+    """« — Entrée peut déclencher le bouton « Envoyer » », si Entrée l'enverrait."""
+    return tr(_SUBMITS, button=target["submits"]) if target.get("submits") else ""
 
 
 def _as_bool(value: object) -> bool:
@@ -260,12 +270,30 @@ class _ScreenTool(BaseTool):  # pylint: disable=abstract-method
         focused = self._backend.focused_element() if window else None
         return self._target(window, element=focused)
 
+    def _mark_submit(self, target: dict) -> None:
+        """Entrée dans un champ d'une ligne envoie le formulaire, comme un clic sur son
+        bouton : si la fenêtre (dernière observation) montre un bouton au libellé
+        sortant ou destructeur (« Submit », « Envoyer », « Supprimer »…), la cible
+        le note et l'action est escaladée comme son clic. Sans focus connu, rien."""
+        if target.get("role") not in _SUBMITTING_FIELDS:
+            return
+        last = self._backend.last
+        if last is None or last.active is None or last.active.id != target["window_id"]:
+            return
+        for element in last.elements:
+            if element.role == "button" and is_destructive_label(element.name):
+                target["submits"] = element.name
+                return
+
     def escalate(self, args: dict) -> int:
         """Niveau 2 pour un terminal ou un lanceur de commandes, les paramètres du
-        système, ou (clic) une action irréversible annoncée par le libellé visé."""
+        système, Entrée qui enverrait un formulaire au bouton sensible, ou (clic) une
+        action irréversible annoncée par le libellé visé."""
         target = args.get("target")
         if not isinstance(target, dict):
             return self.risk_level
+        if target.get("submits"):
+            return 2
         keys = app_keys(str(target.get("app", "")), str(target.get("instance", "")))
         if (
             keys & (TERMINAL_APPS | COMMAND_LAUNCHERS)
@@ -480,14 +508,17 @@ class TypeText(_ScreenTool):
             element = self._element(number)
             if element is not None:
                 clean["target"] = self._point_target(element)
-            return clean
-        clean["target"] = self._focus_target()
+        else:
+            clean["target"] = self._focus_target()
+        if clean["enter"] and isinstance(clean.get("target"), dict):
+            self._mark_submit(clean["target"])
         return clean
 
     def describe(self, args: dict) -> str | None:
         """« Taper « ls » (puis Entrée) dans « Terminal » (xfce4-terminal) » : le
-        texte exact, en entier."""
-        if not _target_of(args):
+        texte exact, en entier, et le bouton qu'Entrée déclencherait."""
+        target = _target_of(args)
+        if not target:
             return None
         enter = tr(" puis Entrée") if args.get("enter") else ""
         in_field = (
@@ -501,7 +532,7 @@ class TypeText(_ScreenTool):
             enter=enter,
             field=in_field,
             where=_in_window(args),
-        )
+        ) + _submits(target)
 
     def run(self, args: dict) -> ToolResult:
         text = str(args.get("text", ""))
@@ -587,6 +618,8 @@ class PressKeys(_ScreenTool):
         repeat = _as_int(args.get("repeat", 1)) or 1
         clean["repeat"] = max(1, min(repeat, MAX_REPEAT))
         clean["target"] = self._focus_target()
+        if "invalid" not in clean and combo_parts(clean["keys"])[1] in _ENTER_KEYS:
+            self._mark_submit(clean["target"])
         return clean
 
     def escalate(self, args: dict) -> int:
@@ -605,13 +638,14 @@ class PressKeys(_ScreenTool):
 
     def describe(self, args: dict) -> str | None:
         """« Appuyer sur « shift+Delete » (×2) dans « Fenêtre » (app) »."""
-        if not _target_of(args):
+        target = _target_of(args)
+        if not target:
             return None
         repeat = int(args.get("repeat", 1) or 1)
         times = f" ×{repeat}" if repeat > 1 else ""
         focus = (
             tr(", focus sur {element}", element=_element_phrase(args))
-            if _target_of(args).get("name")
+            if target.get("name")
             else ""
         )
         return tr(
@@ -620,7 +654,7 @@ class PressKeys(_ScreenTool):
             times=times,
             where=_in_window(args),
             focus=focus,
-        )
+        ) + _submits(target)
 
     def run(self, args: dict) -> ToolResult:
         if args.get("invalid"):

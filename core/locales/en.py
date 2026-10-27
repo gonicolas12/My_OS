@@ -326,6 +326,9 @@ MESSAGES: dict[str, str] = {
     " puis Entrée": " then Enter",
     " dans le champ {element}": " in the field {element}",
     "Taper « {text} »{enter}{field}{where}": "Type “{text}”{enter}{field}{where}",
+    " — Entrée peut déclencher le bouton « {button} »": (
+        " — Enter may trigger the “{button}” button"
+    ),
     "type_text : texte vide.": "type_text: empty text.",
     "type_text : caractère de contrôle refusé (seuls le retour à la ligne et la "
     "tabulation se tapent ; pour une touche, utilisez press_keys).": (
