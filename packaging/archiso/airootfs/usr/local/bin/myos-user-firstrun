@@ -22,11 +22,11 @@ if [ ! -x "$venv/bin/python" ]; then
     python -m venv --system-site-packages "$venv"
 fi
 
-# Dépendances PyPI-only (les autres viennent des paquets système via le venv).
-# En cas d'échec (ex. pas de réseau), on ne pose PAS le marqueur : nouvel essai
-# à la prochaine session, et la cause reste lisible dans $log.
+# Dépendances PyPI-only (les autres, dont le SDK anthropic, viennent des paquets
+# système via le venv). En cas d'échec (ex. pas de réseau), on ne pose PAS le
+# marqueur : nouvel essai à la prochaine session, et la cause reste lisible dans $log.
 "$venv/bin/pip" install --quiet --upgrade pip >>"$log" 2>&1 || true
-if ! "$venv/bin/pip" install --quiet pynput anthropic ollama >>"$log" 2>&1; then
+if ! "$venv/bin/pip" install --quiet pynput ollama >>"$log" 2>&1; then
     echo "myos-user-firstrun : échec de pip (voir $log) ; nouvel essai à la prochaine session" >&2
     exit 1
 fi

@@ -6,8 +6,11 @@
 # on applique l'overlay My_OS (profiledef, paquets, airootfs) et on active les
 # services. On ne maintient ainsi aucune configuration de bootloader à la main.
 #
-# PRÉREQUIS : hôte Arch Linux, paquet `archiso` installé, exécution en root
-# (mkarchiso l'exige). NE se construit PAS sous Windows ni en CI.
+# PRÉREQUIS : hôte Arch Linux, paquet `archiso` installé. Depuis archiso 91, un
+# utilisateur normal suffit : mkarchiso passe par des espaces de noms utilisateur
+# (plages de l'utilisateur dans /etc/subuid et /etc/subgid) et déconseille root.
+# Avec un archiso plus ancien, exécution en root (sudo). NE se construit PAS sous
+# Windows ni en CI.
 #
 # ESPACE DISQUE : le répertoire de travail a besoin de ~15 Gio et NE doit PAS être
 # sur un tmpfs (RAM). Défaut : /var/tmp (sur disque). Adaptez avec -w au besoin.
@@ -18,7 +21,8 @@
 # démarrage correspondent donc exactement aux paquets installés : `pacman -S`
 # fonctionne en live sans mise à jour partielle, quel que soit l'âge de l'ISO.
 #
-# Usage :  sudo ./packaging/build_iso.sh [-o REP_SORTIE] [-w REP_TRAVAIL] [-s AAAA/MM/JJ]
+# Usage :  ./packaging/build_iso.sh [-o REP_SORTIE] [-w REP_TRAVAIL] [-s AAAA/MM/JJ]
+#          (précédé de sudo avec un archiso antérieur à la version 91)
 set -euo pipefail
 
 RELENG="/usr/share/archiso/configs/releng"
@@ -31,9 +35,12 @@ OUTDIR="$SCRIPT_DIR/out"
 WORKPARENT="/var/tmp"
 ARCHIVE_URL="https://archive.archlinux.org/repos"
 SNAPSHOT=""
+# Première version d'archiso dont mkarchiso fonctionne sans root.
+ARCHISO_ROOTLESS_MIN=91
 
 usage() {
-    echo "Usage : sudo $0 [-o REP_SORTIE] [-w REP_TRAVAIL] [-s AAAA/MM/JJ]" >&2
+    echo "Usage : $0 [-o REP_SORTIE] [-w REP_TRAVAIL] [-s AAAA/MM/JJ]" >&2
+    echo "  (en root avec sudo si archiso est antérieur à la version $ARCHISO_ROOTLESS_MIN)" >&2
     echo "  -o REP_SORTIE   répertoire de sortie de l'ISO (défaut : $OUTDIR)" >&2
     echo "  -w REP_TRAVAIL  parent du répertoire de travail, ~15 Gio requis," >&2
     echo "                  JAMAIS un tmpfs (défaut : $WORKPARENT)" >&2
@@ -55,9 +62,29 @@ die() {
     exit 1
 }
 
+ROOTLESS=0
+[ "$(id -u)" -eq 0 ] || ROOTLESS=1
+
 # --- Vérifications de l'environnement -----------------------------------------
-[ "$(id -u)" -eq 0 ] || die "à exécuter en root (mkarchiso l'exige) : sudo $0"
 command -v mkarchiso >/dev/null 2>&1 || die "mkarchiso introuvable — installez 'archiso' (pacman -S archiso)"
+if [ "$ROOTLESS" -eq 1 ]; then
+    # Sans root : archiso récent, et plages d'identifiants subordonnés pour les
+    # utilisateurs des paquets installés dans l'image (pacstrap -N, unshare).
+    archiso_version="$(pacman -Q archiso 2>/dev/null | awk '{print $2}' || true)"
+    if [ -z "$archiso_version" ] \
+        || [ "$(vercmp "$archiso_version" "$ARCHISO_ROOTLESS_MIN")" -lt 0 ]; then
+        die "archiso ${archiso_version:-de version inconnue} : sans root, archiso ≥ $ARCHISO_ROOTLESS_MIN est requis ; sinon : sudo $0"
+    fi
+    me="$(id -un)"
+    for file in /etc/subuid /etc/subgid; do
+        grep -qE "^($me|$(id -u)):" "$file" 2>/dev/null \
+            || die "aucune plage pour $me dans $file (sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $me), ou bien : sudo $0"
+    done
+    # Essai de l'espace de noms de mkarchiso avant le long build : newuidmap et
+    # newgidmap doivent garder leurs capacités (perdues par certaines images, WSL).
+    unshare --map-auto --map-root-user -- true 2>/dev/null \
+        || die "espace de noms utilisateur impossible (unshare --map-auto) : newuidmap et newgidmap ont-ils leurs capacités ? (getcap /usr/bin/newuidmap) ; sinon : sudo $0"
+fi
 [ -d "$RELENG" ] || die "profil releng introuvable dans $RELENG — installez 'archiso'"
 [ -f "$OVERLAY/profiledef.sh" ] || die "overlay introuvable : $OVERLAY/profiledef.sh"
 command -v curl >/dev/null 2>&1 || die "curl introuvable — installez 'curl'"
@@ -81,7 +108,16 @@ fi
 
 WORK="$(mktemp -d -p "$WORKPARENT" myos-iso.XXXXXX)"
 PROFILE="$WORK/profile"
-cleanup() { rm -rf "$WORK"; }
+cleanup() {
+    # Sans root, l'image contient des fichiers d'identifiants subordonnés : seul un
+    # espace de noms comme celui de mkarchiso peut les supprimer.
+    if [ "$ROOTLESS" -eq 1 ]; then
+        unshare --map-auto --map-root-user -- rm -rf -- "$WORK" 2>/dev/null \
+            || rm -rf -- "$WORK"
+    else
+        rm -rf -- "$WORK"
+    fi
+}
 trap cleanup EXIT
 
 echo ">> Dérivation du profil releng → $PROFILE"
