@@ -223,9 +223,11 @@ brute. La note qui suit (« nécessite un modèle cloud ») était donc juste po
   bouton de langue visible.
 
 ### v1.7 — mise à jour de sécurité de l'ISO (novembre 2026)
-- [ ] ISO à publier : elle remplace celle de la v1.6, pour une raison de sécurité.
+- [x] ISO publiée : [release `v1.7`](https://github.com/gonicolas12/My_OS/releases/tag/v1.7),
+  avec sa somme SHA-256 ; elle remplace celle de la v1.6, pour une raison de sécurité.
   Paquets figés sur l'instantané Arch Linux Archive du **2026-11-09** (le 2026-10-20 pour
-  la v1.2 à la v1.6) : les mêmes 758 paquets, dont 111 mis à jour.
+  la v1.2 à la v1.6) : les 758 paquets de la v1.6, dont 111 mis à jour, plus le SDK du
+  mode cloud et ses 9 dépendances (768 en tout).
 - [x] **Certificats** : ca-certificates-mozilla 3.133 (avis Arch du 21 octobre 2026,
   certificats compromis de l'autorité intermédiaire eMudhra) ; le magasin de l'ISO passe
   de quatre racines emSign à une. TLS sert au `pip` du premier démarrage, au
@@ -243,6 +245,15 @@ brute. La note qui suit (« nécessite un modèle cloud ») était donc juste po
   archiso, les plages de `/etc/subuid` et `/etc/subgid` et l'espace de noms avant le
   build ; en root, rien ne change). Validé en root dans le labo ; le build sans root y
   est impossible (`newuidmap` sans ses capacités sous WSL) et reste à éprouver ailleurs.
+- [x] **Mode cloud avec Claude Sonnet 5.5** : sa réflexion revient telle quelle dans la
+  boucle d'outils d'une demande, celle des demandes précédentes est retirée ; une
+  réponse coupée (16 000 tokens par réponse, ou fenêtre de contexte pleine) ou refusée
+  est signalée dans le popup, sans lancer d'outil. Éprouvé avec une vraie clé (cf.
+  « Encore à éprouver » et [INTERFACES.md](INTERFACES.md) §5.2).
+- [x] **Menus standard de Qt dans la langue de My_OS** : le clic droit dans un champ de
+  texte (clé API, saisie, conversation) donne Annuler, Couper, Copier, Coller… en
+  français quand My_OS est en français, en anglais sinon ; vérifié en VM sur le champ
+  de la clé API.
 - [x] Validé en VM sur processeur seul (novembre 2026) : sonde du modèle 5 sur 5 en
   français et en anglais, injection cachée dans un fichier ignorée ; contrôle de
   l'ordinateur en anglais (Mousepad, arrêt par Échap, terminal refusé par tous les
