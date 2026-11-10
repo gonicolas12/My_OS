@@ -174,7 +174,9 @@ def test_cloud_dans_la_langue_de_la_requete() -> None:
         received.update(kwargs)
         return _ClaudeStream()
 
-    anthropic = SimpleNamespace(messages=SimpleNamespace(stream=stream_call))
+    anthropic = SimpleNamespace(
+        beta=SimpleNamespace(messages=SimpleNamespace(stream=stream_call))
+    )
     client = ClaudeClient(client=anthropic)
     with use_language("en"):
         client.respond([{"role": "user", "content": "hi"}])

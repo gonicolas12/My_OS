@@ -68,6 +68,17 @@ MESSAGES: dict[str, str] = {
     "Outil inconnu : {tool}": "Unknown tool: {tool}",
     "Bloqué : {summary}": "Blocked: {summary}",
     "Erreur d'exécution : {error}": "Execution error: {error}",
+    # ---- models/cloud_router.py ----------------------------------------------------
+    "⚠ Réponse coupée : Claude a atteint la longueur maximale d'une réponse. Aucune "
+    "action de ce tour n'a été lancée ; reformulez la demande ou découpez-la.": (
+        "⚠ Answer cut off: Claude reached the maximum length of an answer. No action "
+        "from this turn was started; rephrase the request or split it up."
+    ),
+    "⚠ Claude a refusé de poursuivre cette demande (règles d'usage d'Anthropic). "
+    "Aucune action de ce tour n'a été lancée.": (
+        "⚠ Claude declined to go on with this request (Anthropic's usage policies). "
+        "No action from this turn was started."
+    ),
     # ---- models/local_llm.py : notes au modèle --------------------------------------
     "(Réponds en français.)": "(Answer in English.)",
     "réponse illisible (appel d'outil mal formé, deux fois de suite) : reformulez ou "

@@ -302,8 +302,11 @@ class ClaudeClient:                       # implémente le protocole Model (§6.
     name = "claude"
     def __init__(self, *, api_key: str | None = None,
                  model: str = "claude-sonnet-5-5",
-                 max_tokens: int = 4096,
-                 client=None): ...         # `anthropic` importé paresseusement
+                 max_tokens: int = 16000,  # réflexion comprise
+                 client=None,              # `anthropic` importé paresseusement
+                 screen_control: bool = True,
+                 thinking: str = "adaptive",   # ou "between_tools" (mesure)
+                 effort: str | None = None): ...  # None = défaut de l'API (high)
     def respond(self, messages, on_token=None) -> Plan: ...  # streaming via on_token
 
 class CloudUnavailable(RuntimeError): ...  # cloud demandé mais pas de clé
@@ -315,6 +318,53 @@ class CloudRouter:                         # sélecteur de backend cloud (lazy)
     def get_cloud_model(self) -> Model: ... # construit/cache le ClaudeClient ;
                                             # CloudUnavailable si pas de clé
 ```
+
+**Réflexion de Claude Sonnet 5.5.** Le modèle réfléchit par défaut (réflexion
+adaptative, effort `high`) ; ses blocs de réflexion (`thinking`, texte vide par défaut,
+avec une `signature`) comptent dans `max_tokens`, d'où 16 000. L'API refuse
+`temperature`, `top_p` et `top_k` (erreur 400) : ils ne sont jamais envoyés (le SDK 1.x
+et plus ne les propose d'ailleurs plus). Règles d'une boucle d'outils :
+
+- **Tour renvoyé tel quel.** `respond` met dans `Plan.raw_content` le contenu de la
+  réponse tel que l'API l'a renvoyé (blocs de réflexion signés, texte, `tool_use` avec
+  leurs vrais identifiants) ; l'orchestrator le garde dans l'historique (§6.5) et
+  `_to_anthropic` le renvoie à l'identique au tour suivant, à condition que ses
+  `tool_use` correspondent encore aux `tool_calls` du message (sinon, conversion
+  générique).
+- **Réflexion liée à la conversation.** Un bloc de réflexion n'est valide que si le
+  prompt système, les outils et tous les messages qui le précèdent n'ont pas changé ;
+  sinon, erreur 400 sur les comptes créés depuis le 31 août 2026. L'historique de My_OS
+  change entre deux requêtes (langue : prompt, outils et rappels ; élagage à
+  `MAX_HISTORY_MESSAGES`) et pendant le contrôle de l'écran (seule la dernière capture
+  est gardée). Donc : seule la réflexion de la **requête en cours** repart (retirer les
+  blocs du début de l'historique est permis ; le texte et les `tool_use` des requêtes
+  précédentes repartent, eux) ; et chaque appel demande à l'API d'**écarter** un bloc
+  invalidé plutôt que d'échouer (`thinking.block_binding.prefix_mismatch_behavior:
+  "drop_block"`, en-tête bêta `thinking-binding-controls-2026-08-01`, d'où
+  `client.beta.messages.stream`). Pendant le contrôle de l'écran, la réflexion des
+  étapes précédentes est donc écartée à chaque capture retirée.
+- **Tour coupé ou refusé.** `stop_reason` `max_tokens` (ou
+  `model_context_window_exceeded`) : `Plan.interrupted` porte « ⚠ Réponse coupée… » ;
+  `refusal` : « ⚠ Claude a refusé de poursuivre… ». Aucun appel d'outil n'est renvoyé,
+  ni de contenu brut ; l'orchestrator affiche la notice et n'exécute rien.
+- **Réglages pour la mesure.** `thinking="between_tools"` (le plus bas : pas de
+  réflexion préalable ; effort `high` au plus ; aucun autre champ, donc pas de
+  `drop_block` : à réserver à un historique qui ne change pas) et `effort`
+  (`output_config.effort` : `low` à `max`). Mesuré avec une vraie clé en novembre 2026
+  (13 demandes en français, 13 en anglais, deux passes, premier tour) : bon outil 48,
+  50 et 48 fois sur 52 (défaut, `between_tools`, `medium` ; les écarts sont tous
+  « Désinstalle glibc », refusé par écrit), durée médiane 1,2, 1,6 et 1,2 s, mêmes
+  coûts (~1 centime par requête, l'entrée domine). **Le défaut est gardé** : `medium`
+  n'apporte rien ici, et `between_tools` perd `drop_block`.
+- **Texte entre deux appels d'outils.** Sur ce modèle, une note de plus d'une phrase
+  ou deux écrite entre deux outils revient dans un bloc `thinking`, vide par défaut :
+  le popup n'affiche que les blocs `text` (et les cartes des outils). Mesuré au premier
+  tour : avec le défaut, Claude appelle l'outil sans texte ; avec `between_tools`, il
+  écrit d'abord une courte phrase (premier mot vers 1,2 s).
+- **SDK.** Testé avec le SDK `anthropic` 1.15 (installations depuis les sources) et
+  2.6 (l'ISO, paquet `python-anthropic`), contre un faux serveur local
+  (`tests/test_models/test_cloud_sdk.py`). Le SDK 2.x envoie la version d'API
+  `2026-10-21` ; My_OS n'utilise rien de ce qu'elle retire.
 
 ### 5.3 · Routage **par requête** (côté orchestrator)
 
@@ -339,7 +389,9 @@ tantôt au local, tantôt au cloud (c'est voulu).
 
 Chaque envoi cloud est journalisé via un **logger dédié `myosd.cloud`**
 (horodatage, nom du modèle, **nombre de messages et de caractères** transmis) —
-**jamais** la clé, **jamais** le contenu. Le canal est le logger (journald sous
+**jamais** la clé, **jamais** le contenu. Chaque réponse aussi : raison de l'arrêt
+(et catégorie d'un refus), délai jusqu'au premier texte, durée, tokens facturés
+(entrée, cache lu et écrit, sortie) et nombre de blocs de réflexion écartés. Le canal est le logger (journald sous
 systemd), distinct du **journal d'audit** (`~/.local/share/my_os/audit.db`), réservé aux actions
 d'outils et décisions de permission (§4). La minimisation des données envoyées au
 cloud est traitée en §6 et SECURITY menace 2.
@@ -407,12 +459,15 @@ class ToolCall:
 class Plan:
     narration: str            # texte du tour (peut être vide)
     tool_calls: list[ToolCall]  # actions de ce tour ; vide = réponse finale
+    interrupted: str = ""     # tour coupé ou refusé : notice traduite, rien n'est exécuté
+    raw_content: list | None = None  # contenu brut du backend, à lui renvoyer tel quel
 
 TokenCallback = Callable[[str], None]
 
 # Historique conversationnel (Message) :
 #   {"role": "user", "content": str, "language": str}  # langue de la requête (§11)
 #   {"role": "assistant", "content": str, "tool_calls": list[ToolCall]}
+#       + "raw_content": list   # tour du cloud (§5.2) ; le local l'ignore
 #   {"role": "tool", "tool": str, "content": str}   # résultat réinjecté
 #   {"role": "tool", "tool": str, "content": str, "image": bytes}  # outils de l'écran
 Message = dict
@@ -424,7 +479,11 @@ class Model(Protocol):
 **Boucle agentique.** `respond` reçoit l'historique complet et renvoie le
 `Plan` d'**un tour**. Un `Plan` sans `tool_calls` est une réponse finale (fin de
 boucle). Sinon, l'orchestrator exécute les outils, réinjecte leurs résultats
-(messages `role=tool`) et rappelle `respond` — jusqu'à `MAX_STEPS` (§6).
+(messages `role=tool`) et rappelle `respond` — jusqu'à `MAX_STEPS` (§6). Un `Plan`
+dont `interrupted` n'est pas vide (réponse coupée, refus) termine aussi la boucle :
+sa notice s'affiche (`notice`, niveau `warning`) et aucun de ses outils ne s'exécute.
+`raw_content`, quand un backend le remplit, est gardé dans le message `assistant` de
+l'historique (clé `raw_content`) pour ce même backend.
 
 **Streaming.** Si `on_token` est fourni, le modèle l'appelle pour chaque
 fragment de texte au fil de la génération (le popup l'affiche en direct).
