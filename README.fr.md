@@ -23,7 +23,7 @@ My_OS est la suite logique de [My_AI](https://github.com/gonicolas12/My_AI) : on
 d'une *application* qui parle au PC à un *système* dans lequel l'IA est résidente et
 profondément intégrée.
 
-> **État du projet : v1.6 publiée ([télécharger](https://github.com/gonicolas12/My_OS/releases/tag/v1.6)), validée en VM ; nouveauté : My_OS parle français et anglais — interface, assistant (local et cloud) et contrôle de l'ordinateur ; il suit la langue de Linux au premier lancement, et le bouton 🌐 change de langue à tout moment. Elle garde tout de la v1.5, dont le contrôle de l'ordinateur : le modèle local voit l'écran et agit à la souris et au clavier, avec des bords lumineux et une barre d'arrêt (session X11).** Les cinq jalons (socle →
+> **État du projet : v1.7 publiée ([télécharger](https://github.com/gonicolas12/My_OS/releases/tag/v1.7)), validée en VM ; nouveautés : une mise à jour de sécurité de l'ISO (certificats, Tesseract, Python et Ollama à jour), le mode cloud adapté à Claude Sonnet 5.5 et éprouvé avec une vraie clé, et les menus standard de Qt dans la langue de My_OS. Elle garde tout de la v1.6 : français et anglais (bouton 🌐), et le contrôle de l'ordinateur — le modèle local voit l'écran et agit à la souris et au clavier, avec des bords lumineux et une barre d'arrêt (session X11).** Les cinq jalons (socle →
 > fichiers/permissions → pilotage système → routeur cloud → packaging) sont terminés, et
 > l'ISO a été testée de bout en bout en VM (BIOS et UEFI) en octobre 2026 : permissions,
 > confirmations, élévation polkit, réglages, modèle local, contrôle de l'ordinateur, les
@@ -197,7 +197,7 @@ Deux voies. Détails complets dans **[docs/INSTALLATION.md](docs/INSTALLATION.md
 ### a) Via l'ISO live (le plus simple)
 
 Une ISO bootable (base Arch + Xfce/X11) embarque My_OS prêt à l'emploi :
-**[télécharger l'ISO de la v1.6](https://github.com/gonicolas12/My_OS/releases/tag/v1.6)**
+**[télécharger l'ISO de la v1.7](https://github.com/gonicolas12/My_OS/releases/tag/v1.7)**
 (avec son fichier `.sha256`). Pour la construire vous-même, le profil
 [archiso](https://wiki.archlinux.org/title/Archiso) et le script de build sont dans
 [`packaging/`](packaging/) (`./packaging/build_iso.sh` sur un hôte Arch, sans root depuis
@@ -394,10 +394,15 @@ par le point de passage unique `permissions/policy_engine.py`.
   français et anglais : interface, modèle local et cloud, contrôle de l'ordinateur ;
   langue de Linux au premier lancement, bouton 🌐 FR / EN ; validée en VM dans les deux
   langues (mêmes 42 scénarios de permissions, mêmes décisions).
+- [x] **v1.7 publiée** : [release GitHub](https://github.com/gonicolas12/My_OS/releases/tag/v1.7),
+  mise à jour de sécurité de l'ISO sur un instantané Arch plus récent (certificats,
+  Tesseract, Python, Ollama), SDK du mode cloud depuis le dépôt Arch ; mode cloud avec
+  Claude Sonnet 5.5, sa réflexion gardée entre les appels d'outils, éprouvé avec une
+  vraie clé ; menus standard de Qt dans la langue de My_OS ; validée en VM dans les deux
+  langues.
 
 **Encore à éprouver :** matériel réel (pilotes Wi-Fi, rétroéclairage, cartes graphiques)
-et mode cloud avec une vraie clé — retours bienvenus dans les
-[issues](https://github.com/gonicolas12/My_OS/issues).
+— retours bienvenus dans les [issues](https://github.com/gonicolas12/My_OS/issues).
 
 **Au-delà (vision long terme, non promise) :** vision pure pour les applications sans
 accessibilité ni texte (modèle local spécialisé, sur carte graphique), défenses

@@ -325,6 +325,9 @@ défense en profondeur qui s'ajoute aux trois invariants, elle ne les remplace p
   l'API Anthropic.
 - En mode cloud, **tout l'historique persistant** (borné) part : un `reset` (Ctrl+L)
   avant de passer au cloud est conseillé pour minimiser les données envoyées.
+- Une réponse cloud **coupée** (limite de tokens ou de contexte) ou **refusée** par le
+  modèle ne lance **aucun** outil : un appel d'outil coupé aurait des arguments
+  incomplets. Le popup affiche un avertissement à la place (v1.7).
 
 ### Port Wayland & packaging (jalon 5)
 
@@ -392,8 +395,8 @@ pilotant l'interface réelle (clavier, souris, captures) et le daemon réel :
 - **Modèle local** : bon outil choisi dans la grande majorité des demandes en langage
   naturel ; injection de prompt dans un fichier résistée (cf. menace 1).
 
-Non couvert : matériel réel (rétroéclairage, Wi-Fi physique), mode cloud avec une vraie
-clé, session Wayland.
+Non couvert : matériel réel (rétroéclairage, Wi-Fi physique), session Wayland. Le mode
+cloud avec une vraie clé l'a été en novembre 2026 (v1.7, plus bas).
 
 **Contrôle de l'ordinateur (octobre 2026, v1.5).** Sur une ISO construite depuis la
 branche, avec le modèle local réel (qwen3.5:4b) :
@@ -454,3 +457,21 @@ modèle local réel (qwen3.5:4b, sur la carte graphique du PC de test) :
   jugée comme le clic du bouton sensible que montre la fenêtre (niveau 2, bouton nommé
   dans la confirmation) ; le prompt demande aussi de remplir un formulaire sans Entrée.
   Démo refaite dans les deux langues : champs remplis sans Entrée, envoi confirmé.
+
+**Mise à jour de sécurité de l'ISO (novembre 2026, v1.7).** Sur l'ISO de l'instantané
+Arch du 2026-11-09, processeur seul, modèle local réel (qwen3.5:4b) :
+
+- **Matrice des 42 scénarios** en français puis en anglais : 42/42 dans les deux cas,
+  mêmes décisions dans les deux langues.
+- **Sonde du modèle** : 5 sur 5 dans chaque langue, injection cachée dans un fichier
+  ignorée. **Contrôle de l'ordinateur** en anglais et en français : terminal refusé par
+  tous les chemins, commande tapée dans « Run Program » escaladée et refusée.
+- **Paquets** : magasin de certificats sans les certificats compromis de l'autorité
+  intermédiaire eMudhra (racines emSign : de quatre à une) ; Tesseract 5.5.4, qui
+  corrige une utilisation après libération qu'une image choisie déclenche (OCR
+  `fra+eng` vérifié) ; SDK du mode cloud signé par Arch et figé avec l'instantané, au
+  lieu de la dernière version publiée sur PyPI.
+- **Mode cloud avec une vraie clé** (Claude Sonnet 5.5) : clé passée au trousseau de la
+  session sans être affichée ni écrite, effacée à la fin. Par le popup : écriture d'un
+  fichier confirmée au niveau 1, contrôle de l'ordinateur accordé au niveau 2, comme
+  en local ; au banc, « Désinstalle glibc » refusé par le modèle lui-même.
