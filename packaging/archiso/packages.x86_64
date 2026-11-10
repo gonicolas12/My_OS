@@ -4,10 +4,11 @@
 # (union triée), de sorte que la base Arch (linux, mkinitcpio, bootloaders…)
 # reste celle, à jour, de l'hôte de build. On ne liste donc ICI que nos ajouts.
 #
-# NB paquets PyPI-only (pynput, anthropic, ollama-python) : ils ne sont PAS dans
-# les dépôts officiels et sont installés via pip dans un venv au 1er boot
-# (cf. myos-user-firstrun + docs/INSTALLATION.md). Le venv réutilise les paquets
-# système ci-dessous via --system-site-packages.
+# NB paquets PyPI-only (pynput, ollama-python) : ils ne sont PAS dans les dépôts
+# officiels et sont installés via pip dans un venv au 1er boot (cf.
+# myos-user-firstrun + docs/INSTALLATION.md). Le venv réutilise les paquets système
+# ci-dessous via --system-site-packages, dont le SDK anthropic du mode cloud
+# (python-anthropic, dans [extra] depuis fin octobre 2026).
 #
 # NB noms de paquets : valables sur Arch fin 2026 ; à vérifier contre les dépôts
 # courants au moment du build (cf. packaging/README.md).
@@ -62,6 +63,9 @@ python-dbus
 python-gobject
 python-keyring
 python-yaml
+# SDK du mode cloud (Claude) : paquet signé, figé sur l'instantané de l'ISO, au lieu
+# d'un pip au 1er boot qui prendrait la dernière version publiée.
+python-anthropic
 
 # --- Port Wayland (EXPÉRIMENTAL ; X11 reste nominal sur l'ISO) ---
 qt6-wayland
