@@ -200,7 +200,8 @@ A bootable ISO (Arch base + Xfce/X11) ships My_OS ready to use:
 **[download the v1.6 ISO](https://github.com/gonicolas12/My_OS/releases/tag/v1.6)**
 (with its `.sha256` file). To build it yourself, the
 [archiso](https://wiki.archlinux.org/title/Archiso) profile and the build script are in
-[`packaging/`](packaging/) (`sudo ./packaging/build_iso.sh`, on an Arch host). On first
+[`packaging/`](packaging/) (`./packaging/build_iso.sh` on an Arch host, no root needed
+with archiso 91 or later). On first
 boot, the dependencies and the local model are fetched (network required). Plan
 **≥ 12 GB of RAM for the local model in live mode** (≥ 4 GB otherwise). The model uses a
 recent dedicated AMD, Intel or NVIDIA graphics card through Vulkan when there is one,

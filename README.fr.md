@@ -200,7 +200,8 @@ Une ISO bootable (base Arch + Xfce/X11) embarque My_OS prêt à l'emploi :
 **[télécharger l'ISO de la v1.6](https://github.com/gonicolas12/My_OS/releases/tag/v1.6)**
 (avec son fichier `.sha256`). Pour la construire vous-même, le profil
 [archiso](https://wiki.archlinux.org/title/Archiso) et le script de build sont dans
-[`packaging/`](packaging/) (`sudo ./packaging/build_iso.sh`, sur un hôte Arch). Au 1er
+[`packaging/`](packaging/) (`./packaging/build_iso.sh` sur un hôte Arch, sans root depuis
+archiso 91). Au 1er
 boot, les dépendances et le modèle local sont récupérés (réseau requis). Prévoir
 **≥ 12 Go de RAM pour le modèle local en live** (≥ 4 Go sinon). Le modèle utilise une
 carte graphique dédiée AMD, Intel ou NVIDIA récente via Vulkan si elle est présente,

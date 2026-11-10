@@ -222,6 +222,37 @@ brute. La note qui suit (« nécessite un modèle cloud ») était donc juste po
   ([README.fr.md](../README.fr.md)), captures et démos refaites dans les deux langues,
   bouton de langue visible.
 
+### v1.7 — mise à jour de sécurité de l'ISO (novembre 2026)
+- [ ] ISO à publier : elle remplace celle de la v1.6, pour une raison de sécurité.
+  Paquets figés sur l'instantané Arch Linux Archive du **2026-11-09** (le 2026-10-20 pour
+  la v1.2 à la v1.6) : les mêmes 758 paquets, dont 111 mis à jour.
+- [x] **Certificats** : ca-certificates-mozilla 3.133 (avis Arch du 21 octobre 2026,
+  certificats compromis de l'autorité intermédiaire eMudhra) ; le magasin de l'ISO passe
+  de quatre racines emSign à une. TLS sert au `pip` du premier démarrage, au
+  téléchargement du modèle et au mode cloud.
+- [x] **Lecture de l'écran** : Tesseract 5.5.4 corrige une utilisation après libération
+  (GHSA-jrf4-mx9r-v94h) qu'une image choisie par un attaquant déclenche quand plusieurs
+  langues sont lues en mode LSTM, le cas de My_OS (`fra+eng`).
+- [x] **Python 3.14.9** (pip 26.2.2, certifi 2026.10.23) et **Ollama 0.40.15** (appels
+  d'outils de qwen3.5 dont un argument contient `</function>`) ; noyau 7.2.14, Mesa
+  26.2.6. Python 3.14.10 et openssl 4, encore en test chez Arch, n'y sont pas.
+- [x] **SDK du mode cloud depuis le dépôt Arch** (`python-anthropic` 2.6.0, paquet signé et
+  figé avec l'instantané) au lieu de `pip` au premier démarrage, qui prenait la dernière
+  version publiée (2.7.0 au 10 novembre) ; `pip` n'installe plus que `pynput` et `ollama`.
+- [x] **ISO constructible sans root** avec archiso 91 et plus (`build_iso.sh` vérifie
+  archiso, les plages de `/etc/subuid` et `/etc/subgid` et l'espace de noms avant le
+  build ; en root, rien ne change). Validé en root dans le labo ; le build sans root y
+  est impossible (`newuidmap` sans ses capacités sous WSL) et reste à éprouver ailleurs.
+- [x] Validé en VM sur processeur seul (novembre 2026) : sonde du modèle 5 sur 5 en
+  français et en anglais, injection cachée dans un fichier ignorée ; contrôle de
+  l'ordinateur en anglais (Mousepad, arrêt par Échap, terminal refusé par tous les
+  chemins, commande tapée dans « Run Program » escaladée et refusée) et en français ;
+  42 scénarios de permissions dans chaque langue, mêmes décisions ; OCR de l'écran en
+  `fra+eng` ; son au premier usage ; saisie de la clé API ; Ollama en local seul et cache
+  K/V en 8 bits toujours chargé. **Mêmes temps que la v1.6** sur les mêmes demandes :
+  première demande à froid 80 et 102 s (v1.6 : 85 et 113 s), puis 11 à 12 s par demande
+  (v1.6 : 10 à 12 s), ~10 tokens/s, bon outil 12 fois sur 12 à chaque passe.
+
 ### Encore à éprouver
 - [ ] Un vrai PC (pilotes Wi-Fi, rétroéclairage, cartes graphiques ; son et Wi-Fi ont été
   validés en VM avec du matériel simulé). Le modèle sur une vraie carte graphique reste à
@@ -275,9 +306,10 @@ Plus modestes, et directement issues de l'usage réel :
   bouton au libellé reconnu ; un formulaire sans bouton nommé, ou une icône sans
   libellé, ne l'est pas.
 - **Temps de réponse sans GPU** : ~10 s par demande neuve en VM 8 cœurs depuis les lots
-  de 256 tokens, mais près d'une minute quand le modèle doit être chargé (première
-  requête de la session, ou après 1 h sans requête) : il relit alors tout le prompt
-  système et les schémas d'outils (~2 430 tokens). Pistes : prompt et schémas plus
+  de 256 tokens, mais 1 min 20 à près de 2 min quand le modèle doit être chargé
+  (première requête de la session, ou après 1 h sans requête) : il relit alors tout le
+  prompt système et les schémas d'outils (~3 500 tokens depuis le contrôle de
+  l'ordinateur, ~2 430 en v1.2 ; mesuré en novembre 2026). Pistes : prompt et schémas plus
   courts, modèle préchargé à l'ouverture de session, modèle plus petit par défaut sur les
   machines modestes.
 

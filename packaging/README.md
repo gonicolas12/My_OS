@@ -17,10 +17,10 @@ d'[archiso](https://wiki.archlinux.org/title/Archiso).
 | **Base** | dérivée de `releng` (overlay) | kernel, `mkinitcpio`, bootloaders et `pacman.conf` restent ceux, à jour, d'archiso ; aucune config bootloader maintenue à la main. |
 | **Compositeur** | **Xfce / X11** | chemin **nominal** pleinement supporté (le port Wayland reste expérimental, cf. §5). Robuste pour une première ISO. |
 | **Modèle local** | **téléchargé au 1er boot** (`ollama pull qwen3.5:4b`) | ISO légère ; reste *local et privé* à l'usage. Compromis : **réseau requis au 1er démarrage**. Alternative « modèle embarqué » (ISO lourde, hors-ligne) : cf. §6. |
-| **Contexte du modèle** | **8 bits** (`OLLAMA_KV_CACHE_TYPE=q8_0`, drop-in systemd du service `ollama`) | deux fois moins de mémoire pour la même fenêtre ; mêmes outils choisis et même vitesse, mesurés en VM sur Ollama 0.40.6. Exige la flash attention, qu'Ollama active seul (ne pas poser `OLLAMA_FLASH_ATTENTION=0`). |
+| **Contexte du modèle** | **8 bits** (`OLLAMA_KV_CACHE_TYPE=q8_0`, drop-in systemd du service `ollama`) | deux fois moins de mémoire pour la même fenêtre ; mêmes outils choisis et même vitesse, mesurés en VM sur Ollama 0.40.6, revérifiés sur 0.40.15 (novembre 2026 : cache toujours chargé en 8 bits, mêmes temps de réponse). Exige la flash attention, qu'Ollama active seul (ne pas poser `OLLAMA_FLASH_ATTENTION=0`). |
 | **Ollama en local seul** | `OLLAMA_NO_CLOUD=1` (même drop-in) | sans lui, Ollama contacte ollama.com au démarrage puis toutes les 4 h (recommandations de modèles, cache des modèles cloud). Le téléchargement du modèle au 1er boot reste possible ; seuls les modèles cloud et la recherche web d'Ollama, inutilisés par My_OS, sont coupés. |
 | **Carte graphique** | **Vulkan** (`ollama-vulkan` + pilotes Mesa `vulkan-radeon`, `vulkan-intel`, `vulkan-nouveau`) | le paquet `ollama` seul n'a que des backends processeur. Avec Vulkan, une carte dédiée AMD, Intel ou NVIDIA (Turing et suivantes, via NVK) fait tourner le modèle, sinon le processeur prend le relais. ~120 Mio installés, contre 1 Gio pour CUDA et 3 Gio pour ROCm, laissés hors de l'ISO. |
-| **Dépendances Python** | venv `--system-site-packages` au 1er boot | les paquets système (`pyside6`, `python-dbus`, `python-gobject`…) viennent de pacman ; seul le **PyPI-only** (`pynput`, `anthropic`, `ollama`) passe par `pip`. |
+| **Dépendances Python** | venv `--system-site-packages` au 1er boot | les paquets système (`pyside6`, `python-dbus`, `python-gobject`, le SDK du mode cloud `python-anthropic`…) viennent de pacman, figés sur l'instantané ; seul le **PyPI-only** (`pynput`, `ollama`) passe par `pip`. |
 | **Utilisateur** | `myos`, **non-root**, créé au 1er boot | le daemon ne tourne **jamais** en root (cf. [SECURITY.md](../docs/SECURITY.md) menace 3). Élévation ponctuelle via polkit/`pkexec`. |
 | **Autologin** | LightDM → session Xfce de `myos` | démo immédiate ; le service utilisateur `myosd` et le popup démarrent dans la session. |
 | **Langue** | aucune locale posée → bureau **et My_OS en anglais** | My_OS suit la langue du système (français seulement si la session est en français) ; le bouton 🌐 du popup le passe en français en un clic, choix mémorisé. |
@@ -100,12 +100,19 @@ sudo pacman -Syu
 #    il tire toute la chaîne Haskell ; les scripts passent déjà bash -n / sh -n) :
 sudo pacman -S archiso
 
-# 3) Depuis la racine du dépôt My_OS :
-sudo ./packaging/build_iso.sh                 # ISO dans packaging/out/
-sudo ./packaging/build_iso.sh -o /mnt/iso     # répertoire de sortie explicite
-sudo ./packaging/build_iso.sh -w /mnt/build   # répertoire de travail sur un gros disque
-sudo ./packaging/build_iso.sh -s 2026/10/18   # instantané de l'Archive (défaut : la veille)
+# 3) Depuis la racine du dépôt My_OS, en utilisateur normal (archiso ≥ 91) :
+./packaging/build_iso.sh                 # ISO dans packaging/out/
+./packaging/build_iso.sh -o /mnt/iso     # répertoire de sortie explicite
+./packaging/build_iso.sh -w /mnt/build   # répertoire de travail sur un gros disque
+./packaging/build_iso.sh -s 2026/11/09   # instantané de l'Archive (défaut : la veille)
 ```
+
+Depuis archiso 91, mkarchiso construit sans root (espaces de noms utilisateur) et
+déconseille de le lancer en root via `sudo` : il faut seulement que l'utilisateur ait
+ses plages d'identifiants dans `/etc/subuid` et `/etc/subgid` (`useradd` les crée
+d'office ; sinon `sudo usermod --add-subuids 100000-165535 --add-subgids
+100000-165535 $USER`). Avec un archiso plus ancien, `build_iso.sh` le dit et demande
+`sudo` ; en root, il fonctionne comme avant.
 
 Les paquets de l'ISO viennent de l'**instantané** `-s` de l'Arch Linux Archive (la
 veille par défaut, vérifié avant le build). Le même instantané devient le miroir du

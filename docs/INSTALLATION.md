@@ -13,7 +13,8 @@ Linux** (ou dérivés : EndeavourOS, etc.).
 ## 1 · Prérequis
 
 - Arch Linux (ou dérivé), à jour.
-- Python **3.10+**.
+- Python **3.11+** (la 3.10 n'est plus maintenue depuis le 1er octobre 2026, et
+  Pillow 13, qui sert au contrôle de l'ordinateur, exige la 3.11).
 - [Ollama](https://ollama.com/download) pour le modèle local.
 - Une session graphique (X11 nominal ; Wayland expérimental).
 
@@ -29,7 +30,7 @@ sudo pacman -S --needed \
     pyside6 \
     python-psutil python-dbus python-gobject python-yaml python-keyring python-evdev \
     polkit gnome-keyring libsecret \
-    ollama \
+    ollama python-anthropic \
     pipewire pipewire-pulse wireplumber libpulse \
     networkmanager \
     noto-fonts noto-fonts-emoji \
@@ -55,8 +56,8 @@ pip install -r requirements.txt        # ou un venv : python -m venv .venv && . 
 ```
 
 > Astuce : avec un venv créé en `--system-site-packages`, vous réutilisez `pyside6`,
-> `python-dbus` et `python-gobject` installés par pacman, et `pip` ne complète que le
-> reste (`pynput`, `anthropic`, `ollama`…).
+> `python-dbus`, `python-gobject` et le SDK `anthropic` (`python-anthropic`) installés
+> par pacman, et `pip` ne complète que le reste (`pynput`, `ollama`…).
 
 ### 2.3 · Modèle local
 
@@ -257,9 +258,12 @@ octobre 2026.
 - **Construire l'ISO** (sur un hôte Arch avec `archiso`) :
   ```bash
   sudo pacman -S archiso
-  sudo ./packaging/build_iso.sh                # ISO dans packaging/out/
-  sudo ./packaging/build_iso.sh -s 2026/10/19  # instantané de paquets explicite
+  ./packaging/build_iso.sh                # ISO dans packaging/out/
+  ./packaging/build_iso.sh -s 2026/11/09  # instantané de paquets explicite
   ```
+  Sans root depuis archiso 91 (l'utilisateur doit avoir ses plages dans `/etc/subuid`
+  et `/etc/subgid`, ce que `useradd` fait d'office) ; avec un archiso plus ancien,
+  précédez ces commandes de `sudo`.
   Les paquets viennent d'un **instantané daté de l'Arch Linux Archive** (la veille par
   défaut) ; le système live garde ce même instantané comme miroir, ce qui permet
   d'installer des paquets en live sans mise à jour partielle.
