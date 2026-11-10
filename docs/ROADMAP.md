@@ -257,7 +257,15 @@ brute. La note qui suit (« nécessite un modèle cloud ») était donc juste po
 - [ ] Un vrai PC (pilotes Wi-Fi, rétroéclairage, cartes graphiques ; son et Wi-Fi ont été
   validés en VM avec du matériel simulé). Le modèle sur une vraie carte graphique reste à
   mesurer.
-- [ ] Le mode cloud avec une vraie clé API.
+- [x] Le mode cloud avec une vraie clé (novembre 2026, Claude Sonnet 5.5). De bout en
+  bout dans la VM de l'ISO v1.7, par le popup et le daemon : processus listés, écriture
+  d'un fichier confirmée au niveau 1, lecture en anglais après un changement de langue
+  dans la même conversation, contrôle de l'ordinateur accordé au niveau 2 (Mousepad
+  ouvert, texte tapé) ; 9 appels, aucune erreur ni bloc de réflexion écarté, 1 à 2 s par
+  appel. Au banc (SDK 2.6, 13 demandes en français et 13 en anglais, deux passes) : bon
+  outil 48 fois sur 52 avec le réglage par défaut (les 4 autres : « Désinstalle glibc »,
+  refusé par écrit avec une explication), ~1 centime par requête. Réglage par défaut
+  gardé (cf. [INTERFACES.md](INTERFACES.md) §5.2).
 
 ---
 
@@ -290,6 +298,10 @@ Plus modestes, et directement issues de l'usage réel :
 
 - **Annuler une action** : le contrat des outils prévoit `reversible`/`undo_data`, pas
   encore exploités.
+- **Cache de prompt en mode cloud** : chaque requête renvoie ~5 000 tokens de prompt et de
+  schémas d'outils, relus à plein tarif (~1 centime ; aucun token lu depuis le cache sur
+  159 réponses mesurées en novembre 2026). Un `cache_control` sur ce préfixe stable le
+  facturerait ~10 fois moins à partir de la 2e requête.
 - **Consulter l'historique** depuis le popup (aujourd'hui : fichier SQLite d'audit).
 - **Messages polkit traduits** (« Request dismissed » s'affiche tel quel).
 - ~~**Menus standard de Qt**~~ — fait : le clic droit dans un champ (clé API, saisie,

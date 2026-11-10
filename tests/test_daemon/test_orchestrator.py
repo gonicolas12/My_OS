@@ -613,6 +613,55 @@ def test_max_steps_interrompt_la_boucle(audit: AuditLog) -> None:
     assert replies[-1]["type"] == "done"
 
 
+# ---------- tour interrompu, contenu brut du backend ----------
+
+
+def _orch_tools(model: object, tools: dict, audit: AuditLog) -> Orchestrator:
+    return Orchestrator(
+        model=model,
+        tools=tools,
+        grants=SessionGrants(),
+        audit=audit,
+        confirmation_provider=_FakeConfirmation([]),
+    )
+
+
+def test_tour_interrompu_n_execute_rien_et_previent(audit: AuditLog) -> None:
+    model = _RecordingPlans(
+        [
+            Plan(
+                narration="J'écris",
+                tool_calls=[ToolCall("write_file", {"path": "/tmp/x"})],
+                interrupted="⚠ Réponse coupée.",
+                raw_content=["bloc"],
+            )
+        ]
+    )
+    orch = _orch_tools(model, {"write_file": _Writer()}, audit)
+    replies: list[dict] = []
+    orch.handle({"id": "m1", "content": "écris"}, replies.append)
+    orch.handle({"id": "m2", "content": "et alors ?"}, [].append)
+
+    assert audit.fetch_all() == []  # appel d'un tour coupé : jamais exécuté
+    assert _notices(replies) == [("warning", "⚠ Réponse coupée.")]
+    assert replies[-1]["type"] == "done"
+    assistant = model.seen[1][1]
+    assert assistant["tool_calls"] == [] and "raw_content" not in assistant
+
+
+def test_contenu_brut_du_backend_garde_pour_le_tour_suivant(audit: AuditLog) -> None:
+    raw = [{"type": "thinking", "signature": "sig"}, {"type": "tool_use", "id": "t1"}]
+    model = _RecordingPlans(
+        [Plan(tool_calls=[ToolCall("read_file", {"path": "/tmp/x"})], raw_content=raw)]
+    )
+    orch = _orch_tools(model, {"read_file": _SafeReader()}, audit)
+    orch.handle({"id": "m1", "content": "lis"}, [].append)
+
+    assistant = model.seen[1][1]
+    assert assistant["raw_content"] is raw  # tel quel, pour le même backend
+    assert [m["role"] for m in model.seen[1]] == ["user", "assistant", "tool"]
+
+
 # ---------- mémoire conversationnelle (persistance entre requêtes) ----------
 
 
@@ -625,6 +674,19 @@ class _RecordingModel:
     def respond(self, messages, on_token=None) -> Plan:
         self.seen.append([dict(m) for m in messages])
         return Plan()  # réponse finale (aucun outil)
+
+
+class _RecordingPlans(_RecordingModel):
+    """Renvoie les Plans donnés dans l'ordre (puis une réponse finale) et enregistre
+    l'historique reçu à chaque appel."""
+
+    def __init__(self, plans: list[Plan]) -> None:
+        super().__init__()
+        self._plans = list(plans)
+
+    def respond(self, messages, on_token=None) -> Plan:
+        super().respond(messages, on_token)
+        return self._plans.pop(0) if self._plans else Plan()
 
 
 def _orch_with(model: object, audit: AuditLog) -> Orchestrator:
