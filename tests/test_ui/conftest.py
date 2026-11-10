@@ -13,12 +13,17 @@ précédent pris dans un cycle (lambda connectée à un signal) serait sinon lib
 quand le ramasse-miettes se déclenche de lui-même — parfois au milieu de
 l'initialisation paresseuse d'un type PySide6, et shiboken plante (segfault vu avec
 Python 3.14 et PySide6 6.12, selon le nombre de tests lancés avant).
+
+Le catalogue de traductions de Qt installé par un popup en français
+(:mod:`ui.qt_translations`) vaut pour toute l'application : il est retiré après chaque
+test, comme la langue du processus (cf. ``tests/conftest.py``).
 """
 
 from __future__ import annotations
 
 import gc
 import os
+import sys
 from collections.abc import Iterator
 
 import pytest
@@ -31,6 +36,15 @@ def _collecte_apres_test() -> Iterator[None]:
     """Collecte les cycles à un moment sûr, entre deux tests (cf. en-tête)."""
     yield
     gc.collect()
+
+
+@pytest.fixture(autouse=True)
+def _menus_de_qt_remis_en_anglais() -> Iterator[None]:
+    """Retire le catalogue de Qt après le test (sans importer PySide6 s'il ne l'est pas)."""
+    yield
+    module = sys.modules.get("ui.qt_translations")
+    if module is not None:
+        module.apply_qt_language("en")
 
 
 @pytest.fixture(scope="session")

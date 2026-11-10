@@ -19,7 +19,8 @@ docs/SECURITY.md §2.2).
 
 **Langue** (cf. :mod:`core.i18n`) : celle choisie dans le menu de la barre de titre
 (mémorisée avec la géométrie), sinon ``language`` de la config, sinon celle du
-système. L'interface change aussitôt ; chaque requête porte la langue au daemon, qui
+système. L'interface change aussitôt, menus standard de Qt compris (clic droit dans un
+champ, cf. :mod:`ui.qt_translations`) ; chaque requête porte la langue au daemon, qui
 y répond entièrement (modèle, outils, confirmations).
 """
 
@@ -67,6 +68,7 @@ from ui.composer import Composer
 from ui.confirm_dialog import ConfirmDialog
 from ui.control_overlay import ControlOverlay
 from ui.icons import logo_icon
+from ui.qt_translations import apply_qt_language
 from ui.styles import CHAT_COLUMN_MAX, build_stylesheet
 from ui.wayland_layer import is_wayland, prepare_layer_shell
 from ui.window_chrome import ResizeGrips, TitleBar, hotkey_label
@@ -209,10 +211,11 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
             settings if settings is not None else QSettings("my_os", "popup")
         )
         # Langue de l'interface, avant tout texte : choix mémorisé, sinon config,
-        # sinon langue du système.
+        # sinon langue du système. Les menus standard de Qt la suivent.
         set_language(
             resolve_language(self._settings.value("language"), config.language)
         )
+        apply_qt_language(current_language())
         self._placed = False
         self._connected = False
         self._was_maximized = False  # état à retrouver en quittant le plein écran
@@ -461,8 +464,9 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         """Change la langue de My_OS (menu de la barre de titre) et la mémorise.
 
         L'interface change aussitôt, conversation comprise (statuts, durées,
-        infobulles) ; ce qui a été dit reste tel quel. Les requêtes suivantes
-        partent dans cette langue : le daemon y répond entièrement.
+        infobulles), ainsi que les menus standard de Qt au prochain clic droit ; ce
+        qui a été dit reste tel quel. Les requêtes suivantes partent dans cette
+        langue : le daemon y répond entièrement.
         """
         chosen = normalize_language(language)
         if chosen is None:
@@ -472,6 +476,7 @@ class Popup(QWidget):  # pylint: disable=too-many-instance-attributes
         if chosen == current_language():
             return
         set_language(chosen)
+        apply_qt_language(chosen)
         _log.info("Langue de l'interface : %s", chosen)
         self._retranslate()
 
