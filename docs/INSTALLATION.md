@@ -26,7 +26,7 @@ Linux** (ou dérivés : EndeavourOS, etc.).
 ```bash
 sudo pacman -S --needed \
     python python-pip \
-    pyside6 \
+    pyside6 qt6-translations \
     python-psutil python-dbus python-gobject python-yaml python-keyring python-evdev \
     polkit gnome-keyring libsecret \
     ollama \
@@ -40,7 +40,9 @@ sudo pacman -S --needed \
 > ponctuelle). `gnome-keyring`/`libsecret` fournissent le trousseau (Secret Service) pour
 > la clé API cloud. **`python-evdev`** est la dépendance native de `pynput` : sans lui,
 > `pip install pynput` doit la compiler (gcc requis) et échoue souvent. Les polices
-> `noto-fonts*` affichent les symboles du popup (☁, ⚠). La dernière ligne sert au
+> `noto-fonts*` affichent les symboles du popup (☁, ⚠). `qt6-translations` (que `qt6-base`
+> tire déjà) met en français les menus standard de Qt, comme le clic droit dans un champ ;
+> sans lui, ils restent en anglais. La dernière ligne sert au
 > **contrôle de l'ordinateur** (§3 bis) : `xdotool` injecte clics et frappes,
 > Tesseract lit le texte de l'écran là où une application n'expose rien à
 > l'accessibilité, Pillow capture l'écran ; l'arbre d'accessibilité vient avec GTK

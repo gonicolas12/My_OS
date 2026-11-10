@@ -801,7 +801,10 @@ def N_(message: str) -> str: ...         # marque un texte traduit plus tard (co
   hors locale `C`/`POSIX`, la première langue de `LANGUAGE` l'emporte (GNOME, KDE).
   Français → français ; **toute autre langue**, `C`/`POSIX` et locale absente →
   anglais. Changer de langue retraduit l'interface aussitôt, conversation comprise
-  (statuts, durées, infobulles ; ce qui a été dit reste tel quel).
+  (statuts, durées, infobulles ; ce qui a été dit reste tel quel). Les menus que Qt
+  dessine lui-même (clic droit dans un champ : Annuler, Copier, Coller…) suivent aussi :
+  `ui/qt_translations.py` installe le catalogue `qtbase_fr` de Qt en français et le
+  retire en anglais ; sans ce fichier (paquet `qt6-translations`), ils restent en anglais.
 - **Daemon** : chaque `user_message` porte sa langue (§1). L'orchestrator traite toute
   la requête sous `use_language(langue)` : chaque requête a son thread, la langue est
   posée pour lui seul et ne déborde jamais sur la suivante. Sans langue valide, celle

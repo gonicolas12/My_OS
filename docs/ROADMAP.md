@@ -261,8 +261,9 @@ Plus modestes, et directement issues de l'usage réel :
   encore exploités.
 - **Consulter l'historique** depuis le popup (aujourd'hui : fichier SQLite d'audit).
 - **Messages polkit traduits** (« Request dismissed » s'affiche tel quel).
-- **Menus standard de Qt** : le clic droit dans le champ de la clé API reste en anglais,
-  même en français (traductions de Qt à charger, paquet `qt6-translations`).
+- ~~**Menus standard de Qt**~~ — fait : le clic droit dans un champ (clé API, saisie,
+  conversation) suit la langue de My_OS (catalogue `qtbase` de Qt, paquet
+  `qt6-translations`, déjà sur l'ISO).
 - **Confirmations en double** : le modèle demande parfois « Voulez-vous vraiment… ? »
   en texte avant d'appeler l'outil, puis la fenêtre de confirmation redemande ; après
   un refus, il lui arrive aussi de reproposer la même action, et rarement d'affirmer
