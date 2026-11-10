@@ -4,7 +4,7 @@
 
 [![Version](https://img.shields.io/github/v/release/gonicolas12/My_OS?color=orange&label=version)](https://github.com/gonicolas12/My_OS/releases/latest)
 [![Licence : MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
-![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776ab)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776ab)
 ![Arch Linux](https://img.shields.io/badge/base-Arch%20Linux-1793d1)
 ![LLM local](https://img.shields.io/badge/LLM-local%20(Ollama%20%2B%20Qwen)-222)
 ![Français · English](https://img.shields.io/badge/langues-Fran%C3%A7ais%20%C2%B7%20English-555)
@@ -212,7 +212,7 @@ sur 🌐 passe My_OS en français.
 
 ### b) Depuis les sources
 
-> Prérequis : Arch Linux (ou dérivé), Python 3.10+, [Ollama](https://ollama.com/download)
+> Prérequis : Arch Linux (ou dérivé), Python 3.11+, [Ollama](https://ollama.com/download)
 > et les paquets système listés dans [docs/INSTALLATION.md §2.1](docs/INSTALLATION.md)
 > (dont `python-evdev`, nécessaire à `pynput`).
 
@@ -496,7 +496,7 @@ pytest tests/test_permissions/  # le cœur de sécurité (prioritaire)
 ruff check . && ruff format .   # lint + format
 ```
 
-Conventions : Python 3.10+, type hints partout, docstrings sur les fonctions publiques.
+Conventions : Python 3.11+, type hints partout, docstrings sur les fonctions publiques.
 Tout nouvel outil hérite de `tools/base_tool.py` et **doit** déclarer un `risk_level`.
 Aucune action ne contourne `permissions/policy_engine.py`. Aucun secret en clair. Tout
 texte montré à l'utilisateur ou au modèle s'écrit en français et passe par `tr()`, avec

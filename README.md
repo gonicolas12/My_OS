@@ -4,7 +4,7 @@
 
 [![Release](https://img.shields.io/github/v/release/gonicolas12/My_OS?color=orange)](https://github.com/gonicolas12/My_OS/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776ab)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776ab)
 ![Arch Linux](https://img.shields.io/badge/base-Arch%20Linux-1793d1)
 ![Local LLM](https://img.shields.io/badge/LLM-local%20(Ollama%20%2B%20Qwen)-222)
 ![English · Français](https://img.shields.io/badge/languages-English%20%C2%B7%20Fran%C3%A7ais-555)
@@ -212,7 +212,7 @@ on 🌐 switches My_OS to French.
 
 ### b) From source
 
-> Requirements: Arch Linux (or a derivative), Python 3.10+,
+> Requirements: Arch Linux (or a derivative), Python 3.11+,
 > [Ollama](https://ollama.com/download) and the system packages listed in
 > [docs/INSTALLATION.md §2.1](docs/INSTALLATION.md) (including `python-evdev`, needed by
 > `pynput`).
@@ -493,7 +493,7 @@ pytest tests/test_permissions/  # the security core (priority)
 ruff check . && ruff format .   # lint + format
 ```
 
-Conventions: Python 3.10+, type hints everywhere, docstrings on public functions. Every
+Conventions: Python 3.11+, type hints everywhere, docstrings on public functions. Every
 new tool inherits from `tools/base_tool.py` and **must** declare a `risk_level`. No
 action bypasses `permissions/policy_engine.py`. No secret in clear text. Any text shown
 to the user or the model is written in French in the code and goes through `tr()`, with
