@@ -14,7 +14,9 @@ Cycle de vie (cf. docs/INTERFACES.md §6 + §6.5) :
 2. **Boucle** (jusqu'à une réponse finale ou ``MAX_STEPS``) :
    a. appelle le modèle (:meth:`Model.respond`) avec l'historique, streame sa
       narration vers le popup (``token``) ;
-   b. si le modèle ne demande aucun outil → réponse finale, on sort ;
+   b. si le modèle ne demande aucun outil → réponse finale, on sort ; un tour
+      interrompu (``Plan.interrupted`` : réponse coupée, refus) aussi, sans rien
+      exécuter, avec une notice qui dit pourquoi ;
    c. sinon, pour chaque :class:`ToolCall`, passe par le **choke point**
       :func:`permissions.policy_engine.evaluate` :
         * ``blocked``  → audit + message, aucune exécution ;
@@ -43,7 +45,7 @@ import posixpath
 import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 from core.i18n import N_, current_language, tr, use_language
 from core.logger import get_logger
@@ -76,6 +78,14 @@ class Plan:
 
     narration: str = ""
     tool_calls: list[ToolCall] = field(default_factory=list)
+    # Tour arrêté avant sa fin (longueur maximale atteinte, refus du modèle) : le
+    # texte à montrer à l'utilisateur, déjà traduit. Aucun outil d'un tour interrompu
+    # n'est exécuté, même s'il en nommait.
+    interrupted: str = ""
+    # Contenu brut du tour, propre au backend qui l'a produit, qu'il relit tel quel au
+    # tour suivant (cloud : blocs de réflexion signés, vrais identifiants des appels
+    # d'outils). None pour le local, qui n'en produit pas.
+    raw_content: list[Any] | None = None
 
 
 # Callback de streaming : reçoit chaque fragment de texte au fil de la génération.
@@ -84,6 +94,7 @@ TokenCallback = Callable[[str], None]
 # Un message de l'historique conversationnel. Formes :
 #   {"role": "user", "content": str, "language": str}  # langue de la requête
 #   {"role": "assistant", "content": str, "tool_calls": list[ToolCall]}
+#       + "raw_content": list  # si le backend en a produit (cf. Plan.raw_content)
 #   {"role": "tool", "tool": str, "content": str}   # résultat réinjecté
 Message = dict
 
@@ -373,17 +384,24 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
             plan = self._run_model(model, list(history), request.id, reply)
             if plan is None:
                 return False
+            # Un tour interrompu (coupé, refusé) n'exécute rien : ses appels d'outils
+            # peuvent être incomplets. Son contenu brut n'est pas gardé non plus.
+            tool_calls = [] if plan.interrupted else plan.tool_calls
+            entry: Message = {
+                "role": "assistant",
+                "content": plan.narration,
+                "tool_calls": tool_calls,
+            }
+            if plan.raw_content is not None and not plan.interrupted:
+                entry["raw_content"] = plan.raw_content
             with self._history_lock:
-                history.append(
-                    {
-                        "role": "assistant",
-                        "content": plan.narration,
-                        "tool_calls": plan.tool_calls,
-                    }
-                )
-            if not plan.tool_calls:
+                history.append(entry)
+            if plan.interrupted:
+                _notice(reply, request.id, "warning", plan.interrupted)
+                return True
+            if not tool_calls:
                 return True  # réponse finale : fin de la boucle
-            for tool_call in plan.tool_calls:
+            for tool_call in tool_calls:
                 if self._control_stopped(request):
                     # Arrêté par l'utilisateur : plus rien ne s'exécute ; chaque appel
                     # reçoit quand même son résultat (historique et popup cohérents).
