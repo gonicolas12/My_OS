@@ -342,7 +342,17 @@ et plus ne les propose d'ailleurs plus). Règles d'une boucle d'outils :
   invalidé plutôt que d'échouer (`thinking.block_binding.prefix_mismatch_behavior:
   "drop_block"`, en-tête bêta `thinking-binding-controls-2026-08-01`, d'où
   `client.beta.messages.stream`). Pendant le contrôle de l'écran, la réflexion des
-  étapes précédentes est donc écartée à chaque capture retirée.
+  étapes précédentes est donc écartée à chaque capture retirée. Mesuré de bout en bout
+  dans la VM de l'ISO v1.8 avec une vraie clé (novembre 2026) : aucun bloc écarté dans
+  une conversation ordinaire (8 appels, en français puis en anglais), 7 à 10 pendant un
+  contrôle de l'écran de 7 appels (liste de 5 lignes écrite dans Mousepad : tâche
+  réussie). **`drop_block` est gardé** plutôt que le schéma de la documentation
+  (`"error"`, puis nouvel essai de la conversation avec `drop_block` après l'erreur 400,
+  journalisé) : les seules modifications de l'historique sont voulues (ci-dessus),
+  chaque réponse journalise déjà le nombre de blocs écartés (§5.4), et `"error"`
+  ajouterait à chaque contrôle de l'écran un aller-retour en échec, pour écarter ensuite
+  les mêmes blocs. Garder cette réflexion demanderait de ne plus retirer les captures en
+  mode cloud : un autre changement, à mesurer à part.
 - **Tour coupé ou refusé.** `stop_reason` `max_tokens` (ou
   `model_context_window_exceeded`) : `Plan.interrupted` porte « ⚠ Réponse coupée… » ;
   `refusal` : « ⚠ Claude a refusé de poursuivre… ». Aucun appel d'outil n'est renvoyé,
@@ -361,9 +371,49 @@ et plus ne les propose d'ailleurs plus). Règles d'une boucle d'outils :
   le popup n'affiche que les blocs `text` (et les cartes des outils). Mesuré au premier
   tour : avec le défaut, Claude appelle l'outil sans texte ; avec `between_tools`, il
   écrit d'abord une courte phrase (premier mot vers 1,2 s).
-- **SDK.** Testé avec le SDK `anthropic` 1.15 (installations depuis les sources) et
-  2.6 (l'ISO, paquet `python-anthropic`), contre un faux serveur local
-  (`tests/test_models/test_cloud_sdk.py`). Le SDK 2.x envoie la version d'API
+- **Cache de prompt.** Les outils puis le prompt système, dans l'ordre où l'API les
+  lit, forment un préfixe identique octet pour octet pour toutes les requêtes d'une
+  langue (~5 200 tokens en français, ~4 300 en anglais : une entrée de cache par
+  langue). Rien de variable n'y entre : ni date, ni heure, ni identifiant ; le contexte
+  machine ne donne que l'utilisateur et le HOME. Deux points de cache sur les quatre
+  permis, de 5 minutes chacun (renouvelées gratuitement à chaque lecture) :
+  `cache_control` sur le bloc du prompt système (`system` part en liste d'un bloc
+  texte), relu par toute requête de la langue, conversation neuve comprise ; et
+  `cache_control` au niveau de la requête (cache automatique), point mobile à la fin de
+  la conversation, relu au tour suivant de la boucle d'outils et à la demande suivante.
+  L'écriture coûte 1,25 fois le prix d'entrée, la lecture 0,05 fois (Claude Sonnet 5.5 :
+  2,50 $ et 0,10 $ par million de tokens, contre 2 $). Durée gardée : 5 minutes, le
+  défaut. Celle d'une heure écrit à 2 fois le prix d'entrée (~2,1 centimes pour le
+  préfixe français au lieu de ~1,3) et ne rapporte (~1,25 centime) qu'à une rafale
+  suivante, venue plus de 5 minutes après mais dans l'heure : elle n'est rentable que si
+  cela arrive au moins deux fois sur trois, alors qu'une rafale isolée la paie plein pot.
+  Mesuré avec une vraie clé en novembre 2026 (SDK 2.8, les 13 demandes en français et
+  les 13 en anglais) : une demande isolée coûte 1,04 centime sans cache et 0,16 avec
+  (préfixe lu, ~80 tokens écrits) ; la première de chaque langue après plus de
+  5 minutes sans requête, 1,26 (préfixe écrit) ; sur les 52 demandes du banc, 0,25
+  centime en moyenne au lieu de 1,04. Les mêmes 26 demandes dans une seule conversation
+  avec boucle d'outils : 2,87 centimes par demande sans cache, 0,82 avec. Le cache
+  automatique seul ne suffit pas : une recherche ne trouve que ce qui a été écrit à un
+  point de cache, si bien qu'une conversation neuve ne relit rien et réécrit tout (1,28
+  centime par demande isolée, plus cher que sans cache), et qu'une conversation élaguée
+  à `MAX_HISTORY_MESSAGES` ne relit plus rien non plus. Le point du prompt système seul
+  ne suffit pas non plus : dans la même conversation, l'historique est alors relu à
+  plein tarif à chaque appel (1,25 centime par demande, contre 0,82 avec les deux
+  points). Ni le choix des outils (les mêmes écarts : « Désinstalle glibc », refusé par
+  écrit) ni le délai jusqu'au premier événement (~0,8 s) ne changent. Ce qui fait
+  réécrire la suite de la conversation, le préfixe restant lu : la réflexion des
+  requêtes précédentes retirée, une capture retirée pendant le contrôle de l'écran,
+  l'élagage, les rappels de langue ajoutés au premier changement de langue. De bout en
+  bout dans la VM de l'ISO v1.8, par le popup (15 appels : processus, écriture
+  confirmée, lecture et dossier en anglais dans la même conversation, puis contrôle de
+  l'écran avec une capture par observation) : 20,3 centimes sans cache, 9,9 avec ;
+  pendant le contrôle, seul le préfixe (~4 300 tokens en anglais) est relu, la suite
+  étant réécrite à chaque capture retirée. Durée moyenne par appel 1,5 s sans cache,
+  1,8 s avec, sur ce seul passage (au banc, le premier événement ne bouge pas).
+- **SDK.** Testé avec le SDK `anthropic` 1.15 (installations depuis les sources), 2.6
+  (ISO v1.7), 2.7 et 2.8 (ISO v1.8, paquet `python-anthropic`), contre un faux serveur
+  local (`tests/test_models/test_cloud_sdk.py`) ; `cache_control` au niveau de la
+  requête existe dans toutes ces versions. Le SDK 2.x envoie la version d'API
   `2026-10-21` ; My_OS n'utilise rien de ce qu'elle retire.
 
 ### 5.3 · Routage **par requête** (côté orchestrator)
@@ -391,8 +441,12 @@ Chaque envoi cloud est journalisé via un **logger dédié `myosd.cloud`**
 (horodatage, nom du modèle, **nombre de messages et de caractères** transmis) —
 **jamais** la clé, **jamais** le contenu. Chaque réponse aussi : raison de l'arrêt
 (et catégorie d'un refus), délai jusqu'au premier texte, durée, tokens facturés
-(entrée, cache lu et écrit, sortie) et nombre de blocs de réflexion écartés. Le canal est le logger (journald sous
-systemd), distinct du **journal d'audit** (`~/.local/share/my_os/audit.db`), réservé aux actions
+(entrée, cache lu et écrit, sortie) et nombre de blocs de réflexion écartés. Avec le
+cache de prompt (§5.2), une requête qui en suit une autre de la même langue à moins de
+5 minutes lit au moins le préfixe de sa langue (~4 300 à 5 200 tokens) : « cache lu 0 »
+dans ce cas signale un préfixe modifié d'une requête à l'autre. Le canal est le logger
+(journald sous systemd), distinct du **journal d'audit**
+(`~/.local/share/my_os/audit.db`), réservé aux actions
 d'outils et décisions de permission (§4). La minimisation des données envoyées au
 cloud est traitée en §6 et SECURITY menace 2.
 

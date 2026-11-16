@@ -7,11 +7,14 @@ disponibilité de clé, et surtout que **la clé ne fuit jamais** dans ce qui es
 envoyé au modèle. Puis la réflexion de Claude Sonnet 5.5 : blocs renvoyés tels quels
 dans une boucle d'outils, réponse coupée ou refusée sans outil, réglages envoyés et
 aucun paramètre d'échantillonnage (le vrai SDK est couvert par test_cloud_sdk.py).
+Enfin le cache de prompt : points de cache envoyés, préfixe (outils et prompt système)
+identique octet pour octet d'une requête à l'autre dans une langue.
 """
 
 # pylint: disable=missing-function-docstring
 from __future__ import annotations
 
+import json
 import logging
 import os
 from types import SimpleNamespace
@@ -22,6 +25,7 @@ from core.i18n import use_language
 from daemon.orchestrator import ToolCall
 from models import secrets
 from models.cloud_router import (
+    CACHE_CONTROL,
     DEFAULT_MAX_TOKENS,
     THINKING_BINDING_BETA,
     ClaudeClient,
@@ -91,6 +95,12 @@ def _thinking_block(signature: str) -> SimpleNamespace:
     return SimpleNamespace(type="thinking", thinking="", signature=signature)
 
 
+def _system_text(kwargs: dict) -> str:
+    """Texte du prompt système envoyé (un seul bloc, qui porte le point de cache)."""
+    [block] = kwargs["system"]
+    return block["text"]
+
+
 # ---------- ClaudeClient.respond ----------
 
 
@@ -124,7 +134,7 @@ def test_respond_envoie_systeme_outils_et_messages_traduits() -> None:
     assert kwargs["messages"] == [{"role": "user", "content": "salut"}]
     names = {tool["name"] for tool in kwargs["tools"]}
     assert "read_file" in names and "install_package" in names
-    system = kwargs["system"]
+    system = _system_text(kwargs)
     assert "CLOUD" in system  # note de backend honnête
     assert os.path.expanduser("~") in system  # contexte machine partagé
 
@@ -137,7 +147,7 @@ def test_la_cle_n_apparait_jamais_dans_ce_qui_part_au_modele() -> None:
 
     kwargs = anthropic.messages.last_kwargs
     assert kwargs is not None
-    assert "sk-ant-supersecret" not in kwargs["system"]
+    assert "sk-ant-supersecret" not in str(kwargs["system"])
     assert "sk-ant-supersecret" not in str(kwargs["messages"])
     assert "sk-ant-supersecret" not in str(kwargs["tools"])
 
@@ -324,6 +334,72 @@ def test_reponse_journalisee_sans_contenu(caplog: pytest.LogCaptureFixture) -> N
     assert "entrée 1200" in text and "sortie 80" in text
     assert "blocs de réflexion écartés 1" in text
     assert "secret" not in text
+
+
+# ---------- cache de prompt ----------
+
+
+def _prefix(kwargs: dict) -> str:
+    """Préfixe mis en cache, tel que sérialisé : outils puis prompt système."""
+    return json.dumps([kwargs["tools"], kwargs["system"]], ensure_ascii=False)
+
+
+def test_requete_porte_le_cache_de_prompt() -> None:
+    anthropic = _FakeAnthropic(_FakeStream([], _final([_text_block("ok")])))
+    ClaudeClient(client=anthropic).respond([{"role": "user", "content": "salut"}])
+
+    kwargs = anthropic.messages.last_kwargs
+    assert kwargs is not None
+    # Point mobile (cache automatique) : fin de la conversation.
+    assert kwargs["cache_control"] == CACHE_CONTROL == {"type": "ephemeral"}
+    # Point fixe : fin du prompt système (outils + système, rendus dans cet ordre),
+    # relu par toute requête de la langue, conversation neuve comprise.
+    [block] = kwargs["system"]
+    assert block["type"] == "text" and block["cache_control"] == {"type": "ephemeral"}
+    # Deux points sur les quatre permis : aucun sur les outils ni dans les messages.
+    assert "cache_control" not in json.dumps(kwargs["tools"])
+    assert "cache_control" not in json.dumps(kwargs["messages"])
+    assert not {"temperature", "top_p", "top_k"} & kwargs.keys()
+
+
+@pytest.mark.parametrize("language", ["fr", "en"])
+def test_prefixe_identique_octet_pour_octet_dans_une_langue(language: str) -> None:
+    anthropic = _FakeAnthropic(_FakeStream([], _final([_text_block("ok")])))
+    first = ClaudeClient(client=anthropic)
+    # Conversation neuve, puis conversation plus longue avec un appel d'outil et une
+    # autre demande, puis un autre client (reconstruit si la clé change) : même préfixe.
+    longer = [
+        {"role": "user", "content": "liste /tmp", "language": language},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [ToolCall("list_dir", {"path": "/tmp"})],
+        },
+        {"role": "tool", "tool": "list_dir", "content": "a.txt"},
+        {"role": "assistant", "content": "Un fichier.", "tool_calls": []},
+        {"role": "user", "content": "et /var ?", "language": language},
+    ]
+    with use_language(language):
+        first.respond([{"role": "user", "content": "salut", "language": language}])
+        first.respond(longer)
+        ClaudeClient(client=anthropic).respond(longer)
+    prefixes = {_prefix(kwargs) for kwargs in anthropic.messages.calls}
+    assert len(prefixes) == 1
+    assert len(anthropic.messages.calls) == 3
+
+
+def test_un_prefixe_par_langue() -> None:
+    anthropic = _FakeAnthropic(_FakeStream([], _final([_text_block("ok")])))
+    client = ClaudeClient(client=anthropic)
+    for language in ("fr", "en"):
+        with use_language(language):
+            client.respond([{"role": "user", "content": "x", "language": language}])
+    french, english = anthropic.messages.calls
+    # Deux entrées de cache, une par langue ; une conversation qui change de langue
+    # n'altère que ses messages (rappels de langue), jamais ce préfixe.
+    assert _prefix(french) != _prefix(english)
+    assert "mode CLOUD" in _system_text(french)
+    assert "CLOUD mode" in _system_text(english)
 
 
 # ---------- traduction des outils et de l'historique ----------

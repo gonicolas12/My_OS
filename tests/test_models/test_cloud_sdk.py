@@ -4,8 +4,9 @@ Le SDK installé (1.x depuis les sources, 2.x sur l'ISO) envoie ses requêtes à
 serveur HTTP de test sur 127.0.0.1, qui répond en flux (SSE) comme l'API Messages. On
 vérifie ce qui part vraiment : blocs de réflexion renvoyés à l'identique au tour
 suivant d'une boucle d'outils, vrais identifiants des appels d'outils, en-tête bêta et
-réglages de la réflexion, aucun paramètre d'échantillonnage ; et ce qui revient : une
-réponse coupée en plein appel d'outil n'en exécute aucun. Ignoré sans le SDK.
+réglages de la réflexion, aucun paramètre d'échantillonnage, points de cache du prompt
+et préfixe identique d'un tour à l'autre ; et ce qui revient : une réponse coupée en
+plein appel d'outil n'en exécute aucun. Ignoré sans le SDK.
 """
 
 # pylint: disable=missing-function-docstring,redefined-outer-name
@@ -196,6 +197,13 @@ def test_boucle_d_outils_avec_le_vrai_sdk(server: _Server) -> None:
         }
         assert THINKING_BINDING_BETA in request["beta"]
         assert "sk-ant-test" not in json.dumps(body)
+        # Cache de prompt : point mobile (requête) et point fixe (fin du système).
+        assert body["cache_control"] == {"type": "ephemeral"}
+        [system] = body["system"]
+        assert system["cache_control"] == {"type": "ephemeral"}
+    # Préfixe mis en cache (outils puis système) identique d'un tour à l'autre.
+    for part in ("tools", "system"):
+        assert json.dumps(first["body"][part]) == json.dumps(second["body"][part])
     assistant = second["body"]["messages"][1]
     assert assistant["role"] == "assistant"
     thinking, text, tool_use = assistant["content"]

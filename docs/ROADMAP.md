@@ -309,10 +309,18 @@ Plus modestes, et directement issues de l'usage réel :
 
 - **Annuler une action** : le contrat des outils prévoit `reversible`/`undo_data`, pas
   encore exploités.
-- **Cache de prompt en mode cloud** : chaque requête renvoie ~5 000 tokens de prompt et de
-  schémas d'outils, relus à plein tarif (~1 centime ; aucun token lu depuis le cache sur
-  159 réponses mesurées en novembre 2026). Un `cache_control` sur ce préfixe stable le
-  facturerait ~10 fois moins à partir de la 2e requête.
+- ~~**Cache de prompt en mode cloud**~~ — fait : les outils et le prompt système (~5 200
+  tokens en français, ~4 300 en anglais), relus jusque-là à plein tarif à chaque
+  requête, sont lus depuis le cache au vingtième du prix d'entrée (et non au dixième :
+  0,10 $ contre 2 $ par million de tokens sur Claude Sonnet 5.5) par toute requête de
+  la même langue à moins de 5 minutes de la précédente, et la conversation aussi dans la
+  boucle d'outils. Mesuré avec une vraie clé en novembre 2026 : 0,16 centime par demande
+  en rafale au lieu de 1,04 (0,25 en moyenne sur 52 demandes, premières écritures
+  comprises), 0,82 au lieu de 2,87 dans une conversation avec outils ; mêmes outils
+  choisis, même délai de réponse. De bout en bout dans la VM de l'ISO v1.8, par le
+  popup : 9,9 centimes au lieu de 20,3 pour un même scénario de 15 appels (processus,
+  écriture confirmée, changement de langue, contrôle de l'écran). `drop_block` gardé
+  (cf. [INTERFACES.md](INTERFACES.md) §5.2).
 - **Consulter l'historique** depuis le popup (aujourd'hui : fichier SQLite d'audit).
 - **Messages polkit traduits** (« Request dismissed » s'affiche tel quel).
 - ~~**Menus standard de Qt**~~ — fait : le clic droit dans un champ (clé API, saisie,
