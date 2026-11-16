@@ -3,7 +3,8 @@
 Backend **factice** injecté → on teste la logique d'outil (validation, bornage,
 messages) sans toucher à D-Bus, pactl ni au matériel. Couvre aussi la
 propagation d'erreur backend et l'absence d'élévation, et le rejeu de ``pactl``
-pendant le démarrage du serveur son (commande et horloge simulées).
+pendant le démarrage du serveur son, puis sa repose après la restauration de
+WirePlumber (commande et horloge simulées).
 """
 
 # Comparer explicitement avec [] (aucun appel backend) est plus parlant en test.
@@ -169,16 +170,79 @@ def test_pactl_rejoue_tant_que_la_sortie_audio_n_existe_pas(
 ) -> None:
     # Vu en VM (ISO v1.3) : PipeWire démarre à la demande ; la 1re commande de la
     # session échouait (« No such entity ») avant que la sortie audio n'existe.
+    # Réussie, elle est reposée deux fois (après 0,5 puis 1 s) : cf. le test suivant.
     calls, clock = _pactl_double(monkeypatch, failures=3)
     assert SetVolume().run({"percent": 30}).success is True
-    assert calls == [["pactl", "set-sink-volume", "@DEFAULT_SINK@", "30%"]] * 4
-    assert clock.sleeps == [0.1] * 3
+    assert calls == [["pactl", "set-sink-volume", "@DEFAULT_SINK@", "30%"]] * 6
+    assert clock.sleeps == [0.1, 0.1, 0.1, 0.5, 1.0]
+
+
+def test_pactl_repose_le_reglage_que_la_restauration_ecrase(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Vu en VM (ISO v1.8, PipeWire 1.6.11 et WirePlumber 0.5.19) : la sortie apparaît,
+    # « rétablir le son » réussit, puis WirePlumber restaure l'état mémorisé de la
+    # sortie (son coupé) et l'écrase ; l'outil avait pourtant répondu « Son rétabli ».
+    clock = _Clock()
+    sink = {"exists": False, "muted": True, "restored": False}
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs: object) -> CommandResult:
+        calls.append(argv)
+        sink["exists"] = clock.now >= 0.1  # sortie créée 0,1 s après le démarrage
+        if not sink["exists"]:
+            return CommandResult(returncode=1, stdout="", stderr="No such entity")
+        sink["muted"] = argv[-1] == "1"
+        return CommandResult(returncode=0, stdout="", stderr="")
+
+    def sleep(seconds: float) -> None:
+        clock.sleeps.append(seconds)
+        clock.now += seconds
+        if sink["exists"] and not sink["restored"] and clock.now >= 0.25:
+            sink["muted"] = True  # état mémorisé, restauré une fois après la création
+            sink["restored"] = True
+
+    monkeypatch.setattr(clock, "sleep", sleep)
+    monkeypatch.setattr("core.elevation.run_command", fake_run)
+    monkeypatch.setattr("tools.system_settings.time", clock)
+    assert SetMute().run({"muted": False}).success is True
+    clock.sleep(2.0)  # le temps passe : la restauration a eu lieu au plus tard ici
+    assert sink["restored"] is True
+    assert sink["muted"] is False
+    assert len(calls) == 4  # 1 échec, la réussite, puis deux fois reposée
+
+
+def test_pactl_serveur_deja_pret_aucun_rejeu(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Serveur son déjà en marche : sa sortie et son état restauré existent, la
+    # commande ne passe qu'une fois et l'outil répond aussitôt.
+    calls, clock = _pactl_double(monkeypatch, failures=0)
+    assert SetMute().run({"muted": False}).success is True
+    assert calls == [["pactl", "set-sink-mute", "@DEFAULT_SINK@", "0"]]
+    assert clock.sleeps == []
 
 
 def test_set_mute_rejoue_aussi(monkeypatch: pytest.MonkeyPatch) -> None:
     calls, _clock = _pactl_double(monkeypatch, failures=1)
     assert SetMute().run({"muted": True}).success is True
-    assert calls == [["pactl", "set-sink-mute", "@DEFAULT_SINK@", "1"]] * 2
+    assert calls == [["pactl", "set-sink-mute", "@DEFAULT_SINK@", "1"]] * 4
+
+
+def test_pactl_echec_d_une_repose_remonte(monkeypatch: pytest.MonkeyPatch) -> None:
+    # La sortie disparaît entre la réussite et la repose : l'échec est rapporté.
+    codes = iter([1, 0, 1])
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs: object) -> CommandResult:
+        calls.append(argv)
+        code = next(codes)
+        return CommandResult(returncode=code, stdout="", stderr="No such entity" * code)
+
+    monkeypatch.setattr("core.elevation.run_command", fake_run)
+    monkeypatch.setattr("tools.system_settings.time", _Clock())
+    result = SetVolume().run({"percent": 30})
+    assert result.success is False
+    assert "No such entity" in result.output
+    assert len(calls) == 3
 
 
 def test_pactl_echec_persistant_remonte_apres_le_delai(
