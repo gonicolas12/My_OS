@@ -180,8 +180,9 @@ def test_cloud_dans_la_langue_de_la_requete() -> None:
     client = ClaudeClient(client=anthropic)
     with use_language("en"):
         client.respond([{"role": "user", "content": "hi"}])
-    assert received["system"].startswith(BASE_SYSTEM_PROMPTS["en"])
-    assert "CLOUD mode" in received["system"]
+    [system] = received["system"]  # un bloc, qui porte le point de cache
+    assert system["text"].startswith(BASE_SYSTEM_PROMPTS["en"])
+    assert "CLOUD mode" in system["text"]
     tools = {t["name"]: t["description"] for t in received["tools"]}
     assert (
         tools["install_package"] == "Installs a package from the official repositories."

@@ -32,6 +32,13 @@ de My_OS change entre deux requêtes (langue, élagage) et pendant le contrôle 
 requête en cours repart (retirer les blocs du début de l'historique est permis), et
 l'API écarte un bloc devenu invalide au lieu d'échouer (``drop_block``, en-tête bêta).
 Une réponse coupée (longueur maximale) ou refusée n'exécute aucun outil.
+
+**Cache de prompt** (cf. INTERFACES §5.2). Les outils et le prompt système d'une langue
+(~5 000 tokens) ne changent pas d'une requête à l'autre : un point de cache à la fin du
+prompt système les fait relire depuis le cache, au vingtième du prix d'entrée, par toute
+requête de la même langue, conversation neuve comprise ; le point mobile du cache
+automatique (fin de la conversation) couvre la boucle d'outils et la demande suivante.
+Rien de variable (date, heure, identifiant) n'entre dans ce préfixe.
 """
 
 from __future__ import annotations
@@ -70,6 +77,10 @@ THINKING_BINDING_BETA = "thinking-binding-controls-2026-08-01"
 _THINKING_TYPES = frozenset({"thinking", "redacted_thinking"})
 # Arrêts qui coupent le tour avant sa fin : le plan est incomplet, rien ne s'exécute.
 _LENGTH_STOPS = frozenset({"max_tokens", "model_context_window_exceeded"})
+# Cache de prompt : 5 minutes, renouvelées gratuitement à chaque lecture (le popup
+# s'utilise par rafales). L'écriture coûte 1,25 fois le prix d'entrée, la lecture 0,05.
+# Deux points sur les quatre permis : fin du prompt système, et fin de la conversation.
+CACHE_CONTROL = {"type": "ephemeral"}
 
 _cloud_log = get_logger("myosd.cloud")
 
@@ -356,13 +367,27 @@ class ClaudeClient:  # pylint: disable=too-many-instance-attributes
         return self._tools_by_language[current_language()]
 
     def _request(self, messages: list[dict]) -> dict[str, Any]:
-        """Paramètres de l'appel (jamais de paramètre d'échantillonnage)."""
+        """Paramètres de l'appel (jamais de paramètre d'échantillonnage).
+
+        Le préfixe (outils puis prompt système, dans l'ordre où l'API les lit) est le
+        même, octet pour octet, pour toutes les requêtes d'une langue : il est relu
+        depuis le cache. Deux points de cache : la fin du prompt système (préfixe
+        commun à toutes les conversations) et la fin de la conversation (cache
+        automatique, avancé à chaque tour).
+        """
         request: dict[str, Any] = {
             "model": self._model,
             "max_tokens": self._max_tokens,
-            "system": self._system_prompts[current_language()],
+            "system": [
+                {
+                    "type": "text",
+                    "text": self._system_prompts[current_language()],
+                    "cache_control": dict(CACHE_CONTROL),
+                }
+            ],
             "tools": self._tools,
             "messages": _to_anthropic(with_language_reminders(messages)),
+            "cache_control": dict(CACHE_CONTROL),
         }
         if self._thinking == "between_tools":
             # Aucun autre champ n'est accepté ici : pas de drop_block possible.
