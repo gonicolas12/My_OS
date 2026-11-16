@@ -297,14 +297,19 @@ brute. La note qui suit (« nécessite un modèle cloud ») était donc juste po
   puis 1,5 s après. Mesuré en VM, PipeWire arrêté avant chaque essai, en alternance sur
   la même ISO : 18 réglages sur 18 tenus avec le correctif, 13 sur 18 avec le code de
   la v1.7. Trouvé pendant la validation.
+- [x] **Mode cloud moins cher** : cache de prompt (outils, prompt système et
+  conversation relus au vingtième du prix d'entrée) : 0,16 centime par demande en
+  rafale au lieu de 1,04, 0,82 au lieu de 2,87 dans une conversation avec outils, 9,9
+  au lieu de 20,3 sur un scénario de bout en bout en VM (cf. « Cache de prompt en mode
+  cloud » plus bas et [INTERFACES.md](INTERFACES.md) §5.2).
 - [x] Validé en VM sur processeur seul (novembre 2026) : sonde du modèle 5 sur 5 en
   français et en anglais, injection cachée dans un fichier ignorée ; contrôle de
   l'ordinateur en anglais (Mousepad, arrêt par Échap, terminal refusé par tous les
   chemins, commande tapée dans « Run Program » escaladée et refusée) et en français ;
   42 scénarios de permissions dans chaque langue, mêmes décisions ; OCR de l'écran en
-  `fra+eng` ; saisie de la clé API ; menus de Qt dans les deux langues ; 374 tests dans
-  la VM avec le SDK de l'ISO ; mode cloud de bout en bout avec une vraie clé (Claude
-  Sonnet 5.5). **Mêmes temps que la v1.7**, mesurés coup sur coup sur le même
+  `fra+eng` ; saisie de la clé API ; menus de Qt dans les deux langues ; tests du mode
+  cloud, des menus de Qt et des permissions lancés dans la VM avec le SDK de l'ISO ;
+  mode cloud de bout en bout avec une vraie clé (Claude Sonnet 5.5). **Mêmes temps que la v1.7**, mesurés coup sur coup sur le même
   hôte : première demande à froid 72 et 98 s (v1.7 : 93 et 104 s), puis 11 à 12,5 s par
   demande (v1.7 : 10 à 14 s), 9 à 10 tokens/s, bon outil 12 fois sur 12 à chaque passe ;
   cache K/V toujours chargé en 8 bits, Ollama en local seul.

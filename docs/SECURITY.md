@@ -92,6 +92,11 @@ Rien de conséquent n'est silencieux.
   message — conséquence de la mémoire conversationnelle partagée. On conserve cet
   historique partagé (cohérence voulue) mais on **conseille un `reset` (Ctrl+L) avant
   de passer au cloud** pour un contexte minimal ; l'envoi reste visible et journalisé.
+- **Cache de prompt (v1.8).** Les outils, le prompt système et la conversation envoyés
+  restent jusqu'à 5 minutes (renouvelées à chaque lecture) dans le cache de prompt
+  d'Anthropic, isolé par espace de travail de la clé et jamais partagé entre
+  organisations : rien de plus n'est envoyé, ce qui part déjà est seulement relu moins
+  cher (cf. INTERFACES §5.2).
 - **Pas de privilège supplémentaire.** Le LLM cloud passe par la **même** boucle
   agentique et le **même** `policy_engine` que le local : il n'a aucun droit de plus,
   toute action sensible reste soumise à confirmation. Le daemon n'écoute toujours que
