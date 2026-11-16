@@ -23,7 +23,7 @@ My_OS est la suite logique de [My_AI](https://github.com/gonicolas12/My_AI) : on
 d'une *application* qui parle au PC à un *système* dans lequel l'IA est résidente et
 profondément intégrée.
 
-> **État du projet : v1.8 publiée ([télécharger](https://github.com/gonicolas12/My_OS/releases/tag/v1.8)), validée en VM ; nouveauté : une mise à jour de sécurité de l'ISO (serveur X, Python, OpenSSL et noyau Linux à jour). Elle garde tout de la v1.7 : le mode cloud avec Claude Sonnet 5.5, les menus standard de Qt dans la langue de My_OS, le français et l'anglais (bouton 🌐), et le contrôle de l'ordinateur — le modèle local voit l'écran et agit à la souris et au clavier, avec des bords lumineux et une barre d'arrêt (session X11).** Les cinq jalons (socle →
+> **État du projet : v1.8 publiée ([télécharger](https://github.com/gonicolas12/My_OS/releases/tag/v1.8)), validée en VM ; nouveautés : une mise à jour de sécurité de l'ISO (serveur X, Python, OpenSSL et noyau Linux à jour) et un mode cloud moins cher (cache de prompt). Elle garde tout de la v1.7 : le mode cloud avec Claude Sonnet 5.5, les menus standard de Qt dans la langue de My_OS, le français et l'anglais (bouton 🌐), et le contrôle de l'ordinateur — le modèle local voit l'écran et agit à la souris et au clavier, avec des bords lumineux et une barre d'arrêt (session X11).** Les cinq jalons (socle →
 > fichiers/permissions → pilotage système → routeur cloud → packaging) sont terminés, et
 > l'ISO a été testée de bout en bout en VM (BIOS et UEFI) en octobre 2026 : permissions,
 > confirmations, élévation polkit, réglages, modèle local, contrôle de l'ordinateur, les
@@ -404,7 +404,8 @@ par le point de passage unique `permissions/policy_engine.py`.
   mise à jour de sécurité de l'ISO sur un instantané Arch plus récent : serveur X (huit
   failles, dont une dans XTEST, l'extension par laquelle le contrôle de l'ordinateur
   tape et clique), Python, OpenSSL 4.1 (la 3.6 n'est plus maintenue), Linux 7.3 (fin de
-  vie de la 7.2), Ollama ; validée en VM dans les deux langues.
+  vie de la 7.2), Ollama ; mode cloud moins cher grâce au cache de prompt (0,16 centime
+  par demande en rafale au lieu de 1) ; validée en VM dans les deux langues.
 
 **Encore à éprouver :** matériel réel (pilotes Wi-Fi, rétroéclairage, cartes graphiques)
 — retours bienvenus dans les [issues](https://github.com/gonicolas12/My_OS/issues).
