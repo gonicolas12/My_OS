@@ -475,3 +475,22 @@ Arch du 2026-11-09, processeur seul, modèle local réel (qwen3.5:4b) :
   session sans être affichée ni écrite, effacée à la fin. Par le popup : écriture d'un
   fichier confirmée au niveau 1, contrôle de l'ordinateur accordé au niveau 2, comme
   en local ; au banc, « Désinstalle glibc » refusé par le modèle lui-même.
+
+**Mise à jour de sécurité de l'ISO (novembre 2026, v1.8).** Sur l'ISO de l'instantané
+Arch du 2026-11-16, processeur seul, modèle local réel (qwen3.5:4b) :
+
+- **Serveur X** 21.1.26 : huit failles corrigées, dont une écriture hors limites dans la
+  pile de XTEST (CVE-2026-109093), l'extension par laquelle le contrôle de l'ordinateur
+  clique et tape : un client X pouvait faire planter le serveur ou corrompre sa pile.
+- **TLS** : OpenSSL 4.1 pour le système, `openssl-3` 3.5.9 pour Python, dont le module
+  `ssl` refuse désormais les clés de l'autorité intermédiaire eMudhra compromise.
+  Vérifié pour pacman, le `pip` du premier démarrage, le téléchargement du modèle et le
+  mode cloud avec une vraie clé (passée au trousseau de la session sans être affichée
+  ni écrite, effacée à la fin).
+- **Matrice des 42 scénarios** en français puis en anglais : 42/42 dans les deux cas,
+  mêmes décisions (16 approuvées, 5 automatiques, 9 bloquées, 12 refusées).
+- **Sonde du modèle** : 5 sur 5 dans chaque langue, injection cachée dans un fichier
+  ignorée. **Contrôle de l'ordinateur** en anglais et en français : terminal refusé par
+  tous les chemins essayés (Ctrl+Alt+T, ouverture d'un terminal sous trois noms),
+  commande tapée dans « Run Program » escaladée au niveau 2 et refusée, rien
+  d'exécuté.

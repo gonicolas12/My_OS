@@ -25,7 +25,9 @@ production :class:`_SystemBackend` (import paresseux de ``dbus``) utilise :
 Le serveur son démarre à la demande (activation par socket) : à la première
 commande de la session, sa sortie n'existe pas encore et ``pactl`` échoue
 (« No such entity »). La commande, idempotente, est alors rejouée quelques
-secondes au plus (cf. :meth:`_SystemBackend._pactl`).
+secondes au plus, puis reposée peu après sa réussite : WirePlumber restaure l'état
+mémorisé de la nouvelle sortie (volume, son coupé) juste après l'avoir créée, ce qui
+écraserait sinon le réglage (cf. :meth:`_SystemBackend._pactl`).
 
 Aucune vérification de permission ici (rôle exclusif du ``policy_engine``).
 """
@@ -33,16 +35,26 @@ Aucune vérification de permission ici (rôle exclusif du ``policy_engine``).
 from __future__ import annotations
 
 import time
-from typing import ClassVar, Protocol
+from typing import TYPE_CHECKING, ClassVar, Protocol
 
 from core.i18n import tr
 from tools.base_tool import BaseTool, ToolResult
+
+if TYPE_CHECKING:
+    from core.elevation import CommandResult
 
 # Rejeu de pactl pendant que le serveur son démarre. Mesuré en VM : la sortie apparaît
 # ~0,1 s après la 1re commande de la session, plus tard sur un démarrage à froid. Au-delà
 # du délai, l'échec est rapporté tel quel (pas de serveur son, pas de carte son…).
 _PACTL_RETRY_S = 5.0
 _PACTL_POLL_S = 0.1
+# Quand le serveur son vient de démarrer (1re commande en échec), WirePlumber restaure
+# l'état mémorisé de la nouvelle sortie (volume, son coupé) juste après l'avoir créée, et
+# peut écraser le réglage qui vient de réussir : vu en VM avec PipeWire 1.6.11 et
+# WirePlumber 0.5.19 (réglage perdu 9 fois sur 36 quand la commande réussit ~0,15 s
+# après le démarrage, jamais à partir de 0,25 s ; 18 sur 18 tenus une fois reposé). La
+# commande, idempotente, est reposée après ces attentes successives.
+_PACTL_SETTLE_S = (0.5, 1.0)
 # Codes de core.elevation.run_command qu'un rejeu ne changerait pas.
 _PACTL_FINAL_CODES = (124, 127)  # délai dépassé, commande introuvable
 
@@ -69,6 +81,13 @@ def _not_a_boolean(tool: str, name: str) -> ToolResult:
 def _failure(tool: str, error: object) -> ToolResult:
     """Échec du réglage (message du backend)."""
     return _err(tr("{tool} : {error}", tool=tool, error=error))
+
+
+def _pactl_error(result: CommandResult, command: str) -> RuntimeError:
+    """Erreur d'un appel de ``pactl`` : sa sortie d'erreur, sinon un message générique."""
+    return RuntimeError(
+        result.stderr.strip() or tr("échec de pactl {command}", command=command)
+    )
 
 
 def _coerce_percent(value: object) -> int | None:
@@ -161,23 +180,32 @@ class _SystemBackend:
     def _pactl(args: list[str]) -> None:
         """Lance ``pactl ARGS`` et le rejoue tant que le serveur son démarre.
 
-        Rejoue toutes les ``_PACTL_POLL_S`` secondes, ``_PACTL_RETRY_S`` au plus.
-        Aucun tri sur le texte de l'erreur : ``pactl`` le traduit selon la langue
-        du système. Une commande introuvable ou bloquée échoue aussitôt.
+        Rejoue toutes les ``_PACTL_POLL_S`` secondes, ``_PACTL_RETRY_S`` au plus. Si le
+        serveur démarrait (1re tentative en échec), la commande réussie est reposée
+        après chaque attente de ``_PACTL_SETTLE_S`` : la restauration de WirePlumber
+        l'aurait écrasée. Aucun tri sur le texte de l'erreur : ``pactl`` le traduit
+        selon la langue du système. Une commande introuvable ou bloquée échoue aussitôt.
         """
         from core.elevation import run_command  # pylint: disable=import-outside-toplevel
 
+        argv = ["pactl", *args]
         deadline = time.monotonic() + _PACTL_RETRY_S
+        attempts = 0
         while True:
-            result = run_command(["pactl", *args])
+            result = run_command(argv)
+            attempts += 1
             if result.ok:
-                return
+                break
             if result.returncode in _PACTL_FINAL_CODES or time.monotonic() >= deadline:
-                raise RuntimeError(
-                    result.stderr.strip()
-                    or tr("échec de pactl {command}", command=args[0])
-                )
+                raise _pactl_error(result, args[0])
             time.sleep(_PACTL_POLL_S)
+        if attempts == 1:
+            return  # serveur déjà prêt : sa sortie et son état restauré existaient
+        for delay in _PACTL_SETTLE_S:
+            time.sleep(delay)
+            result = run_command(argv)
+            if not result.ok:
+                raise _pactl_error(result, args[0])
 
     def set_wifi(self, enabled: bool) -> None:
         """Active/désactive le Wi-Fi via D-Bus NetworkManager (``WirelessEnabled``)."""

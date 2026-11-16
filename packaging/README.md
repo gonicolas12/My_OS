@@ -17,7 +17,7 @@ d'[archiso](https://wiki.archlinux.org/title/Archiso).
 | **Base** | dérivée de `releng` (overlay) | kernel, `mkinitcpio`, bootloaders et `pacman.conf` restent ceux, à jour, d'archiso ; aucune config bootloader maintenue à la main. |
 | **Compositeur** | **Xfce / X11** | chemin **nominal** pleinement supporté (le port Wayland reste expérimental, cf. §5). Robuste pour une première ISO. |
 | **Modèle local** | **téléchargé au 1er boot** (`ollama pull qwen3.5:4b`) | ISO légère ; reste *local et privé* à l'usage. Compromis : **réseau requis au 1er démarrage**. Alternative « modèle embarqué » (ISO lourde, hors-ligne) : cf. §6. |
-| **Contexte du modèle** | **8 bits** (`OLLAMA_KV_CACHE_TYPE=q8_0`, drop-in systemd du service `ollama`) | deux fois moins de mémoire pour la même fenêtre ; mêmes outils choisis et même vitesse, mesurés en VM sur Ollama 0.40.6, revérifiés sur 0.40.15 (novembre 2026 : cache toujours chargé en 8 bits, mêmes temps de réponse). Exige la flash attention, qu'Ollama active seul (ne pas poser `OLLAMA_FLASH_ATTENTION=0`). |
+| **Contexte du modèle** | **8 bits** (`OLLAMA_KV_CACHE_TYPE=q8_0`, drop-in systemd du service `ollama`) | deux fois moins de mémoire pour la même fenêtre ; mêmes outils choisis et même vitesse, mesurés en VM sur Ollama 0.40.6, revérifiés sur 0.40.15 puis 0.40.16 (novembre 2026 : cache toujours chargé en 8 bits, mêmes temps de réponse). Exige la flash attention, qu'Ollama active seul (ne pas poser `OLLAMA_FLASH_ATTENTION=0`). |
 | **Ollama en local seul** | `OLLAMA_NO_CLOUD=1` (même drop-in) | sans lui, Ollama contacte ollama.com au démarrage puis toutes les 4 h (recommandations de modèles, cache des modèles cloud). Le téléchargement du modèle au 1er boot reste possible ; seuls les modèles cloud et la recherche web d'Ollama, inutilisés par My_OS, sont coupés. |
 | **Carte graphique** | **Vulkan** (`ollama-vulkan` + pilotes Mesa `vulkan-radeon`, `vulkan-intel`, `vulkan-nouveau`) | le paquet `ollama` seul n'a que des backends processeur. Avec Vulkan, une carte dédiée AMD, Intel ou NVIDIA (Turing et suivantes, via NVK) fait tourner le modèle, sinon le processeur prend le relais. ~120 Mio installés, contre 1 Gio pour CUDA et 3 Gio pour ROCm, laissés hors de l'ISO. |
 | **Dépendances Python** | venv `--system-site-packages` au 1er boot | les paquets système (`pyside6`, `python-dbus`, `python-gobject`, le SDK du mode cloud `python-anthropic`…) viennent de pacman, figés sur l'instantané ; seul le **PyPI-only** (`pynput`, `ollama`) passe par `pip`. |
@@ -104,7 +104,7 @@ sudo pacman -S archiso
 ./packaging/build_iso.sh                 # ISO dans packaging/out/
 ./packaging/build_iso.sh -o /mnt/iso     # répertoire de sortie explicite
 ./packaging/build_iso.sh -w /mnt/build   # répertoire de travail sur un gros disque
-./packaging/build_iso.sh -s 2026/11/09   # instantané de l'Archive (défaut : la veille)
+./packaging/build_iso.sh -s 2026/11/16   # instantané de l'Archive (défaut : la veille)
 ```
 
 Depuis archiso 91, mkarchiso construit sans root (espaces de noms utilisateur) et
