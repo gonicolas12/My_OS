@@ -237,7 +237,7 @@ brute. La note qui suit (« nécessite un modèle cloud ») était donc juste po
   langues sont lues en mode LSTM, le cas de My_OS (`fra+eng`).
 - [x] **Python 3.14.9** (pip 26.2.2, certifi 2026.10.23) et **Ollama 0.40.15** (appels
   d'outils de qwen3.5 dont un argument contient `</function>`) ; noyau 7.2.14, Mesa
-  26.2.6. Python 3.14.10 et openssl 4, encore en test chez Arch, n'y sont pas.
+  26.2.6.
 - [x] **SDK du mode cloud depuis le dépôt Arch** (`python-anthropic` 2.6.0, paquet signé et
   figé avec l'instantané) au lieu de `pip` au premier démarrage, qui prenait la dernière
   version publiée (2.7.0 au 10 novembre) ; `pip` n'installe plus que `pynput` et `ollama`.
@@ -263,6 +263,51 @@ brute. La note qui suit (« nécessite un modèle cloud ») était donc juste po
   K/V en 8 bits toujours chargé. **Mêmes temps que la v1.6** sur les mêmes demandes :
   première demande à froid 80 et 102 s (v1.6 : 85 et 113 s), puis 11 à 12 s par demande
   (v1.6 : 10 à 12 s), ~10 tokens/s, bon outil 12 fois sur 12 à chaque passe.
+
+### v1.8 — mise à jour de sécurité de l'ISO (novembre 2026)
+- [x] ISO publiée : [release `v1.8`](https://github.com/gonicolas12/My_OS/releases/tag/v1.8),
+  avec sa somme SHA-256 ; elle remplace celle de la v1.7, pour une raison de sécurité.
+  Paquets figés sur l'instantané Arch Linux Archive du **2026-11-16** : les 768 paquets
+  de la v1.7, dont 113 mis à jour, plus `openssl-3` pour Python (769 en tout).
+- [x] **Serveur X** : xorg-server 21.1.26 (avis de X.Org du 10 novembre 2026) corrige
+  huit failles, dont une écriture hors limites dans la pile de XTEST (CVE-2026-109093),
+  l'extension par laquelle le contrôle de l'ordinateur clique et tape, et une écriture
+  hors limites par l'EDID d'un écran malveillant (CVE-2026-109091) ; les autres touchent
+  Xv, glamor et XRes.
+- [x] **Python 3.14.10** : `ssl` refuse les clés de l'autorité intermédiaire eMudhra
+  compromise, et le filtre d'extraction de `tarfile` est corrigé (CVE-2026-115557,
+  CVE-2026-114583). Python passe sur `openssl-3` 3.5.9, la branche maintenue à long
+  terme.
+- [x] **OpenSSL 4.1** pour le reste du système (curl, pacman, systemd, Qt…) : la 3.6 de
+  la v1.7 n'est plus maintenue. Aucune bibliothèque introuvable de plus qu'en v1.7 (les
+  mêmes 55 fichiers, tous des modules facultatifs). TLS vérifié par curl, pacman
+  (synchronisation, téléchargement et signature d'un paquet), `openssl s_client`,
+  Python (`pip` du premier démarrage, `urllib`), Ollama (téléchargement du modèle) et le
+  mode cloud. qt6-base 6.12.0-5 corrige les blocages de Qt avec OpenSSL 4.1 : popup
+  sans blocage, `QSslSocket` sur OpenSSL 4.1.
+- [x] **Noyau 7.3.4** (la branche 7.2 est en fin de vie), **glibc 2.44+r78**
+  (CVE-2026-84243, traversée de répertoire par la variable `LANGUAGE`), **Ollama
+  0.40.16** (llama.cpp mis à jour), Mesa 26.2.7, PipeWire 1.6.11, systemd 262.2 et
+  `python-anthropic` 2.8.0.
+- [x] **Son au premier usage** : avec PipeWire 1.6.11 et WirePlumber 0.5.19, la sortie
+  son apparaît un peu plus tard au démarrage du serveur, et WirePlumber y restaure
+  l'état mémorisé (volume, son coupé) juste après la commande : un réglage posé à ce
+  moment-là était perdu sans erreur (l'outil répondait « Son coupé » ou « Son
+  rétabli »). Quand le serveur démarrait, la commande réussie est désormais reposée 0,5
+  puis 1,5 s après. Mesuré en VM, PipeWire arrêté avant chaque essai, en alternance sur
+  la même ISO : 18 réglages sur 18 tenus avec le correctif, 13 sur 18 avec le code de
+  la v1.7. Trouvé pendant la validation.
+- [x] Validé en VM sur processeur seul (novembre 2026) : sonde du modèle 5 sur 5 en
+  français et en anglais, injection cachée dans un fichier ignorée ; contrôle de
+  l'ordinateur en anglais (Mousepad, arrêt par Échap, terminal refusé par tous les
+  chemins, commande tapée dans « Run Program » escaladée et refusée) et en français ;
+  42 scénarios de permissions dans chaque langue, mêmes décisions ; OCR de l'écran en
+  `fra+eng` ; saisie de la clé API ; menus de Qt dans les deux langues ; 374 tests dans
+  la VM avec le SDK de l'ISO ; mode cloud de bout en bout avec une vraie clé (Claude
+  Sonnet 5.5). **Mêmes temps que la v1.7**, mesurés coup sur coup sur le même
+  hôte : première demande à froid 72 et 98 s (v1.7 : 93 et 104 s), puis 11 à 12,5 s par
+  demande (v1.7 : 10 à 14 s), 9 à 10 tokens/s, bon outil 12 fois sur 12 à chaque passe ;
+  cache K/V toujours chargé en 8 bits, Ollama en local seul.
 
 ### Encore à éprouver
 - [ ] Un vrai PC (pilotes Wi-Fi, rétroéclairage, cartes graphiques ; son et Wi-Fi ont été
@@ -336,6 +381,11 @@ Plus modestes, et directement issues de l'usage réel :
   l'ordinateur, ~2 430 en v1.2 ; mesuré en novembre 2026). Pistes : prompt et schémas plus
   courts, modèle préchargé à l'ouverture de session, modèle plus petit par défaut sur les
   machines modestes.
+- **Téléchargement du modèle au premier démarrage** : un seul essai. Si le réseau n'est
+  pas encore prêt (vu une fois en VM en novembre 2026 : délai dépassé pendant la
+  connexion TLS au registre d'Ollama, puis réussi à la main), les demandes au modèle
+  local échouent jusqu'à un `ollama pull qwen3.5:4b`. Pistes : quelques nouveaux essais
+  espacés, et un message du popup qui donne la commande.
 
 ---
 
