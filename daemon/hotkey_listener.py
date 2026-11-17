@@ -63,10 +63,25 @@ class _X11Backend:
         _log.info("Raccourci global X11 (pynput) : %s", self._hotkey)
 
     def stop(self) -> None:
-        """Arrête l'écoute du raccourci."""
-        if self._listener is not None:
-            self._listener.stop()
-            self._listener = None
+        """Arrête l'écoute du raccourci, sans jamais lever.
+
+        L'écoute de ``pynput`` est liée au serveur X de la session où le daemon a
+        démarré : à la fin de cette session, son thread meurt avec la connexion. Son
+        ``stop()`` lèverait alors (connexion fermée, ou jamais ouverte) et
+        interromprait l'arrêt du daemon, au moment même où ``~/.xprofile`` le
+        redémarre pour la nouvelle session. Un thread déjà terminé n'a plus rien à
+        arrêter.
+        """
+        listener, self._listener = self._listener, None
+        if listener is None:
+            return
+        if not listener.is_alive():
+            _log.info("Raccourci global X11 : écoute déjà terminée (serveur X fermé ?)")
+            return
+        try:
+            listener.stop()
+        except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+            _log.warning("Raccourci global X11 : arrêt de l'écoute en échec (%s)", exc)
 
 
 class PortalTransport(Protocol):
