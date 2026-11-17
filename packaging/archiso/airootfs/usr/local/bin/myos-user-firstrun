@@ -2,7 +2,8 @@
 # Initialisation au 1er lancement de session (idempotent) :
 #   - crée un venv Python réutilisant les paquets système (--system-site-packages) ;
 #   - installe les dépendances absentes des dépôts officiels (PyPI) ;
-#   - récupère le modèle local Ollama EN ARRIÈRE-PLAN (réseau requis, non bloquant).
+#   - récupère le modèle local Ollama EN ARRIÈRE-PLAN (réseau requis, non bloquant),
+#     avec de nouveaux essais espacés si le réseau n'est pas encore prêt.
 # Cohérent avec « local par défaut » : le modèle tourne ensuite sur la machine.
 set -eu
 
@@ -14,6 +15,59 @@ model="qwen3.5:4b"
 # Espace libre exigé avant le pull : modèle (~3,3 Go) + marge. En live, l'écriture
 # va dans le cowspace en RAM : sans cette garde, le pull le remplit et casse la session.
 model_min_free_mib=4096
+# Téléchargement du modèle : 5 essais, espacés de 30 s, 1, 2 puis 4 min (7 min 30
+# d'attente au plus). Le réseau peut ne pas être prêt à l'ouverture de la session :
+# vu en VM, un délai dépassé pendant la connexion TLS au registre d'Ollama laissait
+# la machine sans modèle (un seul essai jusqu'à la v1.8).
+pull_delays="30 60 120 240"
+pull_log="$base/model-pull.log"
+# État du téléchargement, lu par le daemon quand le modèle manque pour que le popup
+# dise pourquoi et donne la commande (models/model_pull.py) : « pulling MODÈLE PID »
+# (tâche de fond en cours), « done MODÈLE », « failed MODÈLE » ou « no-space MODÈLE ».
+pull_status="$base/model-pull.status"
+
+# Note l'état du téléchargement d'un bloc (fichier remplacé, jamais lu à moitié).
+set_status() {
+    echo "$*" >"$pull_status.new"
+    mv -f "$pull_status.new" "$pull_status"
+}
+
+# Tâche de fond du téléchargement (ne bloque jamais la session). Avant chaque essai :
+# un modèle déjà là (tiré à la main entre-temps) arrête tout, et l'on attend jusqu'à
+# 1 min que NetworkManager annonce une connexion. L'état final est noté en dernier.
+pull_model() {
+    read -r pid _ </proc/self/stat # PID de cette tâche de fond (pas celui du script)
+    set_status pulling "$model" "$pid"
+    # shellcheck disable=SC2086 # découpage voulu : un délai par mot
+    set -- $pull_delays
+    attempts=$(($# + 1))
+    attempt=1
+    while :; do
+        if ollama show "$model" >/dev/null 2>&1; then
+            echo "$(date '+%F %T') modèle $model déjà présent"
+            set_status done "$model"
+            return 0
+        fi
+        if command -v nm-online >/dev/null 2>&1 && ! nm-online -q -t 60; then
+            echo "$(date '+%F %T') pas de connexion annoncée par NetworkManager ; essai quand même"
+        fi
+        echo "$(date '+%F %T') essai $attempt sur $attempts : ollama pull $model"
+        if ollama pull "$model"; then
+            echo "$(date '+%F %T') modèle $model téléchargé"
+            set_status done "$model"
+            return 0
+        fi
+        [ "$#" -gt 0 ] || break
+        echo "$(date '+%F %T') échec ; nouvel essai dans $1 s"
+        sleep "$1"
+        shift
+        attempt=$((attempt + 1))
+    done
+    echo "$(date '+%F %T') modèle $model non téléchargé après $attempts essais." \
+        "Lancez : ollama pull $model"
+    set_status failed "$model"
+    return 1
+}
 
 [ -f "$mark" ] && exit 0
 mkdir -p "$base"
@@ -31,16 +85,18 @@ if ! "$venv/bin/pip" install --quiet pynput ollama >>"$log" 2>&1; then
     exit 1
 fi
 
-# Récupération du modèle local (peut être longue ; ne bloque pas la session).
-# Sans réseau, l'assistant signalera l'absence de modèle jusqu'au prochain
-# `ollama pull qwen3.5:4b`.
+# Récupération du modèle local en tâche de fond (peut être longue). Si tous les essais
+# échouent, le popup donne la commande `ollama pull qwen3.5:4b`. L'espace libre est
+# vérifié une fois, avant le premier essai : un essai suivant reprend les fichiers
+# partiels du précédent, que la même garde compterait à tort comme de la place prise.
 free_mib="$(df -Pm /var/lib/ollama | awk 'NR==2 {print $4}')"
 if [ "${free_mib:-0}" -ge "$model_min_free_mib" ]; then
-    ( ollama pull "$model" >"$base/model-pull.log" 2>&1 || true ) &
+    pull_model >"$pull_log" 2>&1 &
 else
     echo "Modèle $model non téléchargé : ${free_mib:-0} Mio libres, $model_min_free_mib requis." \
         "En live, démarrez avec plus de RAM, puis lancez : ollama pull $model" \
-        >"$base/model-pull.log"
+        >"$pull_log"
+    set_status no-space "$model"
 fi
 
 touch "$mark"
