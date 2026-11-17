@@ -96,6 +96,8 @@ TokenCallback = Callable[[str], None]
 #   {"role": "assistant", "content": str, "tool_calls": list[ToolCall]}
 #       + "raw_content": list  # si le backend en a produit (cf. Plan.raw_content)
 #   {"role": "tool", "tool": str, "content": str}   # résultat réinjecté
+#       + "image": bytes  # capture d'un outil de l'écran (JPEG) : au plus une par
+#         étape ; entre deux requêtes, seule la dernière reste (cf. _append_tool_result)
 Message = dict
 
 # Plafond d'itérations de la boucle agentique (anti-boucle infinie).
@@ -165,13 +167,14 @@ class ControlProvider(Protocol):
 
 @dataclass
 class _Request:
-    """État propre à une requête : grants vus, contrôle de l'ordinateur."""
+    """État propre à une requête : grants vus, contrôle de l'ordinateur, backend."""
 
     id: str
     text: str
     grants: RequestGrants
     control_denied: bool = False
     control_started: bool = False
+    cloud: bool = False  # backend cloud pour cette requête (captures, cf. _loop)
 
 
 class Model(Protocol):
@@ -344,13 +347,21 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
             self._log_cloud_send(list(history), model)
 
         request = _Request(
-            id=user_message_id, text=content, grants=RequestGrants(self._grants)
+            id=user_message_id,
+            text=content,
+            grants=RequestGrants(self._grants),
+            cloud=cloud_active,
         )
         try:
             finished = self._loop(model, history, request, reply)
         finally:
-            # Le contrôle de l'ordinateur ne survit jamais à sa requête.
-            self._end_control(request, reply)
+            # Le contrôle de l'ordinateur ne survit jamais à sa requête, ni les
+            # captures gardées pour le cloud : seule la dernière reste, même si la
+            # fermeture du contrôle échoue.
+            try:
+                self._end_control(request, reply)
+            finally:
+                self._keep_last_capture(history)
         if not finished:
             return  # erreur du modèle, déjà signalée au popup
 
@@ -415,21 +426,57 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
                     image = None
                 else:
                     output, image = self._handle_tool_call(request, tool_call, reply)
-                self._append_tool_result(history, tool_call.tool, output, image)
+                self._append_tool_result(
+                    history, tool_call.tool, output, image, keep_steps=request.cloud
+                )
             if self._control_stopped(request):
                 return True
 
-    def _append_tool_result(
-        self, history: list[Message], tool: str, output: str, image: bytes | None
+    def _append_tool_result(  # pylint: disable=too-many-arguments
+        self,
+        history: list[Message],
+        tool: str,
+        output: str,
+        image: bytes | None,
+        *,
+        keep_steps: bool = False,
     ) -> None:
-        """Réinjecte un résultat d'outil ; seule la dernière capture d'écran est gardée."""
+        """Réinjecte un résultat d'outil, avec au plus une capture d'écran par étape.
+
+        Une nouvelle capture remplace celles des résultats précédents de la même
+        étape (le même tour du modèle), qui ne sont jamais parties au modèle. En
+        local (défaut), elle remplace aussi celles des étapes précédentes : seule la
+        dernière reste. En mode cloud (``keep_steps``), celles des étapes
+        précédentes restent : retirer une capture déjà envoyée modifierait
+        l'historique, ce qui ferait écarter la réflexion des étapes suivantes et
+        réécrire la conversation dans le cache de prompt (cf. INTERFACES §5.2).
+        Aucune capture de plus ne part : ce sont celles déjà envoyées, renvoyées.
+        """
         entry: Message = {"role": "tool", "tool": tool, "content": output}
         with self._history_lock:
             if image is not None:
-                for message in history:
+                for message in reversed(history):
+                    if keep_steps and message.get("role") == "assistant":
+                        break  # début de l'étape : les captures d'avant restent
                     message.pop("image", None)
                 entry["image"] = image
             history.append(entry)
+
+    def _keep_last_capture(self, history: list[Message]) -> None:
+        """En fin de requête, ne garde que la dernière capture de l'historique.
+
+        Les captures gardées pour le cloud pendant un contrôle (cf.
+        :meth:`_append_tool_result`) ne servent qu'à cette requête : la suivante,
+        locale ou cloud, repart comme avant avec la seule dernière capture.
+        """
+        with self._history_lock:
+            last_seen = False
+            for message in reversed(history):
+                if "image" not in message:
+                    continue
+                if last_seen:
+                    del message["image"]
+                last_seen = True
 
     # ---- contrôle de l'ordinateur ------------------------------------------------
     def _control_stopped(self, request: _Request) -> bool:

@@ -84,14 +84,26 @@ Rien de conséquent n'est silencieux.
 - **Visible.** Un indicateur « mode cloud actif » s'affiche dans le popup quand le
   toggle est ON, et une notice in-transcript marque chaque requête partie au cloud.
 - **Journalisé sans fuite.** Chaque envoi cloud est tracé par le logger dédié
-  `myosd.cloud` (modèle, nombre de messages et de caractères transmis) — **jamais**
-  la clé, **jamais** le contenu. Canal distinct du journal d'audit `~/.local/share/my_os/audit.db`
+  `myosd.cloud` (modèle, nombre de messages et de caractères transmis ; pour chaque
+  appel, tokens et nombre de captures d'écran parties) — **jamais** la clé,
+  **jamais** le contenu. Canal distinct du journal d'audit `~/.local/share/my_os/audit.db`
   (réservé aux actions d'outils et décisions de permission).
 - **Minimisation des données.** En mode cloud, c'est **tout l'historique persistant
   courant** (borné par `MAX_HISTORY_MESSAGES`) qui part, pas seulement le dernier
   message — conséquence de la mémoire conversationnelle partagée. On conserve cet
   historique partagé (cohérence voulue) mais on **conseille un `reset` (Ctrl+L) avant
   de passer au cloud** pour un contexte minimal ; l'envoi reste visible et journalisé.
+- **Captures d'écran du contrôle de l'ordinateur.** Chaque capture part une première
+  fois avec le résultat de l'outil qui l'a prise. Pendant la même requête, celles des
+  étapes précédentes repartent ensuite avec chaque appel, pour que l'historique envoyé
+  ne change pas (réflexion du modèle gardée, cache de prompt relu ; cf. INTERFACES
+  §5.2) : chaque requête cloud en porte donc plusieurs, jusqu'à toutes celles de la
+  tâche (40 au plus, ~3,4 Mo). Aucune capture de plus ne quitte la machine : ce sont
+  les mêmes, renvoyées, une par étape (celles prises entre deux tours du modèle ne
+  partent jamais) ; le nombre parti avec chaque appel est journalisé. En fin de
+  requête, seule la dernière reste dans l'historique, comme en local : la requête
+  suivante ne renvoie pas les autres ; elle renvoie celle-là à chacun de ses appels,
+  comme avant ce changement (un `reset`, Ctrl+L, l'efface).
 - **Cache de prompt (v1.8).** Les outils, le prompt système et la conversation envoyés
   restent jusqu'à 5 minutes (renouvelées à chaque lecture) dans le cache de prompt
   d'Anthropic, isolé par espace de travail de la clé et jamais partagé entre
@@ -193,7 +205,8 @@ n'importe quelle action devient un clic.
   (`computer_control`).
 - **Local d'abord.** En local, ni la liste des éléments ni la capture ne quittent la
   machine. En mode cloud (opt-in), elles partent avec les résultats d'outils, comme le
-  reste de la conversation (visible, journalisé).
+  reste de la conversation (visible, journalisé) ; les captures des étapes précédentes
+  de la requête repartent avec chaque appel (cf. menace 2).
 
 **Limites assumées.** Une action irréversible sans libellé reconnaissable (bouton icône
 seule, libellé dans une autre langue que le français et l'anglais, les deux seules que

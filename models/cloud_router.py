@@ -27,11 +27,13 @@ suivent la langue de la requête, comme en local.
 renvoyé (``Plan.raw_content`` : blocs de réflexion signés, vrais identifiants des appels
 d'outils). Ces blocs sont liés à la conversation qui les a produits : toute modification
 d'un tour antérieur les invalide (erreur 400 sur les comptes récents). Or l'historique
-de My_OS change entre deux requêtes (langue, élagage) et pendant le contrôle de l'écran
-(seule la dernière capture est gardée). D'où deux règles : seule la réflexion de la
+de My_OS change entre deux requêtes (langue, élagage, captures d'écran retirées en fin
+de requête) ; pendant une requête en mode cloud, il ne fait que s'allonger (la capture
+de chaque étape du contrôle de l'écran reste jusqu'à la fin de la requête, cf.
+``Orchestrator._append_tool_result``). D'où deux règles : seule la réflexion de la
 requête en cours repart (retirer les blocs du début de l'historique est permis), et
-l'API écarte un bloc devenu invalide au lieu d'échouer (``drop_block``, en-tête bêta).
-Une réponse coupée (longueur maximale) ou refusée n'exécute aucun outil.
+l'API écarte un bloc devenu invalide au lieu d'échouer (``drop_block``, en-tête bêta),
+par sécurité. Une réponse coupée (longueur maximale) ou refusée n'exécute aucun outil.
 
 **Cache de prompt** (cf. INTERFACES §5.2). Les outils et le prompt système d'une langue
 (~5 000 tokens) ne changent pas d'une requête à l'autre : un point de cache à la fin du
@@ -241,8 +243,9 @@ def _to_anthropic(messages: list[dict]) -> list[dict]:
 def _tool_content(message: dict) -> str | list[dict]:
     """Contenu d'un résultat d'outil : le texte, et la capture d'écran s'il y en a une.
 
-    Seule la dernière capture est gardée dans l'historique (cf. orchestrator) :
-    au plus une image part par requête.
+    En mode cloud, l'historique garde la capture de chaque étape de la requête en cours
+    (une par tour du modèle, cf. ``Orchestrator._append_tool_result``) : elles
+    repartent toutes, à leur place, à chaque appel.
     """
     text = str(message.get("content", ""))
     image = message.get("image")
@@ -261,6 +264,21 @@ def _tool_content(message: dict) -> str | list[dict]:
     ]
 
 
+def _count_captures(messages: list[dict]) -> int:
+    """Nombre de captures d'écran dans les messages d'une requête (résultats d'outils)."""
+    return sum(
+        1
+        for message in messages
+        if isinstance(message.get("content"), list)
+        for block in message["content"]
+        if isinstance(block, dict)
+        and block.get("type") == "tool_result"
+        and isinstance(block.get("content"), list)
+        for part in block["content"]
+        if part.get("type") == "image"
+    )
+
+
 def _make_anthropic_client(api_key: str | None) -> Any:
     """Instancie un client Anthropic. Import paresseux : ``anthropic`` n'est requis
     qu'ici, pas pour importer le module (tests, mode stub)."""
@@ -269,10 +287,11 @@ def _make_anthropic_client(api_key: str | None) -> Any:
     return anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
 
 
-def _log_response(
-    final: Any, model: str, first_word: float | None, total: float
+def _log_response(  # pylint: disable=too-many-arguments
+    final: Any, model: str, first_word: float | None, total: float, captures: int = 0
 ) -> None:
-    """Journalise une réponse du cloud : arrêt, durées, tokens facturés (sans contenu).
+    """Journalise une réponse du cloud : arrêt, durées, tokens facturés et captures
+    d'écran envoyées avec l'appel (sans contenu).
 
     Complète l'envoi tracé par l'orchestrator (cf. INTERFACES §5.4) ; sert aussi à
     mesurer les réglages de la réflexion (« premier mot » = premier texte affiché).
@@ -290,7 +309,8 @@ def _log_response(
     details = getattr(final, "stop_details", None)
     _cloud_log.info(
         "Réponse CLOUD (%s) : arrêt %s%s, premier mot %s, durée %.1f s ; tokens : "
-        "entrée %d (cache lu %d, écrit %d), sortie %d ; blocs de réflexion écartés %d",
+        "entrée %d (cache lu %d, écrit %d), sortie %d ; blocs de réflexion écartés %d ; "
+        "captures d'écran envoyées %d",
         model,
         getattr(final, "stop_reason", None),
         f" ({_field(details, 'category')})" if details is not None else "",
@@ -301,6 +321,7 @@ def _log_response(
         count("cache_creation_input_tokens"),
         count("output_tokens"),
         dropped,
+        captures,
     )
 
 
@@ -416,10 +437,11 @@ class ClaudeClient:  # pylint: disable=too-many-instance-attributes
         réponse coupée ou refusée ne donne aucun appel d'outil (``Plan.interrupted``).
         Prompt et outils sont ceux de la langue de la requête.
         """
+        request = self._request(messages)
         started = time.monotonic()
         first_word: float | None = None
         narration_parts: list[str] = []
-        with self._client.beta.messages.stream(**self._request(messages)) as stream:
+        with self._client.beta.messages.stream(**request) as stream:
             for fragment in stream.text_stream:
                 if first_word is None:
                     first_word = time.monotonic() - started
@@ -427,7 +449,13 @@ class ClaudeClient:  # pylint: disable=too-many-instance-attributes
                 if on_token is not None:
                     on_token(fragment)
             final = stream.get_final_message()
-        _log_response(final, self._model, first_word, time.monotonic() - started)
+        _log_response(
+            final,
+            self._model,
+            first_word,
+            time.monotonic() - started,
+            captures=_count_captures(request["messages"]),
+        )
 
         narration = "".join(narration_parts).strip()
         stop = getattr(final, "stop_reason", None)

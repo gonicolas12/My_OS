@@ -335,24 +335,67 @@ et plus ne les propose d'ailleurs plus). Règles d'une boucle d'outils :
   prompt système, les outils et tous les messages qui le précèdent n'ont pas changé ;
   sinon, erreur 400 sur les comptes créés depuis le 31 août 2026. L'historique de My_OS
   change entre deux requêtes (langue : prompt, outils et rappels ; élagage à
-  `MAX_HISTORY_MESSAGES`) et pendant le contrôle de l'écran (seule la dernière capture
-  est gardée). Donc : seule la réflexion de la **requête en cours** repart (retirer les
-  blocs du début de l'historique est permis ; le texte et les `tool_use` des requêtes
-  précédentes repartent, eux) ; et chaque appel demande à l'API d'**écarter** un bloc
-  invalidé plutôt que d'échouer (`thinking.block_binding.prefix_mismatch_behavior:
-  "drop_block"`, en-tête bêta `thinking-binding-controls-2026-08-01`, d'où
-  `client.beta.messages.stream`). Pendant le contrôle de l'écran, la réflexion des
-  étapes précédentes est donc écartée à chaque capture retirée. Mesuré de bout en bout
-  dans la VM de l'ISO v1.8 avec une vraie clé (novembre 2026) : aucun bloc écarté dans
-  une conversation ordinaire (8 appels, en français puis en anglais), 7 à 10 pendant un
-  contrôle de l'écran de 7 appels (liste de 5 lignes écrite dans Mousepad : tâche
-  réussie). **`drop_block` est gardé** plutôt que le schéma de la documentation
+  `MAX_HISTORY_MESSAGES` ; captures d'écran retirées en fin de requête) ; pendant une
+  requête en mode cloud, il ne fait que s'allonger (les captures du contrôle de l'écran
+  restent, ci-dessous). Donc : seule la réflexion de la **requête en cours** repart
+  (retirer les blocs du début de l'historique est permis ; le texte et les `tool_use`
+  des requêtes précédentes repartent, eux) ; et chaque appel demande à l'API
+  d'**écarter** un bloc invalidé plutôt que d'échouer
+  (`thinking.block_binding.prefix_mismatch_behavior: "drop_block"`, en-tête bêta
+  `thinking-binding-controls-2026-08-01`, d'où `client.beta.messages.stream`). Mesuré de
+  bout en bout dans la VM de l'ISO v1.8 avec une vraie clé (novembre 2026) : aucun bloc
+  écarté dans une conversation ordinaire (8 appels, en français puis en anglais), ni
+  pendant le contrôle de l'écran depuis que ses captures restent ; avant, 2 à 10 par
+  contrôle de 5 à 7 appels, la réflexion des étapes précédentes étant écartée à chaque
+  capture retirée. **`drop_block` est gardé** plutôt que le schéma de la documentation
   (`"error"`, puis nouvel essai de la conversation avec `drop_block` après l'erreur 400,
-  journalisé) : les seules modifications de l'historique sont voulues (ci-dessus),
-  chaque réponse journalise déjà le nombre de blocs écartés (§5.4), et `"error"`
-  ajouterait à chaque contrôle de l'écran un aller-retour en échec, pour écarter ensuite
-  les mêmes blocs. Garder cette réflexion demanderait de ne plus retirer les captures en
-  mode cloud : un autre changement, à mesurer à part.
+  journalisé) : les seules modifications de l'historique sont voulues et ont lieu entre
+  deux requêtes (ci-dessus), chaque réponse journalise le nombre de blocs écartés
+  (§5.4), et `"error"` ajouterait un aller-retour en échec pour écarter ensuite les
+  mêmes blocs.
+- **Captures du contrôle de l'écran.** Chaque outil de l'écran renvoie une capture
+  annotée (JPEG de 1 280 × 720, 45 à 65 Ko, ~1 200 tokens). L'orchestrator n'en garde
+  qu'une par étape (§6.5) : la dernière des résultats d'un même tour du modèle, les
+  autres ne partent jamais. En local, une nouvelle capture retire aussi celles des
+  étapes précédentes : seule la dernière reste. En mode cloud, celles des étapes
+  précédentes restent jusqu'à la fin de la requête : l'historique envoyé ne fait que
+  s'allonger, la réflexion des étapes précédentes reste valide, et le cache relit toute
+  la conversation au lieu d'en réécrire la suite après chaque capture retirée. Aucune
+  capture de plus ne quitte la machine : ce sont les mêmes, renvoyées à chaque appel de
+  la même requête (SECURITY menace 2), et le journal de chaque réponse dit combien
+  (§5.4). En fin de requête (finie, en erreur ou arrêtée), seule la dernière reste,
+  comme en local : la requête suivante part du même historique qu'avant ce changement.
+  Cette capture laissée par la requête précédente se trouve avant le message `user` de
+  la nouvelle : comme avant ce changement, elle repart avec chaque appel (et compte
+  dans le journal), jusqu'à ce que la fin de la requête ne garde que sa dernière à elle.
+  Mesuré de bout en bout dans la VM de l'ISO v1.8 avec une vraie clé (17 novembre 2026,
+  par le popup, en anglais, les deux codes en alternance, deux tâches dans Mousepad,
+  5 à 6 appels chacune, coût hors écriture du préfixe, qui ne dépend pas du code) :
+  liste de 5 lignes, 3,1 centimes par tâche au lieu de 3,5 (trois passages de chaque
+  code, tous réussis) ; jours de la semaine puis suppression de l'un d'eux, 4,0 au lieu
+  de 5,8 (deux passages de chaque, tous réussis) ; aucun bloc de réflexion écarté au
+  lieu de 2 et 10 par tâche (somme des appels, comme au journal : un bloc venu après
+  une capture retirée était écarté à chaque appel suivant ; dans ces tâches, Claude ne
+  relisait ainsi aucune de ses réflexions précédentes, il les relit désormais toutes).
+  Les écritures dans le cache baissent de 21 et 42 %, les lectures (vingt-cinq fois
+  moins chères qu'une écriture) montent de 56 %. Mêmes durées (23 et 31 s de
+  contrôle, contre 24 et 34). Rejouées à l'identique avec les
+  deux codes (une trajectoire enregistrée de chaque tâche, requêtes copiées octet pour
+  octet, celles du code précédent reconstituées et vérifiées identiques) : 3,1 au lieu
+  de 3,6 centimes et 4,2 au lieu de 5,3 (−13 et −20 %), 0 bloc écarté au lieu de 2 et
+  8, écritures −21 et −32 %, même sortie et même durée par appel (dans la VM, la
+  sortie baissait de 13 % sur la seconde tâche : un passage du code précédent y avait
+  pris un chemin plus long, 21 outils au lieu de 15). La plus grande requête passe de
+  8 700 à 12 400 tokens et de 105 à 357 Ko (4 captures) sur la première tâche, de
+  11 000 à 14 600 tokens et de 115 à 455 Ko (5 captures) sur la seconde. L'écart
+  grandit avec la longueur de la tâche : une capture retirée faisait réécrire toute la
+  suite à chaque appel, une capture gardée n'est écrite qu'une fois, puis relue. Une
+  requête fait au plus `MAX_CONTROL_STEPS` appels : le dernier porte au plus 40
+  captures (celles des 39 étapes précédentes, plus celle laissée par la requête
+  précédente ; ~3,4 Mo en base64), loin des limites de l'API (600 images et 128 Mo par
+  requête ; au-delà de 20 images, 3 000 px de côté au plus, les captures en font
+  1 280) ; sur une connexion lente, une telle requête met quelques secondes à partir
+  (~3 s à 10 Mbit/s).
 - **Tour coupé ou refusé.** `stop_reason` `max_tokens` (ou
   `model_context_window_exceeded`) : `Plan.interrupted` porte « ⚠ Réponse coupée… » ;
   `refusal` : « ⚠ Claude a refusé de poursuivre… ». Aucun appel d'outil n'est renvoyé,
@@ -402,14 +445,15 @@ et plus ne les propose d'ailleurs plus). Règles d'une boucle d'outils :
   points). Ni le choix des outils (les mêmes écarts : « Désinstalle glibc », refusé par
   écrit) ni le délai jusqu'au premier événement (~0,8 s) ne changent. Ce qui fait
   réécrire la suite de la conversation, le préfixe restant lu : la réflexion des
-  requêtes précédentes retirée, une capture retirée pendant le contrôle de l'écran,
-  l'élagage, les rappels de langue ajoutés au premier changement de langue. De bout en
-  bout dans la VM de l'ISO v1.8, par le popup (15 appels : processus, écriture
-  confirmée, lecture et dossier en anglais dans la même conversation, puis contrôle de
-  l'écran avec une capture par observation) : 20,3 centimes sans cache, 9,9 avec ;
-  pendant le contrôle, seul le préfixe (~4 300 tokens en anglais) est relu, la suite
-  étant réécrite à chaque capture retirée. Durée moyenne par appel 1,5 s sans cache,
-  1,8 s avec, sur ce seul passage (au banc, le premier événement ne bouge pas).
+  requêtes précédentes retirée, les captures retirées en fin de requête, l'élagage, les
+  rappels de langue ajoutés au premier changement de langue. De bout en bout dans la VM
+  de l'ISO v1.8, par le popup (15 appels : processus, écriture confirmée, lecture et
+  dossier en anglais dans la même conversation, puis contrôle de l'écran avec une
+  capture par observation) : 20,3 centimes sans cache, 9,9 avec ; pendant le contrôle,
+  seul le préfixe (~4 300 tokens en anglais) était alors relu, la suite étant réécrite à
+  chaque capture retirée, d'où les captures gardées en mode cloud (ci-dessus). Durée
+  moyenne par appel 1,5 s sans cache, 1,8 s avec, sur ce seul passage (au banc, le
+  premier événement ne bouge pas).
 - **SDK.** Testé avec le SDK `anthropic` 1.15 (installations depuis les sources), 2.6
   (ISO v1.7), 2.7 et 2.8 (ISO v1.8, paquet `python-anthropic`), contre un faux serveur
   local (`tests/test_models/test_cloud_sdk.py`) ; `cache_control` au niveau de la
@@ -441,11 +485,13 @@ Chaque envoi cloud est journalisé via un **logger dédié `myosd.cloud`**
 (horodatage, nom du modèle, **nombre de messages et de caractères** transmis) —
 **jamais** la clé, **jamais** le contenu. Chaque réponse aussi : raison de l'arrêt
 (et catégorie d'un refus), délai jusqu'au premier texte, durée, tokens facturés
-(entrée, cache lu et écrit, sortie) et nombre de blocs de réflexion écartés. Avec le
-cache de prompt (§5.2), une requête qui en suit une autre de la même langue à moins de
-5 minutes lit au moins le préfixe de sa langue (~4 300 à 5 200 tokens) : « cache lu 0 »
-dans ce cas signale un préfixe modifié d'une requête à l'autre. Le canal est le logger
-(journald sous systemd), distinct du **journal d'audit**
+(entrée, cache lu et écrit, sortie), nombre de blocs de réflexion écartés et nombre de
+captures d'écran parties avec l'appel (une par étape du contrôle de l'écran, plus
+celle laissée par la requête précédente s'il y en a une, §5.2).
+Avec le cache de prompt (§5.2), une requête qui en suit une autre de la même langue à
+moins de 5 minutes lit au moins le préfixe de sa langue (~4 300 à 5 200 tokens) :
+« cache lu 0 » dans ce cas signale un préfixe modifié d'une requête à l'autre. Le canal
+est le logger (journald sous systemd), distinct du **journal d'audit**
 (`~/.local/share/my_os/audit.db`), réservé aux actions
 d'outils et décisions de permission (§4). La minimisation des données envoyées au
 cloud est traitée en §6 et SECURITY menace 2.
@@ -495,6 +541,20 @@ un `reset` (Ctrl+L) avant de passer au cloud** pour repartir d'un contexte minim
 Aucun cap distinct n'est appliqué en mode cloud (il casserait la cohérence de
 l'historique partagé) ; la borne `MAX_HISTORY_MESSAGES` s'applique aux deux backends.
 
+**Captures d'écran (contrôle de l'ordinateur).** Un résultat d'outil de l'écran porte
+sa capture (`image`, §6.5) ; l'historique n'en garde qu'une par étape, la dernière des
+résultats d'un même tour du modèle. En local, seule la dernière de la requête reste.
+Pour une requête cloud (`_Request.cloud`), celles des étapes précédentes restent
+jusqu'à la fin de la requête, pour que l'historique envoyé ne change pas d'un appel à
+l'autre (réflexion gardée, cache de prompt relu ; §5.2) : ce sont les mêmes captures,
+renvoyées à chaque appel. La capture laissée par la requête précédente (avant le
+message `user`) n'est pas retirée non plus : elle repart avec chaque appel. En fin de
+requête (`finally`, même après une erreur du modèle, un arrêt ou une erreur en fermant
+le contrôle), seule la dernière capture reste, quel que soit le backend. Le backend
+local, lui, ne joint jamais que la dernière capture de l'historique : une requête
+locale qui en croiserait une cloud en cours (un thread par requête, historique
+partagé) n'en envoie pas davantage.
+
 ---
 
 ## 6.5 · Modèle injectable côté orchestrator (jalon 2)
@@ -524,6 +584,7 @@ TokenCallback = Callable[[str], None]
 #       + "raw_content": list   # tour du cloud (§5.2) ; le local l'ignore
 #   {"role": "tool", "tool": str, "content": str}   # résultat réinjecté
 #   {"role": "tool", "tool": str, "content": str, "image": bytes}  # outils de l'écran
+#       (au plus une capture par étape ; en cloud, celles de la requête restent, §6)
 Message = dict
 
 class Model(Protocol):
@@ -560,9 +621,11 @@ la signature de `Model` ne change pas. Une conversation qui a changé de langue 
 des tours précédents. Une conversation dans une seule langue est envoyée telle quelle.
 
 **Captures d'écran.** Un résultat d'outil de l'écran peut porter une capture annotée
-(`image`, JPEG ~1 280 px de large) ; l'orchestrator ne garde que la **dernière** dans
-l'historique. Le backend cloud la joint toujours (bloc `image` dans le `tool_result`
-Anthropic) ; le backend local seulement si `computer.vision` le permet (`auto` : vitesse
+(`image`, JPEG ~1 280 px de large) ; l'orchestrator n'en garde qu'une par étape, et
+seule la **dernière** reste entre deux requêtes (en mode cloud, celles des étapes
+précédentes restent pendant la requête : §6). Le backend cloud joint toutes celles de
+l'historique (bloc `image` dans le `tool_result` Anthropic) ; le backend local
+seulement la dernière, et seulement si `computer.vision` le permet (`auto` : vitesse
 de génération mesurée par Ollama ≥ 30 tokens/s, soit une carte graphique), sur le message
 `tool` lui-même (`images`). Une réponse vide alors que le modèle a généré (appel d'outil
 illisible pour Ollama) est redemandée une fois, puis lève `UnreadableResponse`.
@@ -847,7 +910,9 @@ d'une requête : confirmation de contrôle (§1), puis `begin` ; un refus vaut p
 requête. Les grants de la requête (`RequestGrants`) couvrent alors les outils de l'écran
 au niveau 1 seulement ; aucune portée durable ne leur est proposée
 (`grantable_scopes` → `[]`). Plafond de `MAX_CONTROL_STEPS` = 40 étapes pendant le
-contrôle (12 sinon). La session est fermée en fin de requête quoi qu'il arrive.
+contrôle (12 sinon). La session est fermée en fin de requête quoi qu'il arrive. Une
+capture d'écran par étape dans l'historique ; en mode cloud, celles des étapes
+précédentes restent jusqu'à la fin de la requête (§5.2, §6).
 
 ### 10.5 · Configuration (`core/config.py`)
 

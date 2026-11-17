@@ -18,6 +18,7 @@ from models.local_llm import (
     VISION_MIN_GENERATION_RATE,
     OllamaClient,
     UnreadableResponse,
+    _to_ollama,
 )
 from models.prompts import SCREEN_PROMPTS
 from permissions.risk_levels import COMPUTER_TOOLS
@@ -96,6 +97,40 @@ def test_vision_off_et_on() -> None:
     assert _images(on.calls[0]) == [[b"\xff\xd8jpeg"]]
     tool = next(m for m in on.calls[0]["messages"] if m["role"] == "tool")
     assert tool["images"] == [b"\xff\xd8jpeg"]  # sur le résultat d'outil lui-même
+
+
+def _two_captures_history() -> list[dict]:
+    """Historique partagé pendant une requête cloud : une capture par étape."""
+    return [
+        *_screen_history(),
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [ToolCall("observe_screen", {})],
+        },
+        {
+            "role": "tool",
+            "tool": "observe_screen",
+            "content": "[1] bouton « Fermer »",
+            "image": b"\xff\xd8derniere",
+        },
+    ]
+
+
+def test_local_ne_joint_que_la_derniere_capture() -> None:
+    # Une requête locale qui croise une requête cloud en cours (un thread par
+    # requête, historique partagé) n'envoie jamais qu'une capture : la dernière.
+    history = _two_captures_history()
+    fake = _FakeOllama()
+    OllamaClient(client=fake, vision="on").respond(history)
+    assert _images(fake.calls[0]) == [[b"\xff\xd8derniere"]]
+    images = [m.get("images") for m in _to_ollama(history, with_image=True)]
+    assert [i for i in images if i] == [[b"\xff\xd8derniere"]]
+    # L'historique du daemon n'est pas touché : seul l'envoi est ajusté.
+    assert [m["image"] for m in history if "image" in m] == [
+        b"\xff\xd8jpeg",
+        b"\xff\xd8derniere",
+    ]
 
 
 def test_vision_auto_attend_une_generation_rapide() -> None:

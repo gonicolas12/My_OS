@@ -14,6 +14,7 @@ identique octet pour octet d'une requête à l'autre dans une langue.
 # pylint: disable=missing-function-docstring
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
@@ -333,7 +334,48 @@ def test_reponse_journalisee_sans_contenu(caplog: pytest.LogCaptureFixture) -> N
     [text] = [r.getMessage() for r in caplog.records if r.name == "myosd.cloud"]
     assert "entrée 1200" in text and "sortie 80" in text
     assert "blocs de réflexion écartés 1" in text
+    assert "captures d'écran envoyées 0" in text
     assert "secret" not in text
+
+
+def test_captures_envoyees_journalisees(caplog: pytest.LogCaptureFixture) -> None:
+    # Contrôle de l'écran en mode cloud : la capture de chaque étape repart à chaque
+    # appel (cf. Orchestrator._append_tool_result) ; le journal dit combien.
+    history: list[dict] = [{"role": "user", "content": "écris dans Mousepad"}]
+    for step in (1, 2):
+        history += [
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [ToolCall(tool="observe_screen", args={})],
+            },
+            {
+                "role": "tool",
+                "tool": "observe_screen",
+                "content": f"[1] champ {step}",
+                "image": f"capture-{step}".encode(),
+            },
+        ]
+    anthropic = _FakeAnthropic(_FakeStream(["Fait."], _final([_text_block("Fait.")])))
+    with caplog.at_level(logging.INFO, logger="myosd.cloud"):
+        ClaudeClient(client=anthropic).respond(history)
+
+    [text] = [r.getMessage() for r in caplog.records if r.name == "myosd.cloud"]
+    assert "captures d'écran envoyées 2" in text
+    kwargs = anthropic.messages.last_kwargs
+    assert kwargs is not None
+    # Dans l'ordre des étapes, chacune avec le texte du résultat de son étape.
+    results = [
+        (
+            block["content"][0]["text"],
+            base64.b64decode(block["content"][1]["source"]["data"]),
+        )
+        for message in kwargs["messages"]
+        if isinstance(message["content"], list)
+        for block in message["content"]
+        if block.get("type") == "tool_result"
+    ]
+    assert results == [("[1] champ 1", b"capture-1"), ("[1] champ 2", b"capture-2")]
 
 
 # ---------- cache de prompt ----------

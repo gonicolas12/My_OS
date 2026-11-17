@@ -371,6 +371,15 @@ Plus modestes, et directement issues de l'usage réel :
   popup : 9,9 centimes au lieu de 20,3 pour un même scénario de 15 appels (processus,
   écriture confirmée, changement de langue, contrôle de l'écran). `drop_block` gardé
   (cf. [INTERFACES.md](INTERFACES.md) §5.2).
+- ~~**Captures gardées en mode cloud**~~ — fait : pendant le contrôle de l'écran, la
+  capture de chaque étape reste jusqu'à la fin de la requête au lieu d'être retirée à
+  la suivante. L'historique envoyé ne change plus : la réflexion de Claude n'est plus
+  écartée (aucun bloc, au lieu de 2 à 10 par tâche) et le cache relit la conversation
+  au lieu de la réécrire. Mesuré de bout en bout dans la VM avec une vraie clé
+  (novembre 2026), les deux codes en alternance : 3,1 centimes au lieu de 3,5 et 4,0 au
+  lieu de 5,8 sur deux tâches dans Mousepad, toutes réussies, mêmes durées. Aucune
+  capture de plus ne part : ce sont les mêmes, renvoyées (cf.
+  [INTERFACES.md](INTERFACES.md) §5.2 et [SECURITY.md](SECURITY.md) menace 2).
 - **Consulter l'historique** depuis le popup (aujourd'hui : fichier SQLite d'audit).
 - **Messages polkit traduits** (« Request dismissed » s'affiche tel quel).
 - ~~**Menus standard de Qt**~~ — fait : le clic droit dans un champ (clé API, saisie,
