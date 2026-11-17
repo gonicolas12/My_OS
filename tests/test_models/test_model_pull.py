@@ -117,6 +117,7 @@ def test_pas_assez_de_place(firstrun: Path) -> None:
     "line",
     [
         f"done {MODEL}",  # téléchargé, puis retiré depuis
+        f"pending {MODEL}",  # noté un instant, juste avant que la tâche se lance
         "failed qwen3.5:9b",  # un autre modèle que celui de la config
         "no-space",
         "",
@@ -140,8 +141,11 @@ def test_fichier_illisible(firstrun: Path) -> None:
 @pytest.mark.parametrize(
     ("line", "expected"),
     [
-        (f"pulling {MODEL} 4242", "n'est pas encore prêt"),
-        (f"failed {MODEL}", "n'a pas pu être téléchargé"),
+        # La tâche tourne : un essai en cours, ou l'attente avant le suivant.
+        (f"pulling {MODEL} 4242", "il se télécharge en arrière-plan, ou attend un"),
+        # Pas de cause supposée (tâche tuée, disque plein…), et le prochain essai.
+        (f"failed {MODEL}", "essais en échec ou interrompus"),
+        (f"failed {MODEL}", "Nouvel essai à la prochaine ouverture de session"),
         (f"no-space {MODEL}", "faute d'espace libre"),
         (None, "n'est pas installé"),
     ],

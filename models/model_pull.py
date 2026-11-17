@@ -4,10 +4,16 @@ Sur l'ISO, ``myos-user-firstrun`` télécharge le modèle local en tâche de fon
 première session, en plusieurs essais espacés (cf. packaging/README.md), et note où il
 en est dans ``~/.local/share/my_os/model-pull.status``, une ligne :
 
-* ``pulling MODÈLE PID`` : la tâche de fond (PID) tourne encore ;
+* ``pending MODÈLE`` : à télécharger (noté juste avant que la tâche ne se lance) ;
+* ``pulling MODÈLE PID`` : la tâche de fond (PID) tourne encore : un essai en cours,
+  ou l'attente avant le suivant ;
 * ``done MODÈLE`` : téléchargé ;
 * ``failed MODÈLE`` : tous les essais ont échoué ;
 * ``no-space MODÈLE`` : pas tenté, faute d'espace libre.
+
+Une session suivante relance le téléchargement d'un modèle ``failed``, ``no-space``,
+``pending`` ou ``pulling`` dont la tâche a disparu. Ici, ``pending`` (un instant) est un
+état inconnu.
 
 Quand Ollama répond que le modèle configuré n'existe pas (HTTP 404), le client local
 lève :class:`ModelNotInstalled` (:func:`model_not_installed`), dont le message, choisi
@@ -47,15 +53,20 @@ UNKNOWN = ""
 # Message du popup selon l'état du téléchargement (le popup le préfixe d'« Erreur : ») ;
 # chacun donne la commande, seule sur sa ligne pour la copier.
 _MESSAGES = {
+    # La tâche de fond tourne : un essai en cours, ou l'attente avant le suivant.
     PULLING: N_(
-        "le modèle local {model} n'est pas encore prêt. Il se télécharge en "
-        "arrière-plan depuis le démarrage : réessayez dans quelques minutes. Pour "
-        "suivre le téléchargement, lancez dans un terminal :\nollama pull {model}"
+        "le modèle local {model} n'est pas encore prêt : il se télécharge en "
+        "arrière-plan, ou attend un nouvel essai. Réessayez dans quelques minutes. "
+        "Pour suivre le téléchargement ou le relancer, lancez dans un terminal :\n"
+        "ollama pull {model}"
     ),
+    # Essais épuisés, mais aussi tâche interrompue, disque plein… : aucune cause
+    # supposée, le journal la donne.
     FAILED: N_(
-        "le modèle local {model} n'a pas pu être téléchargé au démarrage (réseau "
-        "indisponible ? détails dans ~/.local/share/my_os/model-pull.log). Pour le "
-        "télécharger, lancez dans un terminal :\nollama pull {model}"
+        "le modèle local {model} n'a pas pu être téléchargé (essais en échec ou "
+        "interrompus, détails dans ~/.local/share/my_os/model-pull.log). Nouvel essai "
+        "à la prochaine ouverture de session ; pour le télécharger tout de suite, "
+        "lancez dans un terminal :\nollama pull {model}"
     ),
     NO_SPACE: N_(
         "le modèle local {model} n'a pas été téléchargé, faute d'espace libre (en "

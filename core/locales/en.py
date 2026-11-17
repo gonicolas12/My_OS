@@ -207,19 +207,22 @@ MESSAGES: dict[str, str] = {
     ),
     "Numéro N de [wN]": "Number N of [wN]",
     # ---- models/model_pull.py : modèle local absent (popup) -------------------------
-    "le modèle local {model} n'est pas encore prêt. Il se télécharge en arrière-plan "
-    "depuis le démarrage : réessayez dans quelques minutes. Pour suivre le "
-    "téléchargement, lancez dans un terminal :\nollama pull {model}": (
-        "the local model {model} is not ready yet. It has been downloading in the "
-        "background since startup: try again in a few minutes. To follow the "
-        "download, run in a terminal:\nollama pull {model}"
+    "le modèle local {model} n'est pas encore prêt : il se télécharge en "
+    "arrière-plan, ou attend un nouvel essai. Réessayez dans quelques minutes. "
+    "Pour suivre le téléchargement ou le relancer, lancez dans un terminal :\n"
+    "ollama pull {model}": (
+        "the local model {model} is not ready yet: it is downloading in the "
+        "background, or waiting for a new attempt. Try again in a few minutes. To "
+        "follow the download or restart it, run in a terminal:\nollama pull {model}"
     ),
-    "le modèle local {model} n'a pas pu être téléchargé au démarrage (réseau "
-    "indisponible ? détails dans ~/.local/share/my_os/model-pull.log). Pour le "
-    "télécharger, lancez dans un terminal :\nollama pull {model}": (
-        "the local model {model} could not be downloaded at startup (network "
-        "unavailable? details in ~/.local/share/my_os/model-pull.log). To download "
-        "it, run in a terminal:\nollama pull {model}"
+    "le modèle local {model} n'a pas pu être téléchargé (essais en échec ou "
+    "interrompus, détails dans ~/.local/share/my_os/model-pull.log). Nouvel essai "
+    "à la prochaine ouverture de session ; pour le télécharger tout de suite, "
+    "lancez dans un terminal :\nollama pull {model}": (
+        "the local model {model} could not be downloaded (attempts failed or were "
+        "interrupted, details in ~/.local/share/my_os/model-pull.log). It will be "
+        "tried again at the next login; to download it now, run in a terminal:\n"
+        "ollama pull {model}"
     ),
     "le modèle local {model} n'a pas été téléchargé, faute d'espace libre (en session "
     "live, cet espace est pris sur la mémoire vive ; détails dans "
