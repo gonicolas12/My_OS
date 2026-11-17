@@ -302,6 +302,16 @@ brute. La note qui suit (« nécessite un modèle cloud ») était donc juste po
   rafale au lieu de 1,04, 0,82 au lieu de 2,87 dans une conversation avec outils, 9,9
   au lieu de 20,3 sur un scénario de bout en bout en VM (cf. « Cache de prompt en mode
   cloud » plus bas et [INTERFACES.md](INTERFACES.md) §5.2).
+- [x] **Premier démarrage plus robuste** : sans réseau à l'ouverture de la session, les
+  dépendances Python s'installent en tâche de fond dès son retour, un avis du bureau
+  dit si My_OS est prêt, et le téléchargement du modèle est retenté (5 essais, relancé
+  à la session suivante s'il n'a pas abouti) ; tant que le modèle manque, le popup dit
+  pourquoi et donne la commande (cf. « Téléchargement du modèle au premier démarrage »
+  et « Premier démarrage hors ligne » plus bas).
+- [x] **Contrôle de l'ordinateur en mode cloud** : les captures restent jusqu'à la fin
+  de la demande, si bien que la réflexion de Claude n'est plus écartée et que le cache
+  relit la conversation (11 à 31 % moins cher par tâche ; cf. « Captures gardées en
+  mode cloud » plus bas).
 - [x] Validé en VM sur processeur seul (novembre 2026) : sonde du modèle 5 sur 5 en
   français et en anglais, injection cachée dans un fichier ignorée ; contrôle de
   l'ordinateur en anglais (Mousepad, arrêt par Échap, terminal refusé par tous les

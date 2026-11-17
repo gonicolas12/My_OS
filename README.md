@@ -22,7 +22,7 @@ My_OS is the follow-up to [My_AI](https://github.com/gonicolas12/My_AI): from an
 *application* that talks to the PC to a *system* in which the AI is resident and deeply
 integrated.
 
-> **Project status: v1.8 released ([download](https://github.com/gonicolas12/My_OS/releases/tag/v1.8)), validated in a VM. New: a security update of the ISO (X server, Python, OpenSSL and Linux kernel up to date) and a cheaper cloud mode (prompt caching). It keeps everything from v1.7: cloud mode with Claude Sonnet 5.5, Qt's standard menus in My_OS's language, English and French (🌐 button), and computer control — the local model sees the screen and acts with the mouse and keyboard, with glowing edges and a stop bar (X11 session).** The five milestones (foundation →
+> **Project status: v1.8 released ([download](https://github.com/gonicolas12/My_OS/releases/tag/v1.8)), validated in a VM. New: a security update of the ISO (X server, Python, OpenSSL and Linux kernel up to date), a first boot that copes without network (dependencies and model fetched once it is back, with a desktop notice), and a cheaper cloud mode (prompt caching, screenshots kept during computer control). It keeps everything from v1.7: cloud mode with Claude Sonnet 5.5, Qt's standard menus in My_OS's language, English and French (🌐 button), and computer control — the local model sees the screen and acts with the mouse and keyboard, with glowing edges and a stop bar (X11 session).** The five milestones (foundation →
 > files/permissions → system control → cloud router → packaging) are complete, and the
 > ISO was tested end to end in a VM (BIOS and UEFI) in October 2026: permissions,
 > confirmations, polkit elevation, settings, local model, computer control, both
@@ -401,8 +401,11 @@ goes through the single choke point `permissions/policy_engine.py`.
   security update of the ISO on a newer Arch snapshot: X server (eight flaws, including
   one in XTEST, the extension computer control types and clicks through), Python,
   OpenSSL 4.1 (3.6 is no longer maintained), Linux 7.3 (7.2 reached end of life),
-  Ollama; cloud mode cheaper with prompt caching (0.16 cent per request in a burst
-  instead of 1); validated in a VM in both languages.
+  Ollama; first boot without network handled (Python dependencies and model fetched
+  once the network is back, model download retried, desktop notice, clear popup
+  message); cloud mode cheaper with prompt caching (0.16 cent per request in a burst
+  instead of 1), and computer control keeping its screenshots and its reasoning during
+  a request; validated in a VM in both languages.
 
 **Still to prove:** real hardware (Wi-Fi drivers, backlight, graphics cards) — feedback
 welcome in the [issues](https://github.com/gonicolas12/My_OS/issues).
