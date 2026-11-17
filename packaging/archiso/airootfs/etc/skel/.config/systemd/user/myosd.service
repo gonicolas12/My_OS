@@ -1,11 +1,15 @@
 # Service systemd UTILISATEUR du daemon myosd (version ISO).
 # Jamais root (cf. docs/SECURITY.md menace 3). Démarré par ~/.xprofile une fois
-# DISPLAY/XAUTHORITY importés ; redémarré tant que le venv du 1er boot n'est pas prêt.
+# DISPLAY/XAUTHORITY importés. Au 1er démarrage, les dépendances du venv s'installent en
+# tâche de fond (myos-user-firstrun) : tant que le marqueur qui les dit installées
+# manque, le démarrage est sauté (au lieu de planter en boucle sans le module ollama),
+# et c'est le script qui démarre le daemon une fois le marqueur posé.
 [Unit]
 Description=My_OS daemon (myosd) — assistant IA résident, sans privilège root
 Documentation=https://github.com/gonicolas12/My_OS
 After=graphical-session.target
 PartOf=graphical-session.target
+ConditionPathExists=%h/.local/share/my_os/.firstrun-done
 
 [Service]
 Type=simple

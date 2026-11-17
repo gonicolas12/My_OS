@@ -1,46 +1,310 @@
 #!/bin/sh
-# Initialisation au 1er lancement de session (idempotent) :
-#   - crée un venv Python réutilisant les paquets système (--system-site-packages) ;
-#   - installe les dépendances absentes des dépôts officiels (PyPI) ;
-#   - récupère le modèle local Ollama EN ARRIÈRE-PLAN (réseau requis, non bloquant).
+# Initialisation au 1er lancement de session (idempotent), sans jamais retarder la
+# session :
+#   - crée un venv Python réutilisant les paquets système (--system-site-packages),
+#     tout de suite : le popup, lancé par l'autostart, en a besoin ;
+#   - EN ARRIÈRE-PLAN, installe les dépendances absentes des dépôts officiels (PyPI),
+#     en réessayant tant que la session dure si le réseau manque, démarre alors myosd,
+#     puis récupère le modèle local Ollama (plusieurs essais espacés) ;
+#   - aux sessions suivantes, relance le téléchargement du modèle s'il n'a pas abouti.
 # Cohérent avec « local par défaut » : le modèle tourne ensuite sur la machine.
 set -eu
 
 base="$HOME/.local/share/my_os"
 venv="$base/venv"
+# Posé une fois les dépendances installées. myosd.service ne démarre pas sans lui
+# (ConditionPathExists) : sans le module ollama, le daemon planterait en boucle.
 mark="$base/.firstrun-done"
 log="$base/firstrun.log"
+# Une seule tâche d'installation à la fois, même si une autre session s'ouvre pendant
+# qu'elle attend le réseau.
+lock="$base/firstrun.lock"
+# Avis « pas encore prêt » affiché : son identifiant, pour que l'avis « prêt » le
+# remplace, même s'il a été montré par la tâche d'une autre session.
+notice_file="$base/setup-notice"
 model="qwen3.5:4b"
 # Espace libre exigé avant le pull : modèle (~3,3 Go) + marge. En live, l'écriture
 # va dans le cowspace en RAM : sans cette garde, le pull le remplit et casse la session.
 model_min_free_mib=4096
+# Dépendances : sans elles, ni daemon ni raccourci. En live, il n'y a pas d'autre
+# session pour réessayer (jusqu'à la v1.8, un réseau absent à l'ouverture de la session
+# laissait My_OS sans daemon jusqu'au redémarrage) : on réessaie donc tant que la
+# session dure. Avant chaque essai, on attend que NetworkManager annonce une connexion
+# (nm-online rend la main dès qu'elle arrive) : 30 s au premier (DHCP lent ; au-delà,
+# l'avis du bureau prévient l'utilisateur, qui doit peut-être choisir son Wi-Fi), 5 min
+# ensuite. Réseau annoncé mais pip en échec (portail captif, PyPI injoignable) : nouvel
+# essai après 30 s, 1, 2, 4 min, puis toutes les 5 min.
+deps_first_wait=30
+deps_wait=300
+deps_delays="30 60 120 240"
+deps_delay_max=300
+# Téléchargement du modèle : 5 essais, espacés de 30 s, 1, 2 puis 4 min (7 min 30
+# d'attente au plus). Le réseau peut ne pas être prêt à l'ouverture de la session :
+# vu en VM, un délai dépassé pendant la connexion TLS au registre d'Ollama laissait
+# la machine sans modèle (un seul essai jusqu'à la v1.8).
+pull_delays="30 60 120 240"
+pull_log="$base/model-pull.log"
+# État du téléchargement, lu par le daemon quand le modèle manque pour que le popup
+# dise pourquoi et donne la commande (models/model_pull.py) : « pending MODÈLE » (à
+# télécharger, noté avant le marqueur des dépendances), « pulling MODÈLE PID » (tâche
+# de fond en cours), « done MODÈLE », « failed MODÈLE » ou « no-space MODÈLE ».
+pull_status="$base/model-pull.status"
 
-[ -f "$mark" ] && exit 0
+# Note l'état du téléchargement d'un bloc (fichier remplacé, jamais lu à moitié).
+set_status() {
+    echo "$*" >"$pull_status.new"
+    mv -f "$pull_status.new" "$pull_status"
+}
+
+# Tâche de fond du téléchargement (ne bloque jamais la session). Avant chaque essai :
+# un modèle déjà là (tiré à la main entre-temps) arrête tout, et l'on attend jusqu'à
+# 1 min que NetworkManager annonce une connexion. L'état final est noté en dernier.
+pull_model() {
+    # Une écriture ratée (journal ou état, cowspace plein en live) ne doit pas arrêter
+    # la tâche en silence avant ses autres essais.
+    set +e
+    read -r pid _ </proc/self/stat # PID de cette tâche de fond (pas celui du script)
+    set_status pulling "$model" "$pid"
+    # shellcheck disable=SC2086 # découpage voulu : un délai par mot
+    set -- $pull_delays
+    attempts=$(($# + 1))
+    attempt=1
+    while :; do
+        if ollama show "$model" >/dev/null 2>&1; then
+            echo "$(date '+%F %T') modèle $model déjà présent"
+            set_status done "$model"
+            return 0
+        fi
+        if command -v nm-online >/dev/null 2>&1 && ! nm-online -q -t 60; then
+            echo "$(date '+%F %T') pas de connexion annoncée par NetworkManager ; essai quand même"
+        fi
+        echo "$(date '+%F %T') essai $attempt sur $attempts : ollama pull $model"
+        if ollama pull "$model"; then
+            echo "$(date '+%F %T') modèle $model téléchargé"
+            set_status done "$model"
+            return 0
+        fi
+        [ "$#" -gt 0 ] || break
+        echo "$(date '+%F %T') échec ; nouvel essai dans $1 s"
+        sleep "$1"
+        shift
+        attempt=$((attempt + 1))
+    done
+    echo "$(date '+%F %T') modèle $model non téléchargé après $attempts essais." \
+        "Lancez : ollama pull $model"
+    set_status failed "$model"
+    return 1
+}
+
+# Récupération du modèle local en tâche de fond (peut être longue). Si tous les essais
+# échouent, le popup donne la commande `ollama pull qwen3.5:4b`. L'espace libre est
+# vérifié une fois, avant le premier essai : un essai suivant reprend les fichiers
+# partiels du précédent, que la même garde compterait à tort comme de la place prise.
+# Un modèle déjà là (tiré à la main après un échec) est noté téléchargé sans cette
+# garde : la place qu'il occupe la ferait échouer (vu en VM : « no-space » à tort).
+start_model_pull() {
+    if ollama show "$model" >/dev/null 2>&1; then
+        echo "$(date '+%F %T') modèle $model déjà présent" >"$pull_log"
+        set_status done "$model"
+        return 0
+    fi
+    # Place inconnue si df échoue (dossier d'Ollama absent…) : on essaie quand même,
+    # plutôt que d'annoncer à tort un manque de place.
+    free_mib=
+    if usage="$(df -Pm /var/lib/ollama 2>/dev/null)"; then
+        free_mib="$(printf '%s\n' "$usage" | awk 'NR==2 {print $4}')"
+    fi
+    case "$free_mib" in
+    '' | *[!0-9]*)
+        free_mib=
+        echo "$(date '+%F %T') place libre inconnue pour /var/lib/ollama : téléchargement tenté"
+        ;;
+    esac
+    if [ -n "$free_mib" ] && [ "$free_mib" -lt "$model_min_free_mib" ]; then
+        echo "Modèle $model non téléchargé : $free_mib Mio libres, $model_min_free_mib requis." \
+            "En live, démarrez avec plus de RAM, puis lancez : ollama pull $model" \
+            >"$pull_log"
+        set_status no-space "$model"
+    else
+        # Sans le verrou des dépendances (descripteur 9) : il ne garde que pip.
+        pull_model >"$pull_log" 2>&1 </dev/null 9>&- &
+    fi
+}
+
+# Avis du bureau dans la langue de My_OS (ui/setup_notice.py) : waiting | ready [ID] ;
+# écrit l'identifiant de l'avis. -P : le dossier courant (le home) ne passe pas devant
+# /opt/my_os dans les chemins d'import. Jamais fatal : sans serveur de notifications,
+# rien ne s'affiche et l'installation continue.
+notify() {
+    PYTHONPATH=/opt/my_os python -P -m ui.setup_notice "$@" || true
+}
+
+# Avis « My_OS n'est pas encore prêt », une seule fois par tâche : tant que les
+# dépendances manquent, myosd ne tourne pas et le raccourci n'ouvre rien. Il reste
+# affiché jusqu'à ce que l'avis « prêt » le remplace (identifiant dans $notice_file).
+show_waiting() {
+    [ -z "$waiting" ] || return 0
+    waiting=1
+    notice=$(notify waiting)
+    echo "$notice" >"$notice_file"
+    echo "$(date '+%F %T') avis « My_OS n'est pas encore prêt » : ${notice:-non affiché}"
+}
+
+# NetworkManager n'annonce toujours aucune connexion au bout de $1 s ? (Sans nm-online,
+# on n'en sait rien : on essaie.)
+offline_after() {
+    command -v nm-online >/dev/null 2>&1 && ! nm-online -q -t "$1"
+}
+
+# Un essai d'installation des dépendances PyPI-only (les autres, dont le SDK anthropic,
+# viennent des paquets système via le venv). La cause d'un échec reste dans $log.
+install_deps() {
+    "$venv/bin/pip" install --quiet --upgrade pip || true
+    "$venv/bin/pip" install --quiet pynput ollama
+}
+
+# Tâche de fond de la 1re session : les dépendances, en réessayant tant qu'il le faut,
+# puis le marqueur, myosd et le modèle. Son journal, daté, va dans $log.
+setup() {
+    # Une écriture ratée (journal plein…) ne doit pas arrêter la tâche en silence :
+    # chaque étape qui compte est vérifiée.
+    set +e
+    waiting=
+    notice=
+    if command -v flock >/dev/null 2>&1; then
+        exec 9>"$lock"
+        if ! flock -n 9; then
+            # La tâche d'une session précédente tourne encore : elle a survécu à sa
+            # session (sur l'ISO, LightDM l'arrête avec le groupe de processus de la
+            # session ; pas forcément ailleurs). Elle installera tout. Son avis a
+            # disparu avec l'ancien bureau : on le remontre, et c'est elle qui le
+            # remplacera par « prêt ».
+            echo "$(date '+%F %T') installation déjà en cours (session précédente) ; avis remontré"
+            show_waiting
+            return 0
+        fi
+    fi
+    rm -f "$notice_file" # avis d'une tâche interrompue : périmé
+    # shellcheck disable=SC2086 # découpage voulu : un délai par mot
+    set -- $deps_delays
+    attempt=1
+    wait_s=$deps_first_wait
+    while :; do
+        online=1
+        t0=$(date +%s)
+        if offline_after "$wait_s"; then
+            online=0
+            # nm-online a répondu avant son délai (NetworkManager injoignable ?) : on
+            # attend le reste, pour ne pas enchaîner les essais de pip.
+            spent=$(($(date +%s) - t0))
+            if [ "$spent" -lt "$wait_s" ]; then
+                sleep $((wait_s - spent))
+            fi
+            show_waiting
+            echo "$(date '+%F %T') pas de connexion annoncée par NetworkManager ; essai quand même"
+        fi
+        echo "$(date '+%F %T') essai $attempt : pip install pynput ollama"
+        if install_deps; then
+            break
+        fi
+        show_waiting
+        attempt=$((attempt + 1))
+        wait_s=$deps_wait
+        if [ "$online" = 0 ]; then
+            # nm-online attendra la connexion et rendra la main dès qu'elle arrive.
+            echo "$(date '+%F %T') échec ; nouvel essai dès que NetworkManager annonce une connexion (5 min au plus)"
+            continue
+        fi
+        delay=$deps_delay_max
+        if [ "$#" -gt 0 ]; then
+            delay=$1
+            shift
+        fi
+        echo "$(date '+%F %T') échec ; nouvel essai dans $delay s"
+        sleep "$delay"
+    done
+    # Le modèle reste à télécharger : noté AVANT le marqueur, pour qu'une session fermée
+    # entre les deux le retente à la suivante (sans état, plus aucun essai automatique).
+    set_status pending "$model"
+    if ! touch "$mark"; then
+        echo "$(date '+%F %T') marqueur $mark impossible à poser : myosd ne démarrera pas"
+        return 1
+    fi
+    echo "$(date '+%F %T') dépendances installées ; démarrage de myosd"
+    started=0
+    if systemctl --user start myosd.service; then
+        started=1
+    else
+        echo "$(date '+%F %T') myosd n'a pas démarré (voir : systemctl --user status myosd)"
+    fi
+    start_model_pull
+    # « Prêt » seulement si myosd tourne : sinon l'avis promettrait un raccourci qui
+    # n'ouvre rien (l'avis « pas encore prêt » reste alors affiché).
+    if [ "$started" = 1 ] && [ -f "$notice_file" ]; then
+        read -r notice <"$notice_file" || notice=
+        case "$notice" in
+        '' | *[!0-9]*) notice= ;;
+        esac
+        notify ready ${notice:+"$notice"} >/dev/null
+        rm -f "$notice_file"
+    fi
+}
+
+# La tâche de fond $1 tourne-t-elle encore, et est-ce bien ce script ? (Après un
+# redémarrage, le PID noté peut désigner un tout autre processus ; même contrôle que le
+# daemon, models/model_pull.py.)
+pull_alive() {
+    case "$1" in
+    '' | *[!0-9]*) return 1 ;;
+    esac
+    grep -qa myos-user-firstrun "/proc/$1/cmdline" 2>/dev/null
+}
+
+# Sessions suivantes : nouveau téléchargement du modèle s'il n'a pas abouti à une
+# session précédente (essais épuisés, place manquante, tâche interrompue par la fin de
+# la session ou un arrêt, état « pending » d'une session fermée juste après les
+# dépendances). Jamais pour un modèle téléchargé (« done » : s'il manque, on l'a
+# retiré), ni pendant un téléchargement en cours. Le fichier d'état est une donnée :
+# seuls un mot connu, le nom du modèle et un PID entier comptent.
+retry_model() {
+    state='' name='' pid=''
+    if [ -r "$pull_status" ]; then
+        read -r state name pid _ <"$pull_status" || true
+    fi
+    [ "$name" = "$model" ] || return 0
+    case "$state" in
+    failed | no-space | pending) ;;
+    pulling)
+        if pull_alive "$pid"; then
+            return 0
+        fi
+        ;;
+    *) return 0 ;;
+    esac
+    echo "$(date '+%F %T') modèle $model non téléchargé à une session précédente ($state) :" \
+        "nouvel essai" >>"$log"
+    # En tâche de fond : même la question posée à Ollama ne retarde pas la session.
+    (
+        set +e
+        start_model_pull
+    ) >>"$log" 2>&1 </dev/null &
+}
+
 mkdir -p "$base"
 
-if [ ! -x "$venv/bin/python" ]; then
-    python -m venv --system-site-packages "$venv"
+# Dépendances déjà installées (session suivante) : seul le modèle peut rester à faire.
+if [ -f "$mark" ]; then
+    retry_model
+    exit 0
 fi
 
-# Dépendances PyPI-only (les autres, dont le SDK anthropic, viennent des paquets
-# système via le venv). En cas d'échec (ex. pas de réseau), on ne pose PAS le
-# marqueur : nouvel essai à la prochaine session, et la cause reste lisible dans $log.
-"$venv/bin/pip" install --quiet --upgrade pip >>"$log" 2>&1 || true
-if ! "$venv/bin/pip" install --quiet pynput ollama >>"$log" 2>&1; then
-    echo "myos-user-firstrun : échec de pip (voir $log) ; nouvel essai à la prochaine session" >&2
-    exit 1
+# Venv absent, ou incomplet (création interrompue : pas de pip ; relancé seul, venv ne
+# recréerait pas `bin/pip` si le paquet pip est déjà là) : recréé de zéro, sans rien
+# perdre, puisque les dépendances n'y sont pas encore installées (pas de marqueur).
+if [ ! -x "$venv/bin/python" ] || [ ! -x "$venv/bin/pip" ]; then
+    python -P -m venv --clear --system-site-packages "$venv"
 fi
 
-# Récupération du modèle local (peut être longue ; ne bloque pas la session).
-# Sans réseau, l'assistant signalera l'absence de modèle jusqu'au prochain
-# `ollama pull qwen3.5:4b`.
-free_mib="$(df -Pm /var/lib/ollama | awk 'NR==2 {print $4}')"
-if [ "${free_mib:-0}" -ge "$model_min_free_mib" ]; then
-    ( ollama pull "$model" >"$base/model-pull.log" 2>&1 || true ) &
-else
-    echo "Modèle $model non téléchargé : ${free_mib:-0} Mio libres, $model_min_free_mib requis." \
-        "En live, démarrez avec plus de RAM, puis lancez : ollama pull $model" \
-        >"$base/model-pull.log"
-fi
-
-touch "$mark"
+# Dépendances, puis myosd et le modèle, en tâche de fond : la session s'ouvre tout de
+# suite. En cas d'échec (pas de réseau), un avis du bureau le dit et la tâche réessaie.
+setup >>"$log" 2>&1 </dev/null &

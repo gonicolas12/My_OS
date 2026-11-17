@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING, Any
 
 from core.i18n import N_, SUPPORTED_LANGUAGES, current_language, tr, translate
 from daemon.orchestrator import Plan, TokenCallback, ToolCall
+from models.model_pull import is_model_missing, model_not_installed
 from models.prompts import system_prompt
 
 if TYPE_CHECKING:
@@ -885,6 +886,10 @@ class OllamaClient:  # pylint: disable=too-many-instance-attributes
         signale ; une seconde réponse illisible lève :class:`UnreadableResponse`
         (l'orchestrator l'affiche en erreur, jamais un silence).
 
+        Modèle absent d'Ollama (pas encore téléchargé) : lève
+        :class:`~models.model_pull.ModelNotInstalled`, dont le message dit pourquoi
+        et donne la commande ``ollama pull``.
+
         Prompt, outils et notes sont ceux de la langue de la requête.
         """
         prompt = self._prompts[current_language()]
@@ -894,7 +899,12 @@ class OllamaClient:  # pylint: disable=too-many-instance-attributes
             {"role": "system", "content": prompt.system},
             *_to_ollama(with_language_reminders(kept), with_image=with_image),
         ]
-        plan, generated = self._stream(sent, prompt.tools, on_token)
+        try:
+            plan, generated = self._stream(sent, prompt.tools, on_token)
+        except Exception as exc:
+            if is_model_missing(exc):
+                raise model_not_installed(self._model) from exc
+            raise
         if plan.narration or plan.tool_calls or generated < _UNREADABLE_MIN_TOKENS:
             return plan
         retry, generated = self._stream(

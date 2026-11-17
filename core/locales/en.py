@@ -206,6 +206,38 @@ MESSAGES: dict[str, str] = {
         "Switches to an open window [wN] from the latest observation."
     ),
     "Numéro N de [wN]": "Number N of [wN]",
+    # ---- models/model_pull.py : modèle local absent (popup) -------------------------
+    "le modèle local {model} n'est pas encore prêt : il se télécharge en "
+    "arrière-plan, ou attend un nouvel essai. Réessayez dans quelques minutes. "
+    "Pour suivre le téléchargement ou le relancer, lancez dans un terminal :\n"
+    "ollama pull {model}": (
+        "the local model {model} is not ready yet: it is downloading in the "
+        "background, or waiting for a new attempt. Try again in a few minutes. To "
+        "follow the download or restart it, run in a terminal:\nollama pull {model}"
+    ),
+    "le modèle local {model} n'a pas pu être téléchargé (essais en échec ou "
+    "interrompus, détails dans ~/.local/share/my_os/model-pull.log). Nouvel essai "
+    "à la prochaine ouverture de session ; pour le télécharger tout de suite, "
+    "lancez dans un terminal :\nollama pull {model}": (
+        "the local model {model} could not be downloaded (attempts failed or were "
+        "interrupted, details in ~/.local/share/my_os/model-pull.log). It will be "
+        "tried again at the next login; to download it now, run in a terminal:\n"
+        "ollama pull {model}"
+    ),
+    "le modèle local {model} n'a pas été téléchargé, faute d'espace libre (en session "
+    "live, cet espace est pris sur la mémoire vive ; détails dans "
+    "~/.local/share/my_os/model-pull.log). Une fois la place disponible, lancez dans "
+    "un terminal :\nollama pull {model}": (
+        "the local model {model} was not downloaded for lack of free space (in a live "
+        "session, this space comes out of RAM; details in "
+        "~/.local/share/my_os/model-pull.log). Once the space is available, run in a "
+        "terminal:\nollama pull {model}"
+    ),
+    "le modèle local {model} n'est pas installé. Pour l'installer (réseau requis), "
+    "lancez dans un terminal :\nollama pull {model}": (
+        "the local model {model} is not installed. To install it (network required), "
+        "run in a terminal:\nollama pull {model}"
+    ),
     # ---- models/stub_model.py ------------------------------------------------------
     "Je n'ai pas compris (modèle stub : essayez « lis /chemin », « écris hello dans "
     "/tmp/x », « supprime /tmp/x », « déplace /a vers /b »).": (
@@ -628,6 +660,24 @@ MESSAGES: dict[str, str] = {
     "Vérifiez qu'il tourne (systemctl --user status myosd).": (
         "The My_OS service (myosd) is not responding: the request was not sent. "
         "Check that it is running (systemctl --user status myosd)."
+    ),
+    # ---- ui/setup_notice.py : avis du bureau du 1er démarrage de l'ISO --------------
+    "My_OS n'est pas encore prêt": "My_OS is not ready yet",
+    "My_OS est prêt": "My_OS is ready",
+    "Il lui reste des composants à télécharger, mais Internet ne répond pas pour "
+    "l'instant (pas de connexion, ou une page de connexion à valider ?). Dès qu'il "
+    "répondra, l'installation reprendra d'elle-même et l'assistant ({hotkey}) "
+    "sera prêt peu après.": (
+        "It still needs to download some components, but the Internet is not "
+        "responding for now (no connection, or a sign-in page to accept?). As soon as "
+        "it responds, the installation will resume on its own and the assistant "
+        "({hotkey}) will be ready shortly after."
+    ),
+    "Ses composants sont installés : {hotkey} ouvre l'assistant. Le modèle local "
+    "peut demander encore quelques minutes ; l'assistant vous dira s'il n'est pas "
+    "prêt.": (
+        "Its components are installed: {hotkey} opens the assistant. The local model "
+        "may need a few more minutes; the assistant will tell you if it is not ready."
     ),
     # ---- ui/window_chrome.py -------------------------------------------------------
     "pour fermer": "to close",

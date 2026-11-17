@@ -175,6 +175,18 @@ class _Request:
     control_denied: bool = False
     control_started: bool = False
     cloud: bool = False  # backend cloud pour cette requête (captures, cf. _loop)
+    # Le modèle n'a pas pu répondre, pour une raison connue (ModelUnavailable).
+    model_unavailable: bool = False
+
+
+class ModelUnavailable(RuntimeError):
+    """Le modèle ne peut pas répondre, pour une raison que l'utilisateur peut régler
+    (ex. modèle local pas encore téléchargé, cf. :mod:`models.model_pull`).
+
+    Son message, déjà traduit, dit quoi faire : le popup l'affiche tel quel, sans
+    « échec du modèle : ». Une demande que le modèle n'a jamais vue n'est pas gardée
+    dans l'historique (cf. :meth:`Orchestrator._forget_unanswered`).
+    """
 
 
 class Model(Protocol):
@@ -191,6 +203,8 @@ class Model(Protocol):
         reste le texte complet du tour, pour l'audit/les tests.
 
         Un ``Plan`` sans ``tool_calls`` signale une réponse finale (fin de boucle).
+        Lève :class:`ModelUnavailable` quand le modèle ne peut pas répondre pour une
+        raison que l'utilisateur peut régler (son message dit comment).
         """
 
 
@@ -332,10 +346,13 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
         # référence de la conversation courante (un reset concurrent la
         # remplacerait sans affecter ce tour en cours). La langue de la requête y
         # est notée : une conversation qui change de langue le rappelle au modèle.
+        user_entry: Message = {
+            "role": "user",
+            "content": content,
+            "language": current_language(),
+        }
         with self._history_lock:
-            self._history.append(
-                {"role": "user", "content": content, "language": current_language()}
-            )
+            self._history.append(user_entry)
             history = self._history
 
         # Sélection du backend pour CETTE requête (une seule fois — jamais changé en
@@ -363,7 +380,10 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
             finally:
                 self._keep_last_capture(history)
         if not finished:
-            return  # erreur du modèle, déjà signalée au popup
+            # Erreur du modèle, déjà signalée au popup.
+            if request.model_unavailable:
+                self._forget_unanswered(history, user_entry)
+            return
 
         # Borne l'historique persistant après ce tour (sans casser les paires
         # assistant↔tool ; cf. _trim_history_locked).
@@ -371,6 +391,19 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
             self._trim_history_locked(history)
 
         reply({"type": "done", "id": user_message_id})
+
+    def _forget_unanswered(self, history: list[Message], entry: Message) -> None:
+        """Retire de ``history`` une demande à laquelle le modèle n'a jamais répondu.
+
+        Cas d'un modèle indisponible dès le premier tour (:class:`ModelUnavailable`,
+        ex. modèle local encore en téléchargement) : le popup invite à réessayer, et
+        sans ce retrait chaque essai s'empilerait ; le modèle, enfin là, recevrait
+        toutes ces demandes d'un coup et pourrait agir sur une demande abandonnée.
+        Seulement si ``entry`` est encore le dernier message (rien n'a suivi).
+        """
+        with self._history_lock:
+            if history and history[-1] is entry:
+                history.pop()
 
     def _loop(
         self, model: Model, history: list[Message], request: _Request, reply: Reply
@@ -392,7 +425,7 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
                 )
                 return True
             step += 1
-            plan = self._run_model(model, list(history), request.id, reply)
+            plan = self._run_model(model, list(history), request, reply)
             if plan is None:
                 return False
             # Un tour interrompu (coupé, refusé) n'exécute rien : ses appels d'outils
@@ -562,14 +595,17 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
             _notice(reply, request.id, "warning", tr(_CONTROL_STOPPED_NOTICE))
 
     def _run_model(
-        self, model: Model, messages: list[Message], msg_id: str, reply: Reply
+        self, model: Model, messages: list[Message], request: _Request, reply: Reply
     ) -> Plan | None:
         """Appelle ``model`` pour un tour, streame sa narration, renvoie le Plan.
 
         ``model`` est le backend résolu pour la requête courante (local ou cloud,
         cf. :meth:`_select_model`). Renvoie ``None`` si le modèle a échoué (l'erreur
         est déjà envoyée au popup), pour que :meth:`handle` interrompe la boucle.
+        Une :class:`ModelUnavailable` est montrée telle quelle : son message dit à
+        l'utilisateur quoi faire.
         """
+        msg_id = request.id
         emitted = False
 
         def emit_token(fragment: str) -> None:
@@ -580,6 +616,10 @@ class Orchestrator:  # pylint: disable=too-many-instance-attributes
 
         try:
             plan = model.respond(messages, emit_token)
+        except ModelUnavailable as exc:
+            request.model_unavailable = True
+            reply({"type": "error", "id": msg_id, "message": str(exc)})
+            return None
         except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             reply(
                 {

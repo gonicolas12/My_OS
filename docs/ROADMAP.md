@@ -403,11 +403,49 @@ Plus modestes, et directement issues de l'usage réel :
   l'ordinateur, ~2 430 en v1.2 ; mesuré en novembre 2026). Pistes : prompt et schémas plus
   courts, modèle préchargé à l'ouverture de session, modèle plus petit par défaut sur les
   machines modestes.
-- **Téléchargement du modèle au premier démarrage** : un seul essai. Si le réseau n'est
-  pas encore prêt (vu une fois en VM en novembre 2026 : délai dépassé pendant la
-  connexion TLS au registre d'Ollama, puis réussi à la main), les demandes au modèle
-  local échouent jusqu'à un `ollama pull qwen3.5:4b`. Pistes : quelques nouveaux essais
-  espacés, et un message du popup qui donne la commande.
+- ~~**Téléchargement du modèle au premier démarrage**~~ — fait : il n'avait droit qu'à
+  un essai, et un réseau pas encore prêt (vu une fois en VM en novembre 2026 : délai
+  dépassé pendant la connexion TLS au registre d'Ollama) laissait le modèle local
+  absent jusqu'à un `ollama pull qwen3.5:4b` à la main. Il fait maintenant jusqu'à 5
+  essais en tâche de fond, espacés de 30 s, 1, 2 puis 4 min, chacun après au plus 1 min
+  d'attente du réseau, sans retarder la session ; l'espace libre est vérifié avant le
+  premier, comme avant. Tant que le modèle manque, le popup dit pourquoi (il se
+  télécharge encore, les essais ont échoué, la place manque) et donne la commande, en
+  français ou en anglais ; une demande que le modèle n'a pas pu voir n'est plus gardée
+  dans la conversation (cf. [INTERFACES.md](INTERFACES.md) §6.5). Validé en VM
+  (novembre 2026), registre d'Ollama coupé depuis l'hôte dès le démarrage : l'ISO v1.8
+  reste sans modèle après son unique essai ; avec le nouveau script, le premier essai
+  échoue (délai dépassé), le deuxième, 30 s plus tard, télécharge le modèle une fois le
+  registre rétabli, et le popup répond. Registre refusé jusqu'au bout : 5 essais en
+  7 min 30, puis l'état d'échec. Messages du popup vérifiés dans les deux langues
+  (téléchargement en cours, échec, place insuffisante) ; un `ollama pull` lancé à la
+  main pendant le téléchargement le suit sans le refaire, et un téléchargement
+  interrompu reprend là où il s'était arrêté.
+- ~~**Premier démarrage hors ligne**~~ — fait : sans réseau à l'ouverture de la session
+  (Wi-Fi pas encore choisi), `pip` échouait, le script s'arrêtait avant le modèle, et rien
+  n'était retenté avant la session suivante, soit jamais en live. Vu en VM sur l'ISO v1.8,
+  lien réseau coupé dès le démarrage : 19 s d'écran noir pendant les essais de `pip`, puis
+  un bureau sans aucun message ; sans le module `ollama`, myosd plantait en boucle (71
+  redémarrages en 4 min) et le raccourci n'ouvrait rien, même 2 min après le retour du
+  réseau. Désormais le script crée le venv et rend la main (bureau en 2 s) ; en tâche de
+  fond, il installe les dépendances et réessaie tant que la session dure, dès que
+  NetworkManager annonce une connexion ; un avis du bureau dans la langue de My_OS dit,
+  après 30 s sans réponse d'Internet, que My_OS n'est pas encore prêt, puis, une fois
+  myosd démarré, qu'il l'est. myosd ne démarre qu'avec ses dépendances (condition de son
+  unité, plus de plantage en boucle) : c'est le script qui le lance. À la session
+  suivante, un téléchargement du modèle qui n'a pas abouti est relancé, y compris s'il
+  n'a jamais commencé (état `pending`, noté avant le marqueur des dépendances) ; un
+  modèle déjà là, tiré à la main, est noté téléchargé sans contrôle d'espace. Le popup ne
+  suppose plus de cause : le modèle « se télécharge, ou attend un nouvel essai », ou « n'a
+  pas pu être téléchargé (essais en échec ou interrompus) ». Validé en VM (novembre
+  2026), puis revérifié après une relecture finale : lien rétabli au bout de 3 min,
+  dépendances installées en 2 s, myosd démarré sans un redémarrage, l'avis « prêt »
+  remplace l'autre, le popup répond (modèle en cours de téléchargement) ; modèle en échec
+  après 5 essais (registre refusé), puis nouvelle session : téléchargement relancé, modèle
+  là 3 min plus tard, réponse du popup. En ligne : bureau en 2 à 6 s (création du venv),
+  raccourci prêt 4 s après l'ouverture de session, aucun avis. Une session fermée
+  pendant l'attente arrête sa tâche (LightDM arrête le groupe de processus de la
+  session) : la suivante relance la sienne. Avis vérifiés en français et en anglais.
 
 ---
 

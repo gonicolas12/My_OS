@@ -58,6 +58,12 @@ narration : envoi au cloud (`info`), repli local faute de clé ou limite d'étap
 (`warning`). Le `text` est en texte brut. Un message `notice`, `tool_result` ou `token`
 dont l'`id` ne correspond à aucune requête en cours (ex. après `reset`) est ignoré.
 
+`error` termine la requête ; le popup l'affiche en texte brut, précédé de « Erreur : ».
+Un échec du modèle donne `échec du modèle : <erreur>`, sauf un modèle indisponible pour
+une raison que l'utilisateur peut régler (`ModelUnavailable`, §6.5) : son message, qui
+dit quoi faire, est envoyé tel quel (modèle local absent : pourquoi, puis la commande
+`ollama pull`, seule sur la dernière ligne).
+
 `allowed_scopes` liste les portées de grant que le popup peut proposer, calculées
 par le daemon (`policy_engine.grantable_scopes`) : `[]` au **niveau 2** (confirmation
 renforcée, « une fois » seulement), `["session"]` pour un outil sans chemin (ex.
@@ -530,6 +536,10 @@ modèle « se souvient » donc des tours précédents. L'historique est **borné
 paires assistant↔tool) afin de limiter le contexte et — au jalon 4 — le volume
 envoyé au cloud. Le message de contrôle `reset` (§1) le vide. Rien n'est
 persisté sur disque : la mémoire disparaît à l'arrêt du daemon (cf. ARCHITECTURE §7).
+Une demande que le modèle n'a jamais vue, parce qu'il était indisponible dès le premier
+tour (`ModelUnavailable`, §6.5), est retirée de l'historique : réessayée plus tard, elle
+n'arrive pas en double, et le modèle enfin disponible ne reçoit pas d'un coup les
+demandes abandonnées.
 
 **Mémoire et cloud (jalon 4).** Quand `use_cloud=True`, c'est **tout l'historique
 persistant courant** (borné par `MAX_HISTORY_MESSAGES`) qui part au backend cloud,
@@ -629,6 +639,34 @@ seulement la dernière, et seulement si `computer.vision` le permet (`auto` : vi
 de génération mesurée par Ollama ≥ 30 tokens/s, soit une carte graphique), sur le message
 `tool` lui-même (`images`). Une réponse vide alors que le modèle a généré (appel d'outil
 illisible pour Ollama) est redemandée une fois, puis lève `UnreadableResponse`.
+
+**Modèle indisponible.** `respond` peut lever `daemon.orchestrator.ModelUnavailable`
+quand le modèle ne peut pas répondre pour une raison que l'utilisateur peut régler : son
+message, déjà traduit dans la langue de la requête, dit quoi faire, et l'orchestrator
+l'envoie tel quel (§1, message `error`). Seul cas aujourd'hui : le modèle local absent
+d'Ollama (HTTP 404, pas encore téléchargé), `models.model_pull.ModelNotInstalled`. Son
+message dépend de l'état du téléchargement du premier démarrage de l'ISO, que
+`myos-user-firstrun` écrit dans `~/.local/share/my_os/model-pull.status` (une ligne,
+remplacée d'un bloc) :
+
+| Ligne | État | Message du popup |
+|-------|------|------------------|
+| `pulling MODÈLE PID` | tâche de fond en cours (le processus `PID` existe et est ce script) : un essai, ou l'attente avant le suivant | se télécharge, ou attend un nouvel essai : réessayer dans quelques minutes |
+| `failed MODÈLE` (ou `pulling` dont la tâche a disparu) | essais épuisés, ou tâche interrompue | n'a pas pu être téléchargé, détails dans `model-pull.log` ; nouvel essai à la session suivante |
+| `no-space MODÈLE` | pas tenté, faute d'espace libre | pas assez de place (en live, prise sur la RAM) |
+| `done MODÈLE`, `pending MODÈLE`, absent, autre modèle, illisible | inconnu (installation hors ISO…) | n'est pas installé |
+
+Chaque message finit par la commande `ollama pull <modèle de la config>` sur sa propre
+ligne. Le fichier est une **donnée** (SECURITY §2.2) : seuls un mot connu, le nom du
+modèle (comparé à celui de la config) et un PID entier en sont tirés, jamais affichés ni
+exécutés. Les erreurs d'Ollama autres que le modèle absent (injoignable, 5xx) restent
+des `échec du modèle : …`.
+
+Le script relit ce fichier à chaque ouverture de session, avec la même prudence : il
+relance le téléchargement d'un modèle `failed`, `no-space`, `pending` ou `pulling` dont
+la tâche a disparu, jamais d'un modèle `done` (retiré ensuite, il l'a été exprès).
+`pending` est noté juste avant le marqueur des dépendances : une session fermée à cet
+instant laisse ainsi de quoi relancer le téléchargement à la suivante.
 
 **Fenêtre de contexte du backend local.** `OllamaClient` reçoit l'historique complet
 mais n'en transmet que la part qui tient dans sa fenêtre (`model.num_ctx`) : résultats
@@ -983,6 +1021,13 @@ def N_(message: str) -> str: ...         # marque un texte traduit plus tard (co
   dessine lui-même (clic droit dans un champ : Annuler, Copier, Coller…) suivent aussi :
   `ui/qt_translations.py` installe le catalogue `qtbase_fr` de Qt en français et le
   retire en anglais ; sans ce fichier (paquet `qt6-translations`), ils restent en anglais.
+- **Avis du bureau du 1er démarrage de l'ISO** (`ui/setup_notice.py`) : tant que les
+  dépendances de My_OS s'installent, `myosd` ne tourne pas, et `myos-user-firstrun` le
+  dit par `python -m ui.setup_notice waiting` (écrit l'identifiant de l'avis, affiché
+  sans délai d'expiration), puis `ready ID` (le remplace). Même langue que le popup :
+  son choix lu dans `popup.conf`, sinon la config, sinon le système. Envoi par D-Bus
+  (`org.freedesktop.Notifications`) ; sans serveur de notifications, rien ne s'affiche
+  et rien n'échoue.
 - **Daemon** : chaque `user_message` porte sa langue (§1). L'orchestrator traite toute
   la requête sous `use_language(langue)` : chaque requête a son thread, la langue est
   posée pour lui seul et ne déborde jamais sur la suivante. Sans langue valide, celle
