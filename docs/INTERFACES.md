@@ -786,6 +786,16 @@ Les backends partagent le contrat interne `_HotkeyBackend` (`start()` / `stop()`
 L'instanciation d'un backend **n'importe rien de lourd** (pynput, dbus, GLib sont
 importés paresseusement dans `start()`), donc la *sélection* se teste sans dépendance.
 
+**Un daemon par session X11.** L'écoute de `pynput` se connecte au serveur X de
+l'environnement du daemon (`DISPLAY`/`XAUTHORITY`, lus à son démarrage) et meurt avec
+lui à la fin de la session (`ConnectionClosedError` au journal). Sur l'ISO,
+`~/.xprofile` importe ces variables puis **redémarre** myosd à chaque ouverture de
+session : même quand le gestionnaire systemd utilisateur a survécu (reconnexion en
+moins de ~10 s), le daemon écoute le serveur X de la session courante et repart à
+neuf (grants de session compris). `_X11Backend.stop()` ne lève jamais : une écoute
+déjà terminée n'est pas arrêtée (le `stop()` de `pynput` lèverait sur la connexion
+fermée et interromprait l'arrêt du daemon), une erreur d'arrêt est journalisée.
+
 **Transport du portal (injectable).** Le portal `GlobalShortcuts` est asynchrone et
 exige une boucle d'événements ; toute la mécanique D-Bus est isolée derrière un
 Protocol injectable (même esprit que `SettingsBackend` du jalon 3) :

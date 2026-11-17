@@ -159,6 +159,15 @@ systemctl --user enable --now myosd.service
 systemctl --user import-environment DISPLAY XAUTHORITY
 ```
 
+Le daemon lit `DISPLAY`/`XAUTHORITY` à son démarrage, et son raccourci reste lié à ce
+serveur X. Pour qu'il suive chaque session, reconnexion comprise, faites comme l'ISO
+dans votre `~/.xprofile` :
+
+```sh
+systemctl --user import-environment DISPLAY XAUTHORITY
+systemctl --user restart myosd.service
+```
+
 Le **popup** est un processus résident séparé : lancez-le au démarrage de session via un
 autostart XDG (`~/.config/autostart/`) pointant sur `python -m ui.popup`, ou démarrez-le
 manuellement. Il reste caché jusqu'au raccourci.
@@ -314,6 +323,11 @@ Procédure détaillée, décisions et limites : **[packaging/README.md](../packa
 - **Le popup ne s'ouvre pas au raccourci (Wayland)** : votre compositeur ne supporte
   peut-être pas le portal `GlobalShortcuts`, ou la combinaison doit être liée dans ses
   réglages. Repli : session X11.
+- **Le raccourci n'ouvre plus rien après une déconnexion suivie d'une reconnexion**
+  (installation depuis les sources) : le daemon écoute encore le serveur X de la
+  session précédente (`ConnectionClosedError` dans `journalctl --user -u myosd`).
+  `systemctl --user restart myosd`, puis les deux lignes de `~/.xprofile` du §2.5 pour
+  que cela ne se reproduise pas. L'ISO le fait d'elle-même.
 - **« aucune clé » en mode cloud** : la clé n'est pas (encore) dans le trousseau, ou le
   Secret Service n'est pas démarré (`gnome-keyring`). My_OS replie alors en **local**.
 - **Le modèle ne répond pas** : vérifiez `ollama serve` et `ollama list` (le modèle

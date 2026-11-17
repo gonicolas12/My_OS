@@ -48,7 +48,7 @@ packaging/
         ├── etc/systemd/system/myos-prepare.service   # crée l'utilisateur au 1er boot
         ├── etc/systemd/system/myos-pacman-sync.service  # resynchronise les bases pacman
         ├── etc/systemd/system/ollama.service.d/10-myos.conf  # Ollama : contexte du modèle en 8 bits
-        ├── etc/skel/.xprofile                        # init session : firstrun + démarre myosd
+        ├── etc/skel/.xprofile                        # init session : firstrun + redémarre myosd
         ├── etc/skel/.config/autostart/…              # autostart du popup résident
         ├── etc/skel/.config/systemd/user/myosd.service  # service UTILISATEUR (ISO)
         ├── usr/local/bin/myos-daemon|popup           # lanceurs (venv utilisateur)
@@ -74,7 +74,10 @@ sur l'hôte Arch.
    bases en arrière-plan dès que le réseau répond (sans retarder la session).
 2. LightDM ouvre automatiquement une session **Xfce** pour `myos`.
 3. `~/.xprofile` importe `DISPLAY`/`XAUTHORITY` dans systemd `--user`, lance
-   `myos-user-firstrun`, puis démarre `myosd.service`. Le script crée le venv et rend
+   `myos-user-firstrun`, puis **redémarre** `myosd.service` (`restart`, pas `start`) :
+   après une reconnexion en moins de ~10 s, le gestionnaire systemd utilisateur survit,
+   et le myosd de la session précédente avec lui, son raccourci resté sur l'ancien
+   serveur X ; un `start` ne ferait rien. Le script crée le venv et rend
    aussitôt la main ; en tâche de fond, il installe les dépendances `pip` (nouveaux
    essais tant que le réseau manque, avec un avis du bureau), démarre lui-même `myosd`
    une fois qu'elles sont là, puis télécharge le modèle (jusqu'à 5 essais espacés).
