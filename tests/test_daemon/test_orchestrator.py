@@ -17,6 +17,7 @@ import pytest
 from daemon.orchestrator import (
     MAX_HISTORY_MESSAGES,
     MAX_STEPS,
+    ModelUnavailable,
     Orchestrator,
     Plan,
     ToolCall,
@@ -249,6 +250,90 @@ def test_modele_qui_plante_donne_une_erreur(audit: AuditLog) -> None:
     orch.handle({"id": "m1", "content": "boum"}, replies.append)
     assert _types(replies) == ["error"]
     assert "modèle" in replies[0]["message"] or "indisponible" in replies[0]["message"]
+
+
+# ---------- modèle indisponible (ex. modèle local pas encore téléchargé) ----------
+
+_MISSING = "le modèle local qwen3.5:4b n'est pas installé.\nollama pull qwen3.5:4b"
+
+
+class _UnavailableModel:
+    """Indisponible aux ``unavailable`` premiers appels (modèle en téléchargement),
+    puis demande les ``plans`` donnés ; note l'historique de chaque appel réussi."""
+
+    def __init__(self, unavailable: set[int], plans: list[Plan] | None = None) -> None:
+        self._unavailable = unavailable
+        self._plans = list(plans or [])
+        self.calls = 0
+        self.seen: list[list[dict]] = []
+
+    def respond(self, messages, on_token=None) -> Plan:
+        self.calls += 1
+        if self.calls in self._unavailable:
+            raise ModelUnavailable(_MISSING)
+        self.seen.append([dict(m) for m in messages])
+        return self._plans.pop(0) if self._plans else Plan(narration="fait")
+
+
+def _users(messages: list[dict]) -> list[str]:
+    return [m["content"] for m in messages if m["role"] == "user"]
+
+
+def _orchestrator(model: object, audit: AuditLog) -> Orchestrator:
+    return Orchestrator(
+        model=model,
+        tools={"read_file": _SafeReader()},
+        grants=SessionGrants(),
+        audit=audit,
+        confirmation_provider=_FakeConfirmation([]),
+    )
+
+
+def test_modele_indisponible_message_montre_tel_quel(audit: AuditLog) -> None:
+    orch = _orchestrator(_UnavailableModel({1}), audit)
+    replies: list[dict] = []
+    orch.handle({"id": "m1", "content": "Baisse le volume"}, replies.append)
+    # Pas de « échec du modèle : » devant : le message dit déjà quoi faire.
+    assert replies == [{"type": "error", "id": "m1", "message": _MISSING}]
+
+
+def test_demande_jamais_vue_par_le_modele_pas_gardee(audit: AuditLog) -> None:
+    # Deux essais pendant le téléchargement du modèle, puis une demande qui passe :
+    # le modèle ne reçoit que celle-ci, pas les demandes abandonnées.
+    model = _UnavailableModel({1, 2})
+    orch = _orchestrator(model, audit)
+    orch.handle({"id": "m1", "content": "Baisse le volume"}, [].append)
+    orch.handle({"id": "m2", "content": "Baisse le volume"}, [].append)
+    replies: list[dict] = []
+    orch.handle({"id": "m3", "content": "Liste mes fichiers"}, replies.append)
+    assert _types(replies) == ["token", "done"]
+    assert _users(model.seen[0]) == ["Liste mes fichiers"]
+
+
+def test_modele_indisponible_apres_un_outil_garde_la_demande(audit: AuditLog) -> None:
+    # Le modèle a déjà agi (un outil exécuté) : sa demande reste dans l'historique.
+    model = _UnavailableModel(
+        {2}, plans=[Plan(tool_calls=[ToolCall("read_file", {"path": "/tmp/x"})])]
+    )
+    orch = _orchestrator(model, audit)
+    replies: list[dict] = []
+    orch.handle({"id": "m1", "content": "Lis /tmp/x"}, replies.append)
+    assert _types(replies) == ["tool_result", "error"]
+    orch.handle({"id": "m2", "content": "Et maintenant ?"}, [].append)
+    assert _users(model.seen[-1]) == ["Lis /tmp/x", "Et maintenant ?"]
+    assert [m["role"] for m in model.seen[-1]] == [
+        "user",
+        "assistant",
+        "tool",
+        "user",
+    ]
+
+
+def test_autre_echec_du_modele_toujours_prefixe(audit: AuditLog) -> None:
+    orch = _orchestrator(_FailingModel(), audit)
+    replies: list[dict] = []
+    orch.handle({"id": "m1", "content": "boum"}, replies.append)
+    assert replies[0]["message"] == "échec du modèle : modèle indisponible"
 
 
 # ---------- un outil par niveau ----------

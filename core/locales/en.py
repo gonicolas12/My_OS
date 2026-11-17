@@ -206,6 +206,35 @@ MESSAGES: dict[str, str] = {
         "Switches to an open window [wN] from the latest observation."
     ),
     "Numéro N de [wN]": "Number N of [wN]",
+    # ---- models/model_pull.py : modèle local absent (popup) -------------------------
+    "le modèle local {model} n'est pas encore prêt. Il se télécharge en arrière-plan "
+    "depuis le démarrage : réessayez dans quelques minutes. Pour suivre le "
+    "téléchargement, lancez dans un terminal :\nollama pull {model}": (
+        "the local model {model} is not ready yet. It has been downloading in the "
+        "background since startup: try again in a few minutes. To follow the "
+        "download, run in a terminal:\nollama pull {model}"
+    ),
+    "le modèle local {model} n'a pas pu être téléchargé au démarrage (réseau "
+    "indisponible ? détails dans ~/.local/share/my_os/model-pull.log). Pour le "
+    "télécharger, lancez dans un terminal :\nollama pull {model}": (
+        "the local model {model} could not be downloaded at startup (network "
+        "unavailable? details in ~/.local/share/my_os/model-pull.log). To download "
+        "it, run in a terminal:\nollama pull {model}"
+    ),
+    "le modèle local {model} n'a pas été téléchargé, faute d'espace libre (en session "
+    "live, cet espace est pris sur la mémoire vive ; détails dans "
+    "~/.local/share/my_os/model-pull.log). Une fois la place disponible, lancez dans "
+    "un terminal :\nollama pull {model}": (
+        "the local model {model} was not downloaded for lack of free space (in a live "
+        "session, this space comes out of RAM; details in "
+        "~/.local/share/my_os/model-pull.log). Once the space is available, run in a "
+        "terminal:\nollama pull {model}"
+    ),
+    "le modèle local {model} n'est pas installé. Pour l'installer (réseau requis), "
+    "lancez dans un terminal :\nollama pull {model}": (
+        "the local model {model} is not installed. To install it (network required), "
+        "run in a terminal:\nollama pull {model}"
+    ),
     # ---- models/stub_model.py ------------------------------------------------------
     "Je n'ai pas compris (modèle stub : essayez « lis /chemin », « écris hello dans "
     "/tmp/x », « supprime /tmp/x », « déplace /a vers /b »).": (

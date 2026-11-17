@@ -12,7 +12,8 @@ from typing import Any
 import pytest
 
 from core.config import ModelConfig
-from daemon.orchestrator import ToolCall
+from daemon.orchestrator import Orchestrator, ToolCall
+from models import model_pull
 from models.local_llm import (
     ALL_TOOLS_SCHEMA,
     DEFAULT_HOST,
@@ -21,6 +22,9 @@ from models.local_llm import (
     OllamaClient,
     _ollama_host,
 )
+from models.model_pull import ModelNotInstalled
+from permissions.audit_log import AuditLog
+from permissions.session_grants import SessionGrants
 
 
 def _history(user_message: str) -> list[dict]:
@@ -480,3 +484,96 @@ def test_historique_est_traduit_au_format_ollama() -> None:
         "content": "a.txt b.txt",
         "tool_name": "list_dir",
     }
+
+
+# ---- modèle absent d'Ollama (pas encore téléchargé) ----------------------------------
+
+
+class _ResponseError(Exception):
+    """Comme ``ollama.ResponseError`` : le code HTTP dans ``status_code``."""
+
+    def __init__(self, error: str, status_code: int) -> None:
+        super().__init__(error)
+        self.status_code = status_code
+
+
+class _ModelMissingClient:
+    """Ollama sans le modèle : HTTP 404 à l'appel, ou en lisant le flux (la lib
+    ``ollama`` ne fait la requête qu'à la première lecture du flux)."""
+
+    def __init__(self, *, lazy: bool = False) -> None:
+        self._lazy = lazy
+
+    def chat(self, **kwargs: Any) -> Any:
+        error = _ResponseError(
+            f'model "{kwargs["model"]}" not found, try pulling it first', 404
+        )
+        if not self._lazy:
+            raise error
+
+        def stream() -> Any:
+            raise error
+            yield  # pylint: disable=unreachable
+
+        return stream()
+
+
+@pytest.fixture
+def no_firstrun(tmp_path, monkeypatch) -> None:
+    """Aucun état de téléchargement du 1er démarrage (installation hors ISO)."""
+    monkeypatch.setattr(model_pull, "FIRSTRUN_DIR", tmp_path)
+
+
+@pytest.mark.parametrize("lazy", [False, True])
+def test_modele_absent_message_avec_la_commande(no_firstrun, lazy: bool) -> None:
+    client = OllamaClient(client=_ModelMissingClient(lazy=lazy))
+    with pytest.raises(ModelNotInstalled) as raised:
+        client.respond(_history("Baisse le volume"))
+    message = str(raised.value)
+    assert message.startswith("le modèle local qwen3.5:4b n'est pas installé")
+    assert message.endswith("\nollama pull qwen3.5:4b")
+
+
+def test_modele_absent_celui_de_la_config(no_firstrun) -> None:
+    client = OllamaClient(model="qwen3.5:9b", client=_ModelMissingClient())
+    with pytest.raises(ModelNotInstalled, match="ollama pull qwen3.5:9b"):
+        client.respond(_history("ping"))
+
+
+def test_autres_erreurs_d_ollama_inchangees(no_firstrun) -> None:
+    class _Down:
+        def chat(self, **_kwargs: Any) -> Any:
+            raise ConnectionError("Failed to connect to Ollama")
+
+    class _Busy:
+        def chat(self, **_kwargs: Any) -> Any:
+            raise _ResponseError("server busy", 503)
+
+    with pytest.raises(ConnectionError):
+        OllamaClient(client=_Down()).respond(_history("ping"))
+    with pytest.raises(_ResponseError):
+        OllamaClient(client=_Busy()).respond(_history("ping"))
+
+
+def test_modele_absent_jusqu_au_popup_en_anglais(no_firstrun, tmp_path) -> None:
+    # Toute la chaîne : client local → orchestrator → message ``error`` du popup,
+    # dans la langue de la requête et sans « échec du modèle : » devant.
+    audit = AuditLog(tmp_path / "audit.db")
+    orch = Orchestrator(
+        model=OllamaClient(client=_ModelMissingClient(lazy=True)),
+        tools={},
+        grants=SessionGrants(),
+        audit=audit,
+        confirmation_provider=None,  # type: ignore[arg-type]
+    )
+    replies: list[dict] = []
+    orch.handle(
+        {"id": "m1", "content": "Turn the volume down", "language": "en"},
+        replies.append,
+    )
+    audit.close()
+    assert [r["type"] for r in replies] == ["error"]
+    assert replies[0]["message"] == (
+        "the local model qwen3.5:4b is not installed. To install it (network "
+        "required), run in a terminal:\nollama pull qwen3.5:4b"
+    )
