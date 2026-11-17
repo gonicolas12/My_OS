@@ -276,9 +276,13 @@ octobre 2026.
   récente (Vulkan) quand il y en a une, sinon sur le processeur. Pas encore éprouvé sur
   du matériel réel : cf. [packaging/README.md](../packaging/README.md) §5.
 - **1er boot** (réseau requis) : autologin vers Xfce (utilisateur non-root `myos`, mot
-  de passe `myos`), synchronisation des bases pacman en arrière-plan, installation des
-  dépendances Python puis téléchargement du modèle (~3,3 Go, quelques minutes, en tâche
-  de fond ; jusqu'à 5 essais si le réseau n'est pas prêt).
+  de passe `myos`), synchronisation des bases pacman en arrière-plan, puis, en tâche de
+  fond et sans retarder la session, installation des dépendances Python (réessayée tant
+  que la session dure, si Internet ne répond pas) et, une fois faite, téléchargement du
+  modèle (~3,3 Go, quelques minutes ; jusqu'à 5 essais). Sans réseau à l'ouverture de
+  la session (Wi-Fi pas encore choisi), un avis du bureau dit que My_OS n'est pas encore
+  prêt ; l'installation reprend d'elle-même dès la connexion, et un second avis dit
+  quand le raccourci répond.
 - **Langue** : la session live n'a pas de langue configurée (bureau en anglais), donc
   My_OS démarre en anglais ; le bouton 🌐 du popup le passe en français (§3 ter).
 
@@ -330,12 +334,17 @@ Procédure détaillée, décisions et limites : **[packaging/README.md](../packa
   exist`) : les bases n'ont pas encore été synchronisées (réseau absent au démarrage).
   Vérifiez `journalctl -u myos-pacman-sync`, ou lancez `sudo pacman -Sy` (sans risque :
   le miroir est l'instantané de l'ISO).
-- **Le modèle n'est pas là en live** : le popup dit pourquoi (il se télécharge encore,
-  les 5 essais ont échoué faute de réseau, ou la RAM ne suffit pas) et donne la
-  commande. Le détail, essai par essai, est dans `~/.local/share/my_os/model-pull.log` ;
-  une fois la cause réglée, lancez `ollama pull qwen3.5:4b` dans un terminal.
-- **Dépendances Python manquantes en live** : `~/.local/share/my_os/firstrun.log` ;
-  l'installation est retentée à la session suivante.
+- **Le modèle n'est pas là en live** : le popup dit pourquoi (il se télécharge encore
+  ou attend un nouvel essai, les essais ont échoué ou ont été interrompus, ou la RAM ne
+  suffit pas) et donne la commande. Le détail, essai par essai, est dans `~/.local/share/my_os/model-pull.log` ;
+  une fois la cause réglée, lancez `ollama pull qwen3.5:4b` dans un terminal (sinon,
+  le téléchargement est relancé à l'ouverture de session suivante).
+- **Le raccourci n'ouvre rien au 1er boot** (avis « My_OS n'est pas encore prêt ») :
+  les dépendances Python s'installent encore, ou attendent le réseau. Connectez-vous à
+  Internet : l'installation reprend d'elle-même, puis l'avis « My_OS est prêt »
+  s'affiche. Essais et causes d'échec sont datés dans
+  `~/.local/share/my_os/firstrun.log` ; tant que les dépendances manquent, `myosd` ne
+  démarre pas (`systemctl --user status myosd` : condition non remplie).
 - **Session verrouillée après inactivité (live)** : mot de passe `myos`.
 - **Contrôle de l'ordinateur « indisponible »** : session Wayland, ou `DISPLAY` absent
   de l'environnement du service (`systemctl --user import-environment DISPLAY

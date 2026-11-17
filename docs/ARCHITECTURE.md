@@ -228,9 +228,9 @@ cette demande. Contrat complet : `INTERFACES.md §11`.
 | Taille, position et état du popup, langue choisie | `~/.config/my_os/popup.conf` (`QSettings`, aucune donnée sensible) |
 | Clé API / secrets | trousseau OS (`keyring`) — **pas** sur disque en clair |
 | Grants de session | en mémoire (réinitialisés à chaque session) |
-| Dépendances PyPI (ISO) | venv `~/.local/share/my_os/venv` (créé au 1er run, journal `firstrun.log`) |
+| Dépendances PyPI (ISO) | venv `~/.local/share/my_os/venv` (créé au 1er run, dépendances installées en tâche de fond : essais datés dans `firstrun.log`, puis marqueur `.firstrun-done`, condition de démarrage de `myosd.service` ; verrou `firstrun.lock`, identifiant de l'avis du bureau affiché dans `setup-notice`) |
 | Modèle local | stockage d'Ollama (`/var/lib/ollama`) |
-| Téléchargement du modèle au 1er run (ISO) | `~/.local/share/my_os/model-pull.log` (essais datés) et `model-pull.status` (état, lu par le daemon quand le modèle manque) |
+| Téléchargement du modèle au 1er run (ISO) | `~/.local/share/my_os/model-pull.log` (essais datés) et `model-pull.status` (état, lu par le daemon quand le modèle manque, et par le script à la session suivante pour relancer un téléchargement qui n'a pas abouti) |
 | Bases pacman (ISO live) | resynchronisées au boot depuis l'instantané figé du build |
 
 ---

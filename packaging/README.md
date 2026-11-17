@@ -73,13 +73,18 @@ sur l'hôte Arch.
    installe le miroir pacman figé ; `myos-pacman-sync.service` synchronise ensuite les
    bases en arrière-plan dès que le réseau répond (sans retarder la session).
 2. LightDM ouvre automatiquement une session **Xfce** pour `myos`.
-3. `~/.xprofile` lance `myos-user-firstrun` (venv + `pip` + `ollama pull` en tâche
-   de fond, jusqu'à 5 essais espacés si le réseau n'est pas prêt), importe
-   `DISPLAY`/`XAUTHORITY` dans systemd `--user`, puis démarre `myosd.service`.
+3. `~/.xprofile` importe `DISPLAY`/`XAUTHORITY` dans systemd `--user`, lance
+   `myos-user-firstrun`, puis démarre `myosd.service`. Le script crée le venv et rend
+   aussitôt la main ; en tâche de fond, il installe les dépendances `pip` (nouveaux
+   essais tant que le réseau manque, avec un avis du bureau), démarre lui-même `myosd`
+   une fois qu'elles sont là, puis télécharge le modèle (jusqu'à 5 essais espacés).
+   Avant, `myosd.service` ne démarre pas (`ConditionPathExists` sur le marqueur
+   `~/.local/share/my_os/.firstrun-done`) au lieu de planter en boucle.
 4. L'autostart XDG lance le popup résident. Raccourci : **Ctrl+Alt+Espace**.
 
-> ⏱️ **Le 1er boot prend plusieurs minutes** (installation des dépendances +
-> téléchargement du modèle). Les démarrages suivants sont immédiats.
+> ⏱️ **Au 1er boot, la session s'ouvre tout de suite**, mais My_OS n'est prêt qu'une
+> fois ses dépendances installées (quelques secondes en ligne), et le modèle local
+> qu'une fois téléchargé (plusieurs minutes). Les démarrages suivants sont immédiats.
 
 ---
 
@@ -150,8 +155,9 @@ l'ISO comme disque USB (`-drive if=none,id=cle,format=raw,file=…iso -device qe
 vérifier au boot :
 1. Menu de démarrage « My_OS live », puis autologin vers Xfce, utilisateur `myos`
    (non-root : `whoami` → `myos`).
-2. Fin du 1er run (venv + `ollama pull` ; voir `~/.local/share/my_os/model-pull.log`,
-   où chaque essai est daté, et `model-pull.status`, qui passe de `pulling` à `done`).
+2. Fin du 1er run : dépendances (`~/.local/share/my_os/firstrun.log`, essais datés,
+   puis `.firstrun-done` et `myosd` actif), puis `ollama pull` (`model-pull.log`, où
+   chaque essai est daté, et `model-pull.status`, qui passe de `pulling` à `done`).
 3. **Ctrl+Alt+Espace** ouvre le popup, centré et au-dessus de tout, en anglais ; le
    bouton 🌐 de sa barre de titre le passe en français.
 4. Une requête simple (« liste mon dossier home ») fonctionne en local.
@@ -187,21 +193,39 @@ vérifier au boot :
 - **Paquets figés** sur l'instantané du build : pas de mises à jour de sécurité en
   live (`update_system` n'a rien à installer), et l'Archive est plus lente qu'un
   miroir. Reconstruire l'ISO pour la rafraîchir.
-- **1er boot en ligne** : sans réseau, les dépendances `pip` et le modèle ne sont
-  pas récupérés. Un échec de `pip` est journalisé dans
-  `~/.local/share/my_os/firstrun.log` et retenté à la session suivante. Le
-  téléchargement du modèle, en tâche de fond, fait jusqu'à **5 essais**, espacés de
+- **1er boot en ligne** : les dépendances `pip` et le modèle viennent du réseau. Tant
+  que les dépendances manquent, `myosd` ne tourne pas et le raccourci n'ouvre rien.
+  La tâche de fond de `myos-user-firstrun` attend alors que NetworkManager annonce une
+  connexion (30 s au premier essai, 5 min ensuite ; `nm-online` rend la main dès
+  qu'elle arrive) et réessaie **tant que la session dure** (en live, il n'y a pas
+  d'autre session pour le faire) ; réseau annoncé mais `pip` en échec (portail captif,
+  PyPI injoignable) : nouvel essai après 30 s, 1, 2, 4 min, puis toutes les 5 min. Un
+  **avis du bureau**, dans la langue de My_OS, le dit (« My_OS n'est pas encore
+  prêt ») et reste affiché jusqu'à ce que « My_OS est prêt » le remplace, une fois
+  `myosd` démarré. Chaque essai et sa cause sont datés dans
+  `~/.local/share/my_os/firstrun.log`. Sur l'ISO, LightDM arrête à la fin d'une
+  session tout son groupe de processus, tâche de fond comprise (vu en VM) : la session
+  suivante relance la sienne, avis compris. Si une tâche survit à sa session (autre
+  gestionnaire d'affichage), le verrou `firstrun.lock` évite une seconde installation :
+  la nouvelle session remontre seulement l'avis, que la première tâche remplacera par
+  « prêt ».
+  Le téléchargement du modèle, en tâche de fond, fait jusqu'à **5 essais**, espacés de
   30 s, 1, 2 puis 4 min (7 min 30 d'attente au plus) ; avant chacun, il attend jusqu'à
   1 min que NetworkManager annonce une connexion, et s'arrête si le modèle est déjà là
   (tiré à la main entre-temps). L'espace libre n'est vérifié qu'avant le premier essai :
   un essai suivant reprend les fichiers partiels du précédent (vérifié en VM : reprise à
-  15 % d'un fichier interrompu). Chaque essai et sa cause d'échec sont datés dans
-  `model-pull.log`. Tant que le modèle manque, le popup dit pourquoi (il se télécharge
-  encore, les 5 essais ont échoué, la place manque) et donne la commande
+  15 % d'un fichier interrompu) ; un modèle déjà là est noté téléchargé sans cette
+  vérification, et une place inconnue (`df` en échec) n'empêche pas d'essayer. Chaque
+  essai et sa cause d'échec sont datés dans `model-pull.log`. Tant que le modèle
+  manque, le popup dit pourquoi (il se télécharge encore ou attend un nouvel essai, les
+  essais ont échoué ou ont été interrompus, la place manque) et donne la commande
   `ollama pull qwen3.5:4b` : il lit l'état que le script note dans `model-pull.status`
   (cf. [INTERFACES.md](../docs/INTERFACES.md) §6.5). Lancée pendant le téléchargement,
   la commande suit le même téléchargement (Ollama ne télécharge chaque fichier qu'une
-  fois) et en montre la progression.
+  fois) et en montre la progression. À la session suivante, un téléchargement qui n'a
+  pas abouti (essais épuisés, place manquante, tâche interrompue par la fin de la
+  session, ou jamais lancé : l'état `pending` est noté avant le marqueur des
+  dépendances) est relancé ; jamais celui d'un modèle déjà téléchargé puis retiré.
 - **RAM en live** : tout ce qui est écrit vit en RAM (cowspace, fixé à **50 % de la
   RAM** par `build_iso.sh`). Le modèle (~3,3 Go) n'est tiré que s'il reste ≥ 4 Gio
   libres, soit **≥ 12 Go de RAM** pour le modèle local en live ; en dessous, le pull

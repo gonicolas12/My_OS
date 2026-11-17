@@ -412,6 +412,31 @@ Plus modestes, et directement issues de l'usage réel :
   (téléchargement en cours, échec, place insuffisante) ; un `ollama pull` lancé à la
   main pendant le téléchargement le suit sans le refaire, et un téléchargement
   interrompu reprend là où il s'était arrêté.
+- ~~**Premier démarrage hors ligne**~~ — fait : sans réseau à l'ouverture de la session
+  (Wi-Fi pas encore choisi), `pip` échouait, le script s'arrêtait avant le modèle, et rien
+  n'était retenté avant la session suivante, soit jamais en live. Vu en VM sur l'ISO v1.8,
+  lien réseau coupé dès le démarrage : 19 s d'écran noir pendant les essais de `pip`, puis
+  un bureau sans aucun message ; sans le module `ollama`, myosd plantait en boucle (71
+  redémarrages en 4 min) et le raccourci n'ouvrait rien, même 2 min après le retour du
+  réseau. Désormais le script crée le venv et rend la main (bureau en 2 s) ; en tâche de
+  fond, il installe les dépendances et réessaie tant que la session dure, dès que
+  NetworkManager annonce une connexion ; un avis du bureau dans la langue de My_OS dit,
+  après 30 s sans réponse d'Internet, que My_OS n'est pas encore prêt, puis, une fois
+  myosd démarré, qu'il l'est. myosd ne démarre qu'avec ses dépendances (condition de son
+  unité, plus de plantage en boucle) : c'est le script qui le lance. À la session
+  suivante, un téléchargement du modèle qui n'a pas abouti est relancé, y compris s'il
+  n'a jamais commencé (état `pending`, noté avant le marqueur des dépendances) ; un
+  modèle déjà là, tiré à la main, est noté téléchargé sans contrôle d'espace. Le popup ne
+  suppose plus de cause : le modèle « se télécharge, ou attend un nouvel essai », ou « n'a
+  pas pu être téléchargé (essais en échec ou interrompus) ». Validé en VM (novembre
+  2026), puis revérifié après une relecture finale : lien rétabli au bout de 3 min,
+  dépendances installées en 2 s, myosd démarré sans un redémarrage, l'avis « prêt »
+  remplace l'autre, le popup répond (modèle en cours de téléchargement) ; modèle en échec
+  après 5 essais (registre refusé), puis nouvelle session : téléchargement relancé, modèle
+  là 3 min plus tard, réponse du popup. En ligne : bureau en 2 à 6 s (création du venv),
+  raccourci prêt 4 s après l'ouverture de session, aucun avis. Une session fermée
+  pendant l'attente arrête sa tâche (LightDM arrête le groupe de processus de la
+  session) : la suivante relance la sienne. Avis vérifiés en français et en anglais.
 
 ---
 
