@@ -456,6 +456,21 @@ Plus modestes, et directement issues de l'usage réel :
   raccourci prêt 4 s après l'ouverture de session, aucun avis. Une session fermée
   pendant l'attente arrête sa tâche (LightDM arrête le groupe de processus de la
   session) : la suivante relance la sienne. Avis vérifiés en français et en anglais.
+- ~~**Reconnexion rapide**~~ — fait : après une fin de session suivie d'une reconnexion
+  en moins de ~10 s, le gestionnaire systemd utilisateur survit, et le myosd de la
+  session précédente avec lui, son écoute du raccourci restée sur l'ancien serveur X :
+  `~/.xprofile` le « démarrait » sans effet, et Ctrl+Alt+Espace n'ouvrait plus rien
+  (défaut de la v1.8, vu en VM en novembre 2026 en validant le premier démarrage hors
+  ligne). `~/.xprofile` le redémarre désormais à chaque ouverture de session : il écoute
+  le serveur X de la session courante et repart à neuf, grants de session compris ;
+  tant que les dépendances du premier démarrage manquent, le démarrage reste sauté et
+  c'est le script qui le lance. Son arrêt, une fois le serveur X disparu, ne finit plus
+  en erreur (trace et état d'échec au journal en v1.8), et ne peut plus retarder la
+  session de plus de 10 s. Validé en VM sur l'ISO v1.8 avec le code de la branche :
+  deux reconnexions rapides (l'ancien daemon s'arrête proprement, le nouveau démarre
+  50 ms plus tard), une lente (gestionnaire relancé), un premier démarrage hors ligne
+  puis en ligne, chacun en reconnexion rapide (démarrage sauté, puis lancé par le
+  script) : le raccourci ouvre le popup à chaque fois.
 
 ---
 

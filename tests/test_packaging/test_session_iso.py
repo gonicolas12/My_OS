@@ -1,7 +1,7 @@
 """Fichiers de session de l'ISO, lus comme du texte (tourne partout, Windows compris) :
 l'unité de myosd attend bien le marqueur que pose ``myos-user-firstrun``, et
-``~/.xprofile`` les enchaîne dans le bon ordre. Le comportement du script lui-même est
-testé dans ``test_firstrun.py``.
+``~/.xprofile`` les enchaîne dans le bon ordre, en redémarrant myosd à chaque session.
+Le comportement du script lui-même est testé dans ``test_firstrun.py``.
 """
 
 # pylint: disable=missing-function-docstring
@@ -57,7 +57,28 @@ def test_xprofile_environnement_puis_script_puis_myosd() -> None:
         "systemctl --user import-environment DISPLAY XAUTHORITY"
     )
     firstrun = commands.index("/usr/local/bin/myos-user-firstrun")
-    start = commands.index("systemctl --user start myosd.service")
+    restart = commands.index("systemctl --user restart myosd.service")
     # DISPLAY et XAUTHORITY avant le script : sa tâche de fond démarre myosd et montre
     # des avis du bureau ; myosd après : sans effet tant que le marqueur manque.
-    assert import_env < firstrun < start
+    assert import_env < firstrun < restart
+
+
+def test_xprofile_redemarre_myosd_a_chaque_session() -> None:
+    # Reconnexion en moins de ~10 s : le gestionnaire systemd utilisateur survit, et le
+    # myosd de la session précédente avec lui, son raccourci resté sur l'ancien serveur
+    # X. Un « start » ne ferait rien (service actif) : seul « restart » le rattache au
+    # serveur X et à l'environnement de la nouvelle session. Synchrone (pas de
+    # --no-block) : le daemon de la session est en place avant le popup.
+    myosd = [command for command in _commands(_XPROFILE) if "myosd" in command]
+    assert myosd == ["systemctl --user restart myosd.service"]
+
+
+def test_arret_de_myosd_borne() -> None:
+    # ~/.xprofile attend la fin du redémarrage avant d'ouvrir le bureau : un arrêt qui
+    # traîne ne doit pas la retarder de 90 s (délai par défaut avant SIGKILL).
+    values = [
+        line.split("=", 1)[1]
+        for line in _UNIT.read_text(encoding="utf-8").splitlines()
+        if line.startswith("TimeoutStopSec=")
+    ]
+    assert values == ["10s"]

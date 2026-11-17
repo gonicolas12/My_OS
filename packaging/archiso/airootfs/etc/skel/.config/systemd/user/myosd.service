@@ -1,6 +1,7 @@
 # Service systemd UTILISATEUR du daemon myosd (version ISO).
-# Jamais root (cf. docs/SECURITY.md menace 3). Démarré par ~/.xprofile une fois
-# DISPLAY/XAUTHORITY importés. Au 1er démarrage, les dépendances du venv s'installent en
+# Jamais root (cf. docs/SECURITY.md menace 3). Redémarré par ~/.xprofile à chaque
+# session, une fois DISPLAY/XAUTHORITY importés : le daemon suit le serveur X de la
+# session courante. Au 1er démarrage, les dépendances du venv s'installent en
 # tâche de fond (myos-user-firstrun) : tant que le marqueur qui les dit installées
 # manque, le démarrage est sauté (au lieu de planter en boucle sans le module ollama),
 # et c'est le script qui démarre le daemon une fois le marqueur posé.
@@ -17,6 +18,9 @@ WorkingDirectory=/opt/my_os
 ExecStart=/usr/local/bin/myos-daemon
 Restart=on-failure
 RestartSec=3
+# ~/.xprofile attend la fin de ce redémarrage avant d'ouvrir le bureau : un arrêt qui
+# traîne ne le retarde pas plus de 10 s (90 s par défaut avant SIGKILL).
+TimeoutStopSec=10s
 
 [Install]
 WantedBy=graphical-session.target
