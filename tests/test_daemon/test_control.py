@@ -8,14 +8,17 @@ popup qui accuse l'affichage de l'indicateur (``control_ready``).
 # pylint: disable=missing-function-docstring,redefined-outer-name,protected-access
 from __future__ import annotations
 
+import copy
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from daemon import control as control_module
 from daemon.control import ControlSession
 from daemon.orchestrator import MAX_CONTROL_STEPS, Orchestrator, Plan, ToolCall
+from models.cloud_router import ClaudeClient
 from permissions.audit_log import AuditLog
 from permissions.confirmation import CONTROL_TOOL, ConfirmationResponse
 from permissions.session_grants import SessionGrants
@@ -25,7 +28,7 @@ from tests.test_tools.computer_fakes import (
     make_window,
     screen_tools,
 )
-from tools.computer.screen import Rect
+from tools.computer.screen import Observation, Rect
 from tools.computer.x11 import ControlStopped
 
 BAR = [600, 920, 720, 90]
@@ -246,16 +249,29 @@ def test_rectangle_du_popup_valide(value: object) -> None:
 
 
 class _Model:
-    def __init__(self, plans: list[Plan], *, repeat_last: bool = False) -> None:
+    def __init__(
+        self,
+        plans: list[Plan],
+        *,
+        repeat_last: bool = False,
+        fail_at: int | None = None,
+    ) -> None:
         self.plans = list(plans)
         self.repeat_last = repeat_last
+        self.fail_at = fail_at  # numéro de l'appel qui échoue (erreur du modèle)
         self.calls = 0
         self.histories: list[list[dict]] = []
+        # Captures présentes dans l'historique AU MOMENT de chaque appel (les messages
+        # sont partagés avec l'historique, qui change ensuite).
+        self.captures: list[list[bytes | None]] = []
 
     def respond(self, messages: list[dict], on_token=None) -> Plan:
         _ = on_token
         self.histories.append(messages)
+        self.captures.append([m.get("image") for m in messages])
         self.calls += 1
+        if self.calls == self.fail_at:
+            raise RuntimeError("réseau coupé")
         if self.plans:
             return (
                 self.plans.pop(0)
@@ -283,18 +299,42 @@ def audit(tmp_path: Path) -> Iterator[AuditLog]:
     log.close()
 
 
-def _desktop_backend(label: str = "Enregistrer") -> FakeBackend:
+class _NumberedBackend(FakeBackend):
+    """Bureau scripté dont chaque observation a sa propre capture (b"capture-N")."""
+
+    def observe(self) -> Observation:
+        observation = super().observe()
+        observation.image = f"capture-{self.observations}".encode()
+        return observation
+
+
+class _Router:
+    """Routeur cloud toujours disponible (cf. INTERFACES §5.3)."""
+
+    def __init__(self, cloud_model: object) -> None:
+        self._cloud_model = cloud_model
+
+    def is_available(self) -> bool:
+        return True
+
+    def get_cloud_model(self) -> object:
+        return self._cloud_model
+
+
+def _desktop_backend(
+    label: str = "Enregistrer", backend_class: type[FakeBackend] = FakeBackend
+) -> FakeBackend:
     field = make_element(
         "text_field", "", Rect(620, 450, 600, 300), states=("focused",)
     )
-    return FakeBackend(
+    return backend_class(
         [make_window()],
         [make_element("button", label, Rect(700, 400, 80, 30)), field],
         focused=field,
     )
 
 
-def _orchestrator(
+def _orchestrator(  # pylint: disable=too-many-arguments
     audit: AuditLog,
     plans: list[Plan],
     decisions: list[str],
@@ -303,18 +343,24 @@ def _orchestrator(
     popup: _Popup | None = None,
     with_control: bool = True,
     repeat_last: bool = False,
+    cloud: bool = False,
+    fail_at: int | None = None,
+    local_plans: list[Plan] | None = None,
 ):
+    """Orchestrator sur un bureau scripté ; ``cloud`` : le modèle scripté est celui du
+    cloud (requêtes ``use_cloud``), le local suit ``local_plans`` (rien par défaut)."""
     backend = backend or _desktop_backend()
     session, popup, _, listeners = _session(backend, popup)
-    model = _Model(plans, repeat_last=repeat_last)
+    model = _Model(plans, repeat_last=repeat_last, fail_at=fail_at)
     confirmation = _Confirmation(decisions)
     orch = Orchestrator(
-        model=model,
+        model=_Model(local_plans or []) if cloud else model,
         tools=screen_tools(backend),
         grants=SessionGrants(),
         audit=audit,
         confirmation_provider=confirmation,
         control=session if with_control else None,
+        cloud_router=_Router(model) if cloud else None,
     )
     return orch, model, confirmation, session, popup, backend, listeners
 
@@ -482,3 +528,211 @@ def test_seule_la_derniere_capture_reste_dans_l_historique(audit: AuditLog) -> N
     final = model.histories[-1]
     with_image = [m for m in final if m.get("image")]
     assert len(with_image) == 1 and with_image[0] is final[-1]
+
+
+# Trois étapes : observer ; cliquer puis taper (deux résultats, deux captures) ;
+# observer. Puis la réponse finale.
+_THREE_STEPS = [
+    _call("observe_screen"),
+    Plan(
+        tool_calls=[
+            ToolCall(tool="click", args={"element": 1}),
+            ToolCall(tool="type_text", args={"text": "ok"}),
+        ]
+    ),
+    _call("observe_screen"),
+]
+
+
+def _numbered(audit: AuditLog, **kwargs: object):
+    return _orchestrator(
+        audit,
+        list(_THREE_STEPS),
+        ["approve_once"],
+        backend=_desktop_backend(backend_class=_NumberedBackend),
+        **kwargs,  # type: ignore[arg-type]
+    )
+
+
+@pytest.mark.parametrize(
+    ("cloud", "per_call"), [(False, [0, 1, 1, 1]), (True, [0, 1, 2, 3])]
+)
+def test_captures_envoyees_a_chaque_appel(
+    audit: AuditLog, cloud: bool, per_call: list[int]
+) -> None:
+    orch, model, _, _, _, _, _ = _numbered(audit, cloud=cloud)
+    orch.handle(
+        {"id": "m1", "content": "clique et tape", "use_cloud": cloud}, lambda _r: None
+    )
+    assert [sum(1 for c in call if c) for call in model.captures] == per_call
+    # Une seule capture par étape dans les deux cas : la dernière de l'étape (celle
+    # de « click » est remplacée par celle de « type_text » avant tout envoi).
+    tools = [m.get("tool") for m in model.histories[-1]]
+    assert model.captures[-1][tools.index("click")] is None
+    assert model.captures[-1][-1] is not None
+
+
+def test_cloud_historique_en_ajout_seul_pendant_le_controle(audit: AuditLog) -> None:
+    # Ce qu'un appel a envoyé repart à l'identique à l'appel suivant : la réflexion
+    # signée reste valide et le cache de prompt relit tout (INTERFACES §5.2).
+    orch, model, _, _, _, _, _ = _numbered(audit, cloud=True)
+    orch.handle(
+        {"id": "m1", "content": "clique et tape", "use_cloud": True}, lambda _r: None
+    )
+    for before, after in zip(model.captures, model.captures[1:]):
+        assert after[: len(before)] == before
+    sent = [c for call in model.captures for c in call if c]
+    assert len(set(sent)) == 3  # les mêmes captures, renvoyées, aucune de plus
+
+
+@pytest.mark.parametrize("fail_at", [None, 3])
+def test_cloud_seule_la_derniere_capture_survit_a_la_requete(
+    audit: AuditLog, fail_at: int | None
+) -> None:
+    # Fin normale ou erreur du modèle en cours de route : la requête suivante (ici
+    # locale) repart avec la seule dernière capture, comme avant.
+    orch, model, _, _, _, _, _ = _numbered(audit, cloud=True, fail_at=fail_at)
+    replies: list[dict] = []
+    orch.handle(
+        {"id": "m1", "content": "clique et tape", "use_cloud": True}, replies.append
+    )
+    assert any(r["type"] == "error" for r in replies) is (fail_at is not None)
+    kept = [m["image"] for m in orch._history if "image" in m]
+    assert kept == [model.captures[-1][-1]]  # la dernière capture envoyée
+    local = orch._model
+    orch.handle({"id": "m2", "content": "et maintenant ?"}, lambda _r: None)
+    assert [c for c in local.captures[-1] if c] == kept
+
+
+def test_cloud_derniere_capture_meme_si_la_fermeture_du_controle_echoue(
+    audit: AuditLog, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    orch, model, _, _, _, _, _ = _numbered(audit, cloud=True)
+
+    def broken(*_args: object) -> None:
+        raise RuntimeError("fermeture du contrôle impossible")
+
+    monkeypatch.setattr(orch, "_end_control", broken)
+    with pytest.raises(RuntimeError):
+        orch.handle(
+            {"id": "m1", "content": "clique et tape", "use_cloud": True},
+            lambda _r: None,
+        )
+    kept = [m["image"] for m in orch._history if "image" in m]
+    assert kept == [model.captures[-1][-1]]
+
+
+def test_cloud_capture_laissee_par_la_requete_precedente(audit: AuditLog) -> None:
+    # m1 locale avec contrôle laisse sa capture (A) ; m2 cloud avec contrôle la
+    # renvoie à chacun de ses appels (avant son message user, jamais retirée en
+    # cours de route), puis la fin de m2 ne garde que sa propre dernière capture.
+    orch, cloud, _, _, _, _, _ = _orchestrator(
+        audit,
+        [_call("observe_screen"), _call("observe_screen")],
+        ["approve_once", "approve_once"],
+        backend=_desktop_backend(backend_class=_NumberedBackend),
+        cloud=True,
+        local_plans=[_call("observe_screen")],
+    )
+    orch.handle({"id": "m1", "content": "regarde"}, lambda _r: None)
+    [previous] = [m["image"] for m in orch._history if "image" in m]
+    orch.handle(
+        {"id": "m2", "content": "regarde deux fois", "use_cloud": True},
+        lambda _r: None,
+    )
+    assert cloud.calls == 3
+    for call in cloud.captures:
+        assert previous in call
+    assert [sum(1 for c in call if c) for call in cloud.captures] == [1, 2, 3]
+    kept = [m["image"] for m in orch._history if "image" in m]
+    assert kept == [cloud.captures[-1][-1]] and previous not in kept
+
+
+class _ClaudeStream:
+    """Flux du faux client Anthropic : aucun texte, puis le message final."""
+
+    def __init__(self, final: SimpleNamespace) -> None:
+        self.text_stream: list[str] = []
+        self._final = final
+
+    def __enter__(self) -> _ClaudeStream:  # noqa: PYI034
+        return self
+
+    def __exit__(self, *_exc: object) -> bool:
+        return False
+
+    def get_final_message(self) -> SimpleNamespace:
+        return self._final
+
+
+class _ClaudeMessages:
+    """``client.beta.messages`` : garde une copie des messages de chaque appel."""
+
+    def __init__(self, finals: list[SimpleNamespace]) -> None:
+        self.finals = list(finals)
+        self.sent: list[list[dict]] = []
+
+    def stream(self, **kwargs: object) -> _ClaudeStream:
+        self.sent.append(copy.deepcopy(kwargs["messages"]))  # type: ignore[arg-type]
+        return _ClaudeStream(self.finals.pop(0))
+
+
+def _claude_turn(step: int) -> SimpleNamespace:
+    """Un tour de Claude : réflexion signée puis un appel observe_screen."""
+    return SimpleNamespace(
+        content=[
+            SimpleNamespace(type="thinking", thinking="", signature=f"sig-{step}"),
+            SimpleNamespace(
+                type="tool_use", name="observe_screen", input={}, id=f"toolu_{step}"
+            ),
+        ],
+        stop_reason="tool_use",
+    )
+
+
+def test_cloud_chaque_appel_prolonge_exactement_le_precedent(audit: AuditLog) -> None:
+    # De bout en bout côté requête : l'orchestrator et le vrai ClaudeClient (faux
+    # client Anthropic). Chaque appel renvoie à l'identique tout ce que le précédent
+    # a envoyé, réflexion signée et captures comprises (INTERFACES §5.2).
+    messages = _ClaudeMessages(
+        [
+            _claude_turn(1),
+            _claude_turn(2),
+            _claude_turn(3),
+            SimpleNamespace(
+                content=[SimpleNamespace(type="text", text="Fait.")],
+                stop_reason="end_turn",
+            ),
+        ]
+    )
+    claude = ClaudeClient(
+        client=SimpleNamespace(beta=SimpleNamespace(messages=messages))
+    )
+    backend = _desktop_backend(backend_class=_NumberedBackend)
+    session, _, _, _ = _session(backend)
+    orch = Orchestrator(
+        model=_Model([]),
+        tools=screen_tools(backend),
+        grants=SessionGrants(),
+        audit=audit,
+        confirmation_provider=_Confirmation(["approve_once"]),
+        control=session,
+        cloud_router=_Router(claude),
+    )
+    orch.handle(
+        {"id": "m1", "content": "regarde trois fois", "use_cloud": True},
+        lambda _r: None,
+    )
+    assert len(messages.sent) == 4
+    for before, after in zip(messages.sent, messages.sent[1:]):
+        assert after[: len(before)] == before
+    images = [
+        part
+        for message in messages.sent[-1]
+        if isinstance(message["content"], list)
+        for block in message["content"]
+        if isinstance(block, dict) and isinstance(block.get("content"), list)
+        for part in block["content"]
+        if part.get("type") == "image"
+    ]
+    assert len(images) == 3

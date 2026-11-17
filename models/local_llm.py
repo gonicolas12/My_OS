@@ -74,6 +74,26 @@ def _make_ollama_client(host: str | None) -> Any:
     return ollama.Client(host=_ollama_host(host))
 
 
+def _last_capture_only(messages: list[dict]) -> list[dict]:
+    """L'historique tel qu'envoyé au local : seule la dernière capture d'écran reste.
+
+    L'historique partagé peut en garder plusieurs pendant une requête cloud (une par
+    étape, cf. ``Orchestrator._append_tool_result``), et une requête locale peut
+    croiser une requête cloud en cours (un thread par requête). Le local n'en envoie
+    jamais qu'une. Les messages concernés sont copiés : l'historique du daemon n'est
+    jamais modifié.
+    """
+    last = max(
+        (i for i, m in enumerate(messages) if m.get("image") is not None), default=-1
+    )
+    return [
+        {k: v for k, v in m.items() if k != "image"}
+        if "image" in m and i != last
+        else m
+        for i, m in enumerate(messages)
+    ]
+
+
 def _to_ollama(messages: list[dict], *, with_image: bool = False) -> list[dict]:
     """Traduit l'historique générique de l'orchestrator au format chat d'Ollama.
 
@@ -87,10 +107,11 @@ def _to_ollama(messages: list[dict], *, with_image: bool = False) -> list[dict]:
     - ``tool`` : ``{"role": "tool", "content": <résultat>, "tool_name": <outil>}``,
       avec la capture d'écran du résultat (``images``) si ``with_image`` : le
       gabarit de Qwen 3.5 la place dans la réponse de l'outil (vérifié avec
-      Ollama 0.40.6 : +922 tokens, texte de l'image lu par le modèle).
+      Ollama 0.40.6 : +922 tokens, texte de l'image lu par le modèle). Seule la
+      dernière capture de l'historique est jointe (cf. :func:`_last_capture_only`).
     """
     out: list[dict] = []
-    for message in messages:
+    for message in _last_capture_only(messages):
         role = message.get("role")
         content = str(message.get("content", ""))
         if role == "assistant":
@@ -815,11 +836,14 @@ class OllamaClient:  # pylint: disable=too-many-instance-attributes
           tout relire ;
         - si la requête en cours dépasse seule le budget, ses plus anciens
           résultats d'outils sont remplacés par une mention (le dernier reste) ;
-        - une capture d'écran jointe compte pour :data:`IMAGE_TOKENS`.
+        - une capture d'écran jointe compte pour :data:`IMAGE_TOKENS` ; seule la
+          dernière l'est (cf. :func:`_last_capture_only`).
 
         L'historique du daemon n'est jamais modifié : seul l'envoi est ajusté.
         """
-        sent = [_cap_tool_output(m, prompt.tool_max_chars) for m in messages]
+        sent = _last_capture_only(
+            [_cap_tool_output(m, prompt.tool_max_chars) for m in messages]
+        )
         sizes = [_message_tokens(m, with_image=with_image) for m in sent]
         turns = [i for i, m in enumerate(messages) if m.get("role") == "user"]
         current = turns[-1] if turns else 0
