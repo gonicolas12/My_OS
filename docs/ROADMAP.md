@@ -312,6 +312,9 @@ brute. La note qui suit (« nécessite un modèle cloud ») était donc juste po
   de la demande, si bien que la réflexion de Claude n'est plus écartée et que le cache
   relit la conversation (11 à 31 % moins cher par tâche ; cf. « Captures gardées en
   mode cloud » plus bas).
+- [x] **Raccourci après une reconnexion rapide** : myosd redémarre à chaque ouverture
+  de session, si bien que Ctrl+Alt+Espace répond même après une reconnexion en moins de
+  ~10 s, et son arrêt ne finit plus en erreur (cf. « Reconnexion rapide » plus bas).
 - [x] Validé en VM sur processeur seul (novembre 2026) : sonde du modèle 5 sur 5 en
   français et en anglais, injection cachée dans un fichier ignorée ; contrôle de
   l'ordinateur en anglais (Mousepad, arrêt par Échap, terminal refusé par tous les
