@@ -394,11 +394,24 @@ Plus modestes, et directement issues de l'usage réel :
   l'ordinateur, ~2 430 en v1.2 ; mesuré en novembre 2026). Pistes : prompt et schémas plus
   courts, modèle préchargé à l'ouverture de session, modèle plus petit par défaut sur les
   machines modestes.
-- **Téléchargement du modèle au premier démarrage** : un seul essai. Si le réseau n'est
-  pas encore prêt (vu une fois en VM en novembre 2026 : délai dépassé pendant la
-  connexion TLS au registre d'Ollama, puis réussi à la main), les demandes au modèle
-  local échouent jusqu'à un `ollama pull qwen3.5:4b`. Pistes : quelques nouveaux essais
-  espacés, et un message du popup qui donne la commande.
+- ~~**Téléchargement du modèle au premier démarrage**~~ — fait : il n'avait droit qu'à
+  un essai, et un réseau pas encore prêt (vu une fois en VM en novembre 2026 : délai
+  dépassé pendant la connexion TLS au registre d'Ollama) laissait le modèle local
+  absent jusqu'à un `ollama pull qwen3.5:4b` à la main. Il fait maintenant jusqu'à 5
+  essais en tâche de fond, espacés de 30 s, 1, 2 puis 4 min, chacun après au plus 1 min
+  d'attente du réseau, sans retarder la session ; l'espace libre est vérifié avant le
+  premier, comme avant. Tant que le modèle manque, le popup dit pourquoi (il se
+  télécharge encore, les essais ont échoué, la place manque) et donne la commande, en
+  français ou en anglais ; une demande que le modèle n'a pas pu voir n'est plus gardée
+  dans la conversation (cf. [INTERFACES.md](INTERFACES.md) §6.5). Validé en VM
+  (novembre 2026), registre d'Ollama coupé depuis l'hôte dès le démarrage : l'ISO v1.8
+  reste sans modèle après son unique essai ; avec le nouveau script, le premier essai
+  échoue (délai dépassé), le deuxième, 30 s plus tard, télécharge le modèle une fois le
+  registre rétabli, et le popup répond. Registre refusé jusqu'au bout : 5 essais en
+  7 min 30, puis l'état d'échec. Messages du popup vérifiés dans les deux langues
+  (téléchargement en cours, échec, place insuffisante) ; un `ollama pull` lancé à la
+  main pendant le téléchargement le suit sans le refaire, et un téléchargement
+  interrompu reprend là où il s'était arrêté.
 
 ---
 

@@ -74,8 +74,8 @@ sur l'hôte Arch.
    bases en arrière-plan dès que le réseau répond (sans retarder la session).
 2. LightDM ouvre automatiquement une session **Xfce** pour `myos`.
 3. `~/.xprofile` lance `myos-user-firstrun` (venv + `pip` + `ollama pull` en tâche
-   de fond), importe `DISPLAY`/`XAUTHORITY` dans systemd `--user`, puis démarre
-   `myosd.service`.
+   de fond, jusqu'à 5 essais espacés si le réseau n'est pas prêt), importe
+   `DISPLAY`/`XAUTHORITY` dans systemd `--user`, puis démarre `myosd.service`.
 4. L'autostart XDG lance le popup résident. Raccourci : **Ctrl+Alt+Espace**.
 
 > ⏱️ **Le 1er boot prend plusieurs minutes** (installation des dépendances +
@@ -150,7 +150,8 @@ l'ISO comme disque USB (`-drive if=none,id=cle,format=raw,file=…iso -device qe
 vérifier au boot :
 1. Menu de démarrage « My_OS live », puis autologin vers Xfce, utilisateur `myos`
    (non-root : `whoami` → `myos`).
-2. Fin du 1er run (venv + `ollama pull` ; voir `~/.local/share/my_os/model-pull.log`).
+2. Fin du 1er run (venv + `ollama pull` ; voir `~/.local/share/my_os/model-pull.log`,
+   où chaque essai est daté, et `model-pull.status`, qui passe de `pulling` à `done`).
 3. **Ctrl+Alt+Espace** ouvre le popup, centré et au-dessus de tout, en anglais ; le
    bouton 🌐 de sa barre de titre le passe en français.
 4. Une requête simple (« liste mon dossier home ») fonctionne en local.
@@ -187,13 +188,24 @@ vérifier au boot :
   live (`update_system` n'a rien à installer), et l'Archive est plus lente qu'un
   miroir. Reconstruire l'ISO pour la rafraîchir.
 - **1er boot en ligne** : sans réseau, les dépendances `pip` et le modèle ne sont
-  pas récupérés ; l'assistant signalera l'absence de modèle jusqu'au prochain
-  `ollama pull qwen3.5:4b`. Un échec de `pip` est journalisé dans
-  `~/.local/share/my_os/firstrun.log` et retenté à la session suivante.
+  pas récupérés. Un échec de `pip` est journalisé dans
+  `~/.local/share/my_os/firstrun.log` et retenté à la session suivante. Le
+  téléchargement du modèle, en tâche de fond, fait jusqu'à **5 essais**, espacés de
+  30 s, 1, 2 puis 4 min (7 min 30 d'attente au plus) ; avant chacun, il attend jusqu'à
+  1 min que NetworkManager annonce une connexion, et s'arrête si le modèle est déjà là
+  (tiré à la main entre-temps). L'espace libre n'est vérifié qu'avant le premier essai :
+  un essai suivant reprend les fichiers partiels du précédent (vérifié en VM : reprise à
+  15 % d'un fichier interrompu). Chaque essai et sa cause d'échec sont datés dans
+  `model-pull.log`. Tant que le modèle manque, le popup dit pourquoi (il se télécharge
+  encore, les 5 essais ont échoué, la place manque) et donne la commande
+  `ollama pull qwen3.5:4b` : il lit l'état que le script note dans `model-pull.status`
+  (cf. [INTERFACES.md](../docs/INTERFACES.md) §6.5). Lancée pendant le téléchargement,
+  la commande suit le même téléchargement (Ollama ne télécharge chaque fichier qu'une
+  fois) et en montre la progression.
 - **RAM en live** : tout ce qui est écrit vit en RAM (cowspace, fixé à **50 % de la
   RAM** par `build_iso.sh`). Le modèle (~3,3 Go) n'est tiré que s'il reste ≥ 4 Gio
   libres, soit **≥ 12 Go de RAM** pour le modèle local en live ; en dessous, le pull
-  est ignoré et la raison est écrite dans `model-pull.log`.
+  est ignoré, la raison est écrite dans `model-pull.log` et le popup le signale.
 - **Mot de passe live connu** (`myos`) : acceptable pour une démo live, à changer
   pour un usage réel.
 

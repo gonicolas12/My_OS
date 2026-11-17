@@ -230,6 +230,7 @@ cette demande. Contrat complet : `INTERFACES.md §11`.
 | Grants de session | en mémoire (réinitialisés à chaque session) |
 | Dépendances PyPI (ISO) | venv `~/.local/share/my_os/venv` (créé au 1er run, journal `firstrun.log`) |
 | Modèle local | stockage d'Ollama (`/var/lib/ollama`) |
+| Téléchargement du modèle au 1er run (ISO) | `~/.local/share/my_os/model-pull.log` (essais datés) et `model-pull.status` (état, lu par le daemon quand le modèle manque) |
 | Bases pacman (ISO live) | resynchronisées au boot depuis l'instantané figé du build |
 
 ---
