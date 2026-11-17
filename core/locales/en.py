@@ -658,6 +658,24 @@ MESSAGES: dict[str, str] = {
         "The My_OS service (myosd) is not responding: the request was not sent. "
         "Check that it is running (systemctl --user status myosd)."
     ),
+    # ---- ui/setup_notice.py : avis du bureau du 1er démarrage de l'ISO --------------
+    "My_OS n'est pas encore prêt": "My_OS is not ready yet",
+    "My_OS est prêt": "My_OS is ready",
+    "Il lui reste des composants à télécharger, mais Internet ne répond pas pour "
+    "l'instant (pas de connexion, ou une page de connexion à valider ?). Dès qu'il "
+    "répondra, l'installation reprendra d'elle-même et l'assistant ({hotkey}) "
+    "sera prêt peu après.": (
+        "It still needs to download some components, but the Internet is not "
+        "responding for now (no connection, or a sign-in page to accept?). As soon as "
+        "it responds, the installation will resume on its own and the assistant "
+        "({hotkey}) will be ready shortly after."
+    ),
+    "Ses composants sont installés : {hotkey} ouvre l'assistant. Le modèle local "
+    "peut demander encore quelques minutes ; l'assistant vous dira s'il n'est pas "
+    "prêt.": (
+        "Its components are installed: {hotkey} opens the assistant. The local model "
+        "may need a few more minutes; the assistant will tell you if it is not ready."
+    ),
     # ---- ui/window_chrome.py -------------------------------------------------------
     "pour fermer": "to close",
     "Touche Échap (Esc) : fermer le popup.\nLe raccourci clavier le rouvre.": (
