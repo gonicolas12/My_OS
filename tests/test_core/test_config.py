@@ -39,6 +39,15 @@ def test_load_config_defauts_si_fichier_absent(tmp_path: Path) -> None:
     assert cfg.ui.theme == "dark"
 
 
+def test_taille_du_popup_au_premier_lancement(tmp_path: Path) -> None:
+    # En 720×540, l'accueil masquait son logo : la taille de départ est celle des
+    # visuels du README, et le config.yaml versionné dit la même chose.
+    defaults = load_config(tmp_path / "absent.yaml").ui
+    assert (defaults.width, defaults.height) == (960, 680)
+    shipped = load_config(Path(__file__).resolve().parents[2] / "config.yaml").ui
+    assert (shipped.width, shipped.height) == (defaults.width, defaults.height)
+
+
 def test_load_config_lit_un_fichier_explicite(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     path.write_text(

@@ -58,8 +58,10 @@ class UIConfig:
     """Paramètres du popup Qt."""
 
     theme: str = "dark"
-    width: int = 720  # taille à la 1re ouverture (ensuite mémorisée par le popup)
-    height: int = 540
+    # Taille à la 1re ouverture (ensuite mémorisée par le popup) : celle des visuels du
+    # README. En 720×540, l'accueil masquait son logo (il lui faut ~550 px de haut).
+    width: int = 960
+    height: int = 680
 
 
 @dataclass
