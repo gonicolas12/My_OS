@@ -343,7 +343,14 @@ Procédure détaillée, décisions et limites : **[packaging/README.md](../packa
   `systemctl cat ollama` montre où chacun est posé.
 - **Élévation refusée** : un agent polkit doit tourner dans la session (Xfce lance
   `polkit-gnome`). Sinon, installez/lancez un agent d'authentification polkit.
-  Un « Request dismissed » signifie simplement que la fenêtre polkit a été annulée.
+  « Demande d'autorisation fermée sans réponse » signifie simplement que la fenêtre
+  polkit a été annulée (fermée ou Échap) ; « Autorisation refusée », que polkit a
+  refusé l'action. Dans les deux cas, la commande n'a pas été lancée. Chaque fenêtre
+  fermée compte comme un échec d'authentification : au troisième en 15 minutes, le
+  compte est verrouillé 10 minutes (pam_faillock, réglage par défaut d'Arch), et la
+  fenêtre suivante l'indique (« 10 minutes left to unlock »). `faillock --user myos`
+  montre les échecs ; attendre 10 minutes, ou lancer `faillock --user myos --reset` en
+  root, lève le verrou.
 - **Rechercher/installer un paquet échoue en live** (`database file for 'core' does not
   exist`) : les bases n'ont pas encore été synchronisées (réseau absent au démarrage).
   Vérifiez `journalctl -u myos-pacman-sync`, ou lancez `sudo pacman -Sy` (sans risque :

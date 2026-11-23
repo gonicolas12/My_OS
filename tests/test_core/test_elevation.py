@@ -7,7 +7,9 @@ Sécurité prioritaire (cf. CLAUDE.md, SECURITY checklist §7) :
 * ``elevate=True`` préfixe bien ``pkexec`` (élévation ponctuelle, par action) ;
 * ``elevate=False`` ne préfixe **jamais** ``pkexec`` ;
 * jamais de ``shell=True`` (vérifié sur le lanceur de production) ;
-* timeout et binaire absent renvoient un résultat d'échec lisible, sans lever.
+* timeout et binaire absent renvoient un résultat d'échec lisible, sans lever ;
+* un refus de polkit (codes 126 et 127 de ``pkexec``, texte anglais en dur) est
+  rendu dans la langue de My_OS, sans rien changer d'autre (code, échec).
 """
 
 # Les runners stub respectent la signature (argv, timeout) attendue par
@@ -15,12 +17,16 @@ Sécurité prioritaire (cf. CLAUDE.md, SECURITY checklist §7) :
 # pylint: disable=missing-function-docstring,unused-argument
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from core.elevation import PKEXEC, CommandResult, build_argv, run_command
+from core.i18n import use_language
 
 
 def _fake_completed(returncode: int = 0, stdout: str = "", stderr: str = "") -> Any:
@@ -155,3 +161,136 @@ def test_lancement_sans_tube_pour_une_application(
     assert kwargs["stdin"] is subprocess.DEVNULL
     assert "capture_output" not in kwargs
     assert result.ok and result.stdout == ""
+
+
+# --- refus de polkit : pkexec écrit en anglais, en dur (polkit 128, pkexec.c) ---
+
+# Sorties exactes de pkexec : fenêtre d'authentification fermée (code 126), puis
+# autorisation refusée (code 127, laissé par défaut, suivi d'une ligne vide et d'une
+# phrase de plus).
+_DISMISSED = "Error executing command as another user: Request dismissed\n"
+_NOT_AUTHORIZED = (
+    "Error executing command as another user: Not authorized\n"
+    "\n"
+    "This incident has been reported.\n"
+)
+_REFUSALS = [
+    (
+        126,
+        _DISMISSED,
+        "demande d'autorisation fermée sans réponse : la commande n'a pas été lancée",
+        "authorization request closed without an answer: the command was not run",
+    ),
+    (
+        127,
+        _NOT_AUTHORIZED,
+        "autorisation refusée : la commande n'a pas été lancée",
+        "authorization denied: the command was not run",
+    ),
+]
+
+
+@pytest.mark.parametrize(("code", "stderr", "french", "english"), _REFUSALS)
+def test_refus_de_polkit_dans_la_langue_de_my_os(
+    code: int, stderr: str, french: str, english: str
+) -> None:
+    def runner(argv: list[str], timeout: float) -> Any:
+        return _fake_completed(code, "", stderr)
+
+    argv = ["pacman", "-S", "--noconfirm", "vlc"]
+    result = run_command(argv, elevate=True, runner=runner)
+    # Seul le texte change : même code, toujours un échec.
+    assert (result.returncode, result.ok, result.stderr) == (code, False, french)
+    with use_language("en"):
+        result = run_command(argv, elevate=True, runner=runner)
+    assert (result.returncode, result.ok, result.stderr) == (code, False, english)
+
+
+@pytest.mark.parametrize(
+    ("code", "stderr", "elevate"),
+    [
+        # pkexec ne trouve pas le programme : 127 aussi, mais pas un refus.
+        (127, "Cannot run program pacman: No such file or directory\n", True),
+        # Autre échec de pkexec, hors des deux refus traduits.
+        (
+            127,
+            (
+                "Error executing command as another user: "
+                "No authentication agent found.\n"
+            ),
+            True,
+        ),
+        # Le texte d'un refus sans son code (sortie de la commande lancée) : inchangé.
+        (1, _DISMISSED, True),
+        (127, _DISMISSED, True),
+        (126, _NOT_AUTHORIZED, True),
+        # Sans élévation, aucune sortie ne vient de pkexec.
+        (126, _DISMISSED, False),
+        (127, _NOT_AUTHORIZED, False),
+        # Échec ordinaire de pacman.
+        (1, "error: target not found: vlc\n", True),
+    ],
+)
+def test_autres_sorties_laissees_telles_quelles(
+    code: int, stderr: str, elevate: bool
+) -> None:
+    result = run_command(
+        ["pacman", "-S", "vlc"],
+        elevate=elevate,
+        runner=lambda argv, timeout: _fake_completed(code, "", stderr),
+    )
+    assert (result.returncode, result.stderr) == (code, stderr)
+
+
+def test_pkexec_absent_reste_commande_introuvable() -> None:
+    # Code 127 de run_command lui-même : pas un refus de polkit.
+    def runner(argv: list[str], timeout: float) -> Any:
+        raise FileNotFoundError(argv[0])
+
+    result = run_command(["pacman", "-S", "vlc"], elevate=True, runner=runner)
+    assert result.returncode == 127
+    assert "introuvable" in result.stderr
+    assert "autorisation" not in result.stderr
+
+
+def _faux_pkexec(directory: Path, code: int, stderr: str) -> Path:
+    """Exécutable ``pkexec`` qui note ses arguments, écrit ``stderr`` et sort en
+    ``code`` : le vrai lanceur (``subprocess.run``) le trouve dans le PATH."""
+    script = directory / "pkexec"
+    script.write_text(
+        "#!/bin/sh\n"
+        'printf "%s\\n" "$@" > "$(dirname "$0")/argv"\n'
+        f"cat >&2 <<'FIN'\n{stderr}FIN\n"
+        f"exit {code}\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    return script
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="faux pkexec : script POSIX")
+@pytest.mark.parametrize(
+    ("code", "stderr", "french", "english"),
+    [
+        *_REFUSALS,
+        (127, "Cannot run program pacman: No such file or directory\n", None, None),
+    ],
+)
+def test_faux_pkexec_par_le_vrai_lanceur(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    code: int,
+    stderr: str,
+    french: str | None,
+    english: str | None,
+) -> None:
+    _faux_pkexec(tmp_path, code, stderr)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ.get('PATH', '')}")
+    argv = ["pacman", "-S", "--noconfirm", "vlc"]
+    result = run_command(argv, elevate=True)
+    assert (tmp_path / "argv").read_text(encoding="utf-8").split() == argv
+    assert (result.returncode, result.ok) == (code, False)
+    assert result.stderr == (french or stderr)
+    with use_language("en"):
+        result = run_command(argv, elevate=True)
+    assert result.stderr == (english or stderr)

@@ -15,6 +15,7 @@ from typing import Any
 
 import pytest
 
+from core.i18n import use_language
 from tools.packages import (
     PACKAGE_TOOLS,
     InstallPackage,
@@ -143,6 +144,29 @@ def test_install_package_echec_pacman_remonte_stderr() -> None:
     result = InstallPackage(runner).run({"name": "vlc"})
     assert result.success is False
     assert "target not found" in result.output
+
+
+def test_install_package_fenetre_polkit_fermee_dans_la_langue_de_my_os() -> None:
+    # pkexec écrit son refus en anglais, en dur : le popup et le modèle le lisent
+    # dans la langue de My_OS. L'installation reste un échec.
+    runner = _RecordingRunner(
+        returncode=126,
+        stdout="",
+        stderr="Error executing command as another user: Request dismissed\n",
+    )
+    result = InstallPackage(runner).run({"name": "vlc"})
+    assert result.success is False
+    assert result.output == (
+        "Installation de « vlc » : échec\n"
+        "demande d'autorisation fermée sans réponse : la commande n'a pas été lancée"
+    )
+    with use_language("en"):
+        result = InstallPackage(runner).run({"name": "vlc"})
+    assert result.success is False
+    assert result.output == (
+        "Installing “vlc”: failed\n"
+        "authorization request closed without an answer: the command was not run"
+    )
 
 
 def test_install_package_accepte_les_noms_valides_courants() -> None:

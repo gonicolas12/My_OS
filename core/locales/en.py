@@ -21,6 +21,12 @@ MESSAGES: dict[str, str] = {
     # ---- core/elevation.py ---------------------------------------------------------
     "commande introuvable : {error}": "command not found: {error}",
     "délai dépassé ({seconds}s) : {command}": "timed out ({seconds}s): {command}",
+    "demande d'autorisation fermée sans réponse : la commande n'a pas été lancée": (
+        "authorization request closed without an answer: the command was not run"
+    ),
+    "autorisation refusée : la commande n'a pas été lancée": (
+        "authorization denied: the command was not run"
+    ),
     # ---- daemon/control.py ---------------------------------------------------------
     "le popup n'est pas connecté : l'indicateur de contrôle ne peut pas s'afficher": (
         "the popup is not connected: the control indicator cannot be shown"
