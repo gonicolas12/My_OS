@@ -24,13 +24,14 @@ hotkey: "<ctrl>+<alt>+<space>"
 # l'emporte ensuite.
 language: auto
 
-# Popup Qt. width/height = taille à la première ouverture : ensuite, la taille, la
-# position et l'état (agrandi, plein écran) choisis à la souris sont mémorisés dans
-# ~/.config/my_os/popup.conf.
+# Popup Qt. width/height = taille à la première ouverture (ramenée à l'écran s'il est
+# plus petit) : ensuite, la taille, la position et l'état (agrandi, plein écran)
+# choisis à la souris sont mémorisés dans ~/.config/my_os/popup.conf. Sous ~550 px de
+# haut, l'écran d'accueil masque son logo faute de place.
 ui:
   theme: dark
-  width: 720
-  height: 540
+  width: 960
+  height: 680
 
 # Backend modèle utilisé par l'orchestrator.
 #   backend: stub    -> StubRuleModel (regex FR/EN, pas besoin d'Ollama)

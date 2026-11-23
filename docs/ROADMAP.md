@@ -550,6 +550,11 @@ Plus modestes, et directement issues de l'usage réel :
   50 ms plus tard), une lente (gestionnaire relancé), un premier démarrage hors ligne
   puis en ligne, chacun en reconnexion rapide (démarrage sauté, puis lancé par le
   script) : le raccourci ouvre le popup à chaque fois.
+- ~~**Taille de départ du popup**~~ — fait : il s'ouvrait en 720×540 sur tous les écrans,
+  et l'accueil y masquait son logo faute de hauteur (il lui faut 544 px avec la police
+  de l'ISO, mesuré en novembre 2026) : un nouvel utilisateur ne le voyait jamais. Il
+  s'ouvre désormais en 960×680, la taille des visuels du README, ramenée à l'écran
+  disponible quand il est plus petit ; la taille choisie à la souris reste mémorisée.
 
 ---
 

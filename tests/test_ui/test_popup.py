@@ -345,6 +345,18 @@ def test_longue_demande_n_ecrase_pas_l_accueil(popup: Popup, lines: int) -> None
             assert button.height() >= button.sizeHint().height(), (size, lines)
 
 
+def test_logo_de_l_accueil_a_la_taille_de_depart(popup: Popup) -> None:
+    # En 720×540 (taille de départ jusqu'à la v1.8), l'accueil masquait son logo faute
+    # de hauteur : à la taille de départ, il doit se voir, dans les deux langues.
+    ui = Config().ui
+    popup.resize(ui.width, ui.height)
+    popup.show()
+    for language in ("fr", "en"):
+        popup.set_language(language)
+        QtWidgets.QApplication.processEvents()
+        assert not popup.chat.empty_state.logo.isHidden(), language
+
+
 def test_taille_et_position_memorisees(app: object, settings: object) -> None:
     first = Popup(Config(), session_type="x11", client=FakeClient(), settings=settings)
     first.present()
