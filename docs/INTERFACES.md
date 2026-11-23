@@ -727,6 +727,16 @@ requis : `pkexec` utilise la policy par défaut `org.freedesktop.policykit.exec`
 de timeout, `run_command` renvoie un `CommandResult` d'échec lisible (codes 127
 / 124) au lieu de lever — l'orchestrator réinjecte ce texte comme **donnée**.
 
+**Refus de polkit.** `pkexec` écrit ses refus en anglais, en dur, sans traduction
+possible (polkit 128) : « Error executing command as another user: Request dismissed »
+quand la fenêtre d'authentification est fermée (code 126), « … : Not authorized » quand
+polkit refuse (code 127). Avec `elevate=True`, `run_command` reconnaît chacun à son
+code **et** à cette ligne exacte (127 sert aussi à « commande introuvable ») et met dans
+`stderr` un message dans la langue de la requête : « demande d'autorisation fermée sans
+réponse » ou « autorisation refusée », suivi de « la commande n'a pas été lancée ». Le
+code de retour reste celui de `pkexec` : l'action reste un échec, et le modèle n'en
+voit que le résultat de l'outil. Toute autre sortie est rendue telle quelle.
+
 **Contrat outils système.** Un outil qui pilote le système :
 - construit son argv en **liste** (jamais de concaténation shell) ;
 - **valide ses entrées** avant (noms de paquets via regex, PID entier, etc.) ;

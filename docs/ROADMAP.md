@@ -394,7 +394,21 @@ Plus modestes, et directement issues de l'usage réel :
   capture de plus ne part : ce sont les mêmes, renvoyées (cf.
   [INTERFACES.md](INTERFACES.md) §5.2 et [SECURITY.md](SECURITY.md) menace 2).
 - **Consulter l'historique** depuis le popup (aujourd'hui : fichier SQLite d'audit).
-- **Messages polkit traduits** (« Request dismissed » s'affiche tel quel).
+- ~~**Messages polkit traduits**~~ — fait : `pkexec` écrit ses refus en anglais, en
+  dur, sans gettext (polkit 128, `src/programs/pkexec.c`) : « Request dismissed » quand
+  la fenêtre d'authentification est fermée (code 126), « Not authorized » quand polkit
+  refuse (code 127) ; il n'y avait donc rien à attendre d'une traduction de polkit.
+  `run_command` reconnaît chacun à son code et à son texte exact (127 sert aussi à
+  « commande introuvable ») et le remplace par un message dans la langue de My_OS :
+  « demande d'autorisation fermée sans réponse » ou « autorisation refusée », la
+  commande n'ayant pas été lancée. Rien d'autre ne change : l'action reste un échec, et
+  le modèle n'en voit que le résultat de l'outil (cf. [INTERFACES.md](INTERFACES.md)
+  §8). Validé en VM sur l'ISO v1.9 avec le vrai polkit (novembre 2026) : fenêtre
+  d'authentification fermée par Échap pendant un `install_package`, et refus de polkit
+  (règle de test), en français et en anglais, dans le popup comme dans le résultat
+  renvoyé au modèle ; installation avec le mot de passe inchangée. Trois fenêtres
+  fermées de suite verrouillent le compte 10 minutes (pam_faillock d'Arch, cf.
+  [INSTALLATION.md](INSTALLATION.md)).
 - ~~**Menus standard de Qt**~~ — fait : le clic droit dans un champ (clé API, saisie,
   conversation) suit la langue de My_OS (catalogue `qtbase` de Qt, paquet
   `qt6-translations`, déjà sur l'ISO).

@@ -15,7 +15,11 @@ auditable, dans le même esprit que le « choke point » du
 * le ``runner`` est **injectable** : en production il pointe sur
   :func:`subprocess.run` ; en test on injecte un stub, ce qui permet de
   vérifier l'argv construit (et la présence de ``pkexec``) sans polkit ni
-  pacman, y compris sous Windows.
+  pacman, y compris sous Windows ;
+* un **refus de polkit** (fenêtre d'authentification fermée, autorisation
+  refusée) est rendu dans la langue de My_OS : ``pkexec`` l'écrit en anglais, en
+  dur. Seul le texte change : le code de retour reste celui de ``pkexec``, et la
+  commande n'a pas été lancée.
 
 La sortie d'une commande renvoyée ici est une **donnée** non fiable comme tout
 contenu lu (cf. docs/SECURITY.md §2.2) : l'appelant la résume pour le LLM, il ne
@@ -28,7 +32,7 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from core.i18n import tr
+from core.i18n import N_, tr
 
 # Binaire d'élévation polkit. ``pkexec`` exécute la commande en root après
 # authentification via l'agent polkit de la session — ponctuel, par action.
@@ -36,6 +40,27 @@ PKEXEC = "pkexec"
 
 # Délai par défaut (s) avant d'abandonner une commande système.
 DEFAULT_TIMEOUT_S = 120.0
+
+# Refus de polkit : (code de retour de pkexec, ligne qu'il écrit sur stderr, message
+# de My_OS). pkexec écrit ces lignes en anglais, sans gettext (polkit 128,
+# src/programs/pkexec.c) : sans ce remplacement, le popup affichait « Request
+# dismissed » en français comme en anglais. Une ligne n'est reconnue qu'avec son code,
+# car 127 sert aussi à « commande introuvable » (pkexec et run_command ci-dessous).
+_POLKIT_REFUSALS: tuple[tuple[int, str, str], ...] = (
+    (
+        126,  # fenêtre d'authentification fermée (Annuler, Échap)
+        "Error executing command as another user: Request dismissed",
+        N_(
+            "demande d'autorisation fermée sans réponse : la commande n'a pas été "
+            "lancée"
+        ),
+    ),
+    (
+        127,  # polkit refuse (pkexec ajoute « This incident has been reported. »)
+        "Error executing command as another user: Not authorized",
+        N_("autorisation refusée : la commande n'a pas été lancée"),
+    ),
+)
 
 
 @dataclass
@@ -113,6 +138,19 @@ def build_argv(argv: list[str], *, elevate: bool) -> list[str]:
     return [PKEXEC, *argv] if elevate else list(argv)
 
 
+def _polkit_refusal(returncode: int, stderr: str) -> str | None:
+    """Message, dans la langue de My_OS, d'un refus de polkit écrit par ``pkexec``.
+
+    Reconnu au code de retour **et** à la ligne anglaise exacte de ``pkexec`` ;
+    ``None`` pour toute autre sortie, laissée telle quelle.
+    """
+    lines = {line.strip() for line in stderr.splitlines()}
+    for code, english, message in _POLKIT_REFUSALS:
+        if returncode == code and english in lines:
+            return tr(message)
+    return None
+
+
 def run_command(
     argv: list[str],
     *,
@@ -138,6 +176,9 @@ def run_command(
     En cas de timeout ou d'absence du binaire (``pkexec`` ou la commande
     introuvable), renvoie un :class:`CommandResult` d'échec lisible plutôt que
     de propager l'exception — l'orchestrator réinjecte ce message comme donnée.
+    Avec ``elevate``, un refus de polkit (codes 126 et 127 de ``pkexec``) a pour
+    ``stderr`` un message dans la langue de My_OS, au lieu de l'anglais de
+    ``pkexec`` ; le code de retour ne change pas.
     """
     final_argv = build_argv(argv, elevate=elevate)
     default = _detached_runner if detach_output else _default_runner
@@ -160,8 +201,13 @@ def run_command(
                 command=" ".join(final_argv),
             ),
         )
+    returncode = int(completed.returncode)
+    stderr = completed.stderr or ""
+    if elevate:
+        # Seul pkexec écrit ces refus : sans élévation, la sortie reste telle quelle.
+        stderr = _polkit_refusal(returncode, stderr) or stderr
     return CommandResult(
-        returncode=int(completed.returncode),
+        returncode=returncode,
         stdout=completed.stdout or "",
-        stderr=completed.stderr or "",
+        stderr=stderr,
     )
