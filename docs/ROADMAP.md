@@ -327,6 +327,55 @@ brute. La note qui suit (« nécessite un modèle cloud ») était donc juste po
   demande (v1.7 : 10 à 14 s), 9 à 10 tokens/s, bon outil 12 fois sur 12 à chaque passe ;
   cache K/V toujours chargé en 8 bits, Ollama en local seul.
 
+### v1.9 — mise à jour de sécurité de l'ISO (novembre 2026)
+- [ ] ISO à publier : elle remplacera celle de la v1.8, pour une raison de sécurité.
+  Paquets figés sur l'instantané Arch Linux Archive du **2026-11-23** : les 769 paquets
+  de la v1.8, dont 55 mis à jour, plus `simdutf` (770 en tout).
+- [x] **GPGME de pacman** : gpgme 2.3.1 corrige une double libération qu'un identifiant
+  d'utilisateur très long, dans une clé OpenPGP piégée, déclenche dans le code qui lit
+  les sorties de gpg (CVE-2026-129975, exécution de code à distance non exclue).
+  pacman s'en sert pour vérifier la signature des paquets, en root : synchronisation au
+  démarrage (`myos-pacman-sync`), `install_package` et `update_system` (via `pkexec`).
+- [x] **Polices du serveur X** : libXfont2 2.0.10 et libfontenc 1.1.10 (avis de X.Org du
+  18 novembre 2026). Un client local pouvait faire planter le serveur X par de simples
+  requêtes, sans police piégée (CVE-2026-109920) : tout programme de la session, y compris
+  un programme lancé par l'assistant, pouvait donc fermer la session. Une police PCF
+  piégée faisait lire hors limites (CVE-2026-109909), un fichier d'encodage écrire hors
+  limites (CVE-2026-109908, élévation de privilèges si le serveur X tourne en root).
+- [x] **fontconfig 2.18.4** (accès hors limites dans `FcCharSetMerge`), qui sert à Qt
+  (popup), GTK et Pango.
+- [x] **Magasin de certificats** : NSS et ca-certificates-mozilla 3.134. Racines pour TLS :
+  115 → 110 (Buypass Class 2 et 3, Certigna, QuoVadis Root CA 1 G3 et 3 G3 retirées) ;
+  pour le courriel : 86 → 81, dont emSign Root CA - G1 (suite de l'affaire eMudhra de la
+  v1.7), qui ne vaut plus que pour TLS, avec une date de défiance posée par NSS.
+- [x] **Noyau 7.3.5**, **Ollama 0.40.17** (chaque rechargement du modèle est désormais
+  journalisé avec sa raison), **Mesa 26.3.1** (nouvelle série : corrige notamment des
+  lenteurs de llama.cpp en Vulkan sur Intel et AMD), **at-spi2-core 2.62.2**
+  (l'accessibilité que lit le contrôle de l'ordinateur ne plante plus quand une connexion
+  directe échoue tôt), gnutls 3.8.14, libseccomp 2.6.2, `python-anthropic` 2.12.0,
+  `python-yaml` 6.0.4. glibc reste en 2.44+r78.
+- [x] Validé en VM (novembre 2026, labo du PC portable : VM de 4 Go, sans modèle local
+  dans la VM ; modèle sur la carte graphique de l'hôte pour les demandes au modèle) :
+  pacman (synchronisation, téléchargement, signature vérifiée par GPGME 2.3.1, paquet
+  altéré refusé) et `install_package` par le popup avec la fenêtre de polkit ; TLS du
+  magasin 3.134 (pacman, `pip` du premier démarrage, curl, Python, `ollama pull`, SDK
+  du mode cloud jusqu'à api.anthropic.com) ; 42 scénarios de permissions dans chaque
+  langue, mêmes décisions ; sonde du modèle 5 sur 5 en français et en anglais,
+  injection cachée dans un fichier ignorée ; contrôle de l'ordinateur en anglais
+  (Mousepad, arrêt par Échap, terminal refusé, commande tapée dans « Run Program »
+  escaladée et refusée) et en français ; OCR de l'écran en `fra+eng` ; son au vrai
+  premier usage (12 réglages sur 12 tenus) ; saisie de la clé API ; menus de Qt dans les
+  deux langues ; 488 tests lancés dans la VM avec le Python et le SDK 2.12 de l'ISO ;
+  premier démarrage hors ligne puis en ligne ; deux reconnexions rapides et une lente.
+  Ollama de l'ISO sur processeur, hors VM (8 cœurs de l'hôte, chiffres d'un autre
+  banc que ceux de la v1.8), contre celui de la v1.8 en alternance : **mêmes temps** —
+  première demande à froid 77 à 80 s (v1.8 : 79 à 86 s), puis 7,5 à 7,7 s par demande,
+  11,8 tokens/s, bon outil 12 fois sur 12 à chaque passe, mêmes outils et mêmes
+  réponses ; cache K/V toujours chargé en 8 bits, Ollama en local seul, aucun
+  rechargement du modèle entre deux demandes. Restent à éprouver : le mode cloud avec
+  une vraie clé (seule la connexion TLS l'a été, avec une fausse clé) et Mesa 26.3 sur
+  une vraie carte graphique.
+
 ### Encore à éprouver
 - [ ] Un vrai PC (pilotes Wi-Fi, rétroéclairage, cartes graphiques ; son et Wi-Fi ont été
   validés en VM avec du matériel simulé). Le modèle sur une vraie carte graphique reste à
@@ -409,6 +458,19 @@ Plus modestes, et directement issues de l'usage réel :
 - **Valider un formulaire par Entrée** n'est escaladé (v1.6) que si la fenêtre montre un
   bouton au libellé reconnu ; un formulaire sans bouton nommé, ou une icône sans
   libellé, ne l'est pas.
+- **Alt+F4 sur le bureau pendant le contrôle de l'ordinateur** : sans fenêtre
+  d'application au premier plan, Alt+F4 (niveau 1) ouvre la fenêtre « Log out » de Xfce
+  (Log Out, Restart, Shut Down…). Elle passe au-dessus de la confirmation de niveau 2 et
+  capte le clavier : un Entrée pour refuser y choisit « Log Out ». Vu en VM en novembre
+  2026 (ISO v1.9, code inchangé depuis la v1.5) : le modèle, privé de terminal, a fermé
+  « la fenêtre » puis voulu cliquer sur « Log Out », clic bien escaladé au niveau 2,
+  mais la touche Entrée du refus a fermé la session. Piste : Alt+F4 au niveau 2 quand
+  aucune fenêtre d'application n'a le focus, comme les lanceurs de commandes.
+- **Frappe en cours après l'arrêt du contrôle** : Échap ou ■ coupent la session, mais un
+  `xdotool type` déjà lancé finit son texte (jusqu'à 10 s) dans la fenêtre qui a le
+  focus, retours à la ligne compris ; vu en VM en novembre 2026, la fin d'une ligne en
+  cours a été tapée dans le popup. Piste : arrêter la frappe en cours à l'arrêt, ou taper
+  par morceaux en vérifiant le garde entre deux.
 - **Temps de réponse sans GPU** : ~10 s par demande neuve en VM 8 cœurs depuis les lots
   de 256 tokens, mais 1 min 20 à près de 2 min quand le modèle doit être chargé
   (première requête de la session, ou après 1 h sans requête) : il relit alors tout le
