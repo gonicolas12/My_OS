@@ -23,7 +23,7 @@ My_OS est la suite logique de [My_AI](https://github.com/gonicolas12/My_AI) : on
 d'une *application* qui parle au PC à un *système* dans lequel l'IA est résidente et
 profondément intégrée.
 
-> **État du projet : v1.8 publiée ([télécharger](https://github.com/gonicolas12/My_OS/releases/tag/v1.8)), validée en VM ; nouveautés : une mise à jour de sécurité de l'ISO (serveur X, Python, OpenSSL et noyau Linux à jour), un premier démarrage qui se passe du réseau (dépendances et modèle récupérés dès son retour, avec un avis du bureau) et un mode cloud moins cher (cache de prompt, captures gardées pendant le contrôle de l'ordinateur). Elle garde tout de la v1.7 : le mode cloud avec Claude Sonnet 5.5, les menus standard de Qt dans la langue de My_OS, le français et l'anglais (bouton 🌐), et le contrôle de l'ordinateur — le modèle local voit l'écran et agit à la souris et au clavier, avec des bords lumineux et une barre d'arrêt (session X11).** Les cinq jalons (socle →
+> **État du projet : v1.9 publiée ([télécharger](https://github.com/gonicolas12/My_OS/releases/tag/v1.9)), validée en VM ; nouveauté : une mise à jour de sécurité de l'ISO (GPGME de pacman, bibliothèques de polices du serveur X, fontconfig, magasin de certificats et noyau Linux à jour). Elle garde tout de la v1.8 : un premier démarrage qui se passe du réseau, un mode cloud moins cher (cache de prompt) avec Claude Sonnet 5.5, les menus standard de Qt dans la langue de My_OS, le français et l'anglais (bouton 🌐), et le contrôle de l'ordinateur — le modèle local voit l'écran et agit à la souris et au clavier, avec des bords lumineux et une barre d'arrêt (session X11).** Les cinq jalons (socle →
 > fichiers/permissions → pilotage système → routeur cloud → packaging) sont terminés, et
 > l'ISO a été testée de bout en bout en VM (BIOS et UEFI) en octobre 2026 : permissions,
 > confirmations, élévation polkit, réglages, modèle local, contrôle de l'ordinateur, les
@@ -197,7 +197,7 @@ Deux voies. Détails complets dans **[docs/INSTALLATION.md](docs/INSTALLATION.md
 ### a) Via l'ISO live (le plus simple)
 
 Une ISO bootable (base Arch + Xfce/X11) embarque My_OS prêt à l'emploi :
-**[télécharger l'ISO de la v1.8](https://github.com/gonicolas12/My_OS/releases/tag/v1.8)**
+**[télécharger l'ISO de la v1.9](https://github.com/gonicolas12/My_OS/releases/tag/v1.9)**
 (avec son fichier `.sha256`). Pour la construire vous-même, le profil
 [archiso](https://wiki.archlinux.org/title/Archiso) et le script de build sont dans
 [`packaging/`](packaging/) (`./packaging/build_iso.sh` sur un hôte Arch, sans root depuis
@@ -410,6 +410,12 @@ par le point de passage unique `permissions/policy_engine.py`.
   cache de prompt (0,16 centime par demande en rafale au lieu de 1), et contrôle de
   l'ordinateur qui garde ses captures et sa réflexion pendant une demande ; validée en
   VM dans les deux langues.
+- [x] **v1.9 publiée** : [release GitHub](https://github.com/gonicolas12/My_OS/releases/tag/v1.9),
+  mise à jour de sécurité de l'ISO sur un instantané Arch plus récent : GPGME (pacman
+  vérifie avec lui la signature des paquets, en root), bibliothèques de polices du
+  serveur X (tout programme de la session pouvait faire planter le serveur X),
+  fontconfig, magasin de certificats (NSS 3.134), Linux 7.3.5, Ollama 0.40.17 ; validée
+  en VM dans les deux langues.
 
 **Encore à éprouver :** matériel réel (pilotes Wi-Fi, rétroéclairage, cartes graphiques)
 — retours bienvenus dans les [issues](https://github.com/gonicolas12/My_OS/issues).

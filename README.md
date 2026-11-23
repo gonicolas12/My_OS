@@ -22,7 +22,7 @@ My_OS is the follow-up to [My_AI](https://github.com/gonicolas12/My_AI): from an
 *application* that talks to the PC to a *system* in which the AI is resident and deeply
 integrated.
 
-> **Project status: v1.8 released ([download](https://github.com/gonicolas12/My_OS/releases/tag/v1.8)), validated in a VM. New: a security update of the ISO (X server, Python, OpenSSL and Linux kernel up to date), a first boot that copes without network (dependencies and model fetched once it is back, with a desktop notice), and a cheaper cloud mode (prompt caching, screenshots kept during computer control). It keeps everything from v1.7: cloud mode with Claude Sonnet 5.5, Qt's standard menus in My_OS's language, English and French (🌐 button), and computer control — the local model sees the screen and acts with the mouse and keyboard, with glowing edges and a stop bar (X11 session).** The five milestones (foundation →
+> **Project status: v1.9 released ([download](https://github.com/gonicolas12/My_OS/releases/tag/v1.9)), validated in a VM. New: a security update of the ISO (pacman's GPGME, the X server's font libraries, fontconfig, the certificate store and the Linux kernel up to date). It keeps everything from v1.8: a first boot that copes without network, a cheaper cloud mode (prompt caching) with Claude Sonnet 5.5, Qt's standard menus in My_OS's language, English and French (🌐 button), and computer control — the local model sees the screen and acts with the mouse and keyboard, with glowing edges and a stop bar (X11 session).** The five milestones (foundation →
 > files/permissions → system control → cloud router → packaging) are complete, and the
 > ISO was tested end to end in a VM (BIOS and UEFI) in October 2026: permissions,
 > confirmations, polkit elevation, settings, local model, computer control, both
@@ -197,7 +197,7 @@ Two ways. Full details in **[docs/INSTALLATION.md](docs/INSTALLATION.md)** (in F
 ### a) With the live ISO (easiest)
 
 A bootable ISO (Arch base + Xfce/X11) ships My_OS ready to use:
-**[download the v1.8 ISO](https://github.com/gonicolas12/My_OS/releases/tag/v1.8)**
+**[download the v1.9 ISO](https://github.com/gonicolas12/My_OS/releases/tag/v1.9)**
 (with its `.sha256` file). To build it yourself, the
 [archiso](https://wiki.archlinux.org/title/Archiso) profile and the build script are in
 [`packaging/`](packaging/) (`./packaging/build_iso.sh` on an Arch host, no root needed
@@ -406,6 +406,11 @@ goes through the single choke point `permissions/policy_engine.py`.
   message); cloud mode cheaper with prompt caching (0.16 cent per request in a burst
   instead of 1), and computer control keeping its screenshots and its reasoning during
   a request; validated in a VM in both languages.
+- [x] **v1.9 released**: [GitHub release](https://github.com/gonicolas12/My_OS/releases/tag/v1.9),
+  security update of the ISO on a newer Arch snapshot: GPGME (pacman checks package
+  signatures with it, as root), the X server's font libraries (any program of the
+  session could crash the X server), fontconfig, the certificate store (NSS 3.134),
+  Linux 7.3.5, Ollama 0.40.17; validated in a VM in both languages.
 
 **Still to prove:** real hardware (Wi-Fi drivers, backlight, graphics cards) — feedback
 welcome in the [issues](https://github.com/gonicolas12/My_OS/issues).

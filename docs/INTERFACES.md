@@ -461,10 +461,12 @@ et plus ne les propose d'ailleurs plus). Règles d'une boucle d'outils :
   moyenne par appel 1,5 s sans cache, 1,8 s avec, sur ce seul passage (au banc, le
   premier événement ne bouge pas).
 - **SDK.** Testé avec le SDK `anthropic` 1.15 (installations depuis les sources), 2.6
-  (ISO v1.7), 2.7 et 2.8 (ISO v1.8, paquet `python-anthropic`), contre un faux serveur
-  local (`tests/test_models/test_cloud_sdk.py`) ; `cache_control` au niveau de la
-  requête existe dans toutes ces versions. Le SDK 2.x envoie la version d'API
-  `2026-10-21` ; My_OS n'utilise rien de ce qu'elle retire.
+  (ISO v1.7), 2.7 et 2.8 (ISO v1.8), 2.12 (ISO v1.9 ; paquet `python-anthropic` depuis
+  la v1.7), contre un faux serveur local (`tests/test_models/test_cloud_sdk.py`) ;
+  `cache_control` au niveau de la requête existe dans toutes ces versions. Le SDK 2.x
+  envoie la version d'API `2026-10-21` ; My_OS n'utilise rien de ce qu'elle retire, et
+  l'en-tête `thinking-binding-controls-2026-08-01` reste parmi les valeurs bêta
+  reconnues du SDK 2.12.
 
 ### 5.3 · Routage **par requête** (côté orchestrator)
 

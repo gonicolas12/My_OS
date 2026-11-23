@@ -270,7 +270,7 @@ octobre 2026.
   ```bash
   sudo pacman -S archiso
   ./packaging/build_iso.sh                # ISO dans packaging/out/
-  ./packaging/build_iso.sh -s 2026/11/16  # instantané de paquets explicite
+  ./packaging/build_iso.sh -s 2026/11/23  # instantané de paquets explicite
   ```
   Sans root depuis archiso 91 (l'utilisateur doit avoir ses plages dans `/etc/subuid`
   et `/etc/subgid`, ce que `useradd` fait d'office) ; avec un archiso plus ancien,

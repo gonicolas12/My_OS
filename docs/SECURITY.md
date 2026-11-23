@@ -512,3 +512,32 @@ Arch du 2026-11-16, processeur seul, modèle local réel (qwen3.5:4b) :
   tous les chemins essayés (Ctrl+Alt+T, ouverture d'un terminal sous trois noms),
   commande tapée dans « Run Program » escaladée au niveau 2 et refusée, rien
   d'exécuté.
+
+**Mise à jour de sécurité de l'ISO (novembre 2026, v1.9).** Sur l'ISO de l'instantané
+Arch du 2026-11-23, dans une VM de 4 Go (modèle sur la carte graphique de l'hôte pour
+les demandes au modèle) :
+
+- **GPGME** 2.3.1 (CVE-2026-129975) : chargé par pacman (libalpm) ; synchronisation des
+  bases, téléchargement et installation d'un paquet signé ; un paquet altéré présenté
+  avec sa signature d'origine est refusé (« invalid or corrupted package (PGP
+  signature) »). `install_package` par le popup : confirmation, fenêtre de polkit, paquet
+  installé après vérification de sa signature.
+- **Polices du serveur X** : libXfont2 2.0.10 et libfontenc 1.1.10. Sur l'ISO, Xorg
+  tourne en root : la faille de libfontenc (CVE-2026-109908) y permettait donc une
+  élévation de privilèges à un utilisateur local capable de poser une police et un
+  fichier d'encodage sur un chemin de polices lu par le serveur.
+- **TLS** avec le magasin 3.134 (115 → 110 racines pour TLS) : pacman, `pip` du premier
+  démarrage, curl, `openssl s_client`, Python, `ollama pull`, et le SDK du mode cloud
+  jusqu'à api.anthropic.com (connexion établie, fausse clé refusée en 401 ; pas de vraie
+  clé cette fois).
+- **Matrice des 42 scénarios** en français puis en anglais : 42/42, mêmes décisions (16
+  approuvées, 5 automatiques, 9 bloquées, 12 refusées). **Sonde du modèle** : 5 sur 5
+  dans chaque langue, injection cachée dans un fichier ignorée. **Contrôle de
+  l'ordinateur** : terminal refusé, commande tapée dans « Run Program » escaladée au
+  niveau 2 et refusée, rien d'exécuté.
+- **Deux faiblesses du contrôle de l'ordinateur** relevées pendant cette validation (code
+  inchangé depuis la v1.5, cf. [ROADMAP.md](ROADMAP.md), « Améliorations identifiées ») :
+  Alt+F4 sur le bureau (niveau 1) ouvre la fenêtre « Log out » de Xfce, qui passe
+  au-dessus de la confirmation de niveau 2 et capte le clavier (un Entrée pour refuser
+  y choisit « Log Out ») ; et une frappe déjà lancée finit son texte après l'arrêt par
+  Échap ou ■. Le clic du modèle sur « Log Out » était bien escaladé et refusé.
