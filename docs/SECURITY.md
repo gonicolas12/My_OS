@@ -180,12 +180,13 @@ n'importe quelle action devient un clic.
   revient alors au premier plan) qu'ensuite. Jusqu'à la v1.9, ce morceau finissait sa
   course, jusqu'à 16 touches et 0,4 s après l'arrêt (0,65 s pour Entrée répétée), et
   le popup revenu en recevait la fin dans son champ, Entrée comprise (vu en VM).
-  Mesuré en VM après le correctif (8 arrêts en pleine frappe, Échap et ■, français et
-  anglais) : 0 à 2 touches après l'arrêt, la dernière au plus 29 ms après, plus aucune
-  Entrée répétée, rien dans le champ du popup. Seules les touches enfoncées pendant
-  l'injection sont relâchées : un relâchement XTEST vaut pour tout le clavier, une
-  touche que l'utilisateur tenait déjà reste enfoncée (vérifié en VM). Les appels
-  restants reçoivent « Arrêté par l'utilisateur » et le modèle n'est plus rappelé.
+  Mesuré en VM après le correctif (12 arrêts en pleine frappe, dont 4 sur l'ISO v1.10,
+  Échap et ■, français et anglais) : 0 à 3 touches après l'arrêt (une au plus avec
+  Échap ; le clic sur ■ passe d'abord par le popup), la dernière au plus 0,13 s après,
+  plus aucune Entrée répétée, rien dans le champ du popup. Seules les touches
+  enfoncées pendant l'injection sont relâchées : un relâchement XTEST vaut pour tout le
+  clavier, une touche que l'utilisateur tenait déjà reste enfoncée (vérifié en VM). Les
+  appels restants reçoivent « Arrêté par l'utilisateur » et le modèle n'est plus rappelé.
 - **Cible réelle, jamais celle du modèle.** `normalize_args` résout ce que l'action vise
   (fenêtre sous le point, application, élément, champ focalisé) depuis l'état de
   l'écran ; une cible fournie par le modèle est ignorée.

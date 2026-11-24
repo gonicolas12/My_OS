@@ -390,7 +390,8 @@ brute. La note qui suit (« nécessite un modèle cloud ») était donc juste po
   l'en-tête bêta `thinking-binding-controls-2026-08-01` toujours accepté.
 
 ### v1.10 — contrôle de l'ordinateur plus sûr (novembre 2026)
-- [ ] ISO à publier : elle remplacera celle de la v1.9. **Mêmes paquets que la v1.9**
+- [x] ISO publiée : [release `v1.10`](https://github.com/gonicolas12/My_OS/releases/tag/v1.10),
+  avec sa somme SHA-256 ; elle remplace celle de la v1.9. **Mêmes paquets que la v1.9**
   (instantané Arch Linux Archive du 2026-11-23) : seul le code de My_OS change.
 - [x] **L'arrêt coupe la frappe en cours** : Échap ou ■ tuent l'injection déjà lancée
   (frappe, touches répétées, défilement), relâchent ce qu'elle a enfoncé, et le popup ne
@@ -404,7 +405,17 @@ brute. La note qui suit (« nécessite un modèle cloud ») était donc juste po
   confirmation quand un autre programme tient le clavier (menu ouvert, « Log out »)
   (cf. « Alt+F4 sur le bureau pendant le contrôle de l'ordinateur » plus bas).
 - [x] **Mode cloud éprouvé avec une vraie clé**, sur l'ISO v1.9 (cf. section v1.9).
-- [ ] Validation de l'ISO construite depuis `main`, en VM.
+- [x] Validé en VM sur l'ISO de la release (4 Go, code de l'ISO elle-même, novembre
+  2026) : son au vrai premier usage (12 réglages sur 12 tenus), popup ouvert en
+  960×680, mêmes paquets que la v1.9, pacman avec GPGME 2.3.1 (paquet altéré refusé),
+  TLS, prise du clavier détectée avec la fenêtre « Log out » et avec le menu, Alt+F4
+  sur le bureau bloqué en français et en anglais, menu ouvert (frappe et terminal
+  bloqués, Échap permis), frappe coupée à l'arrêt (0 à 3 touches, 0,13 s au plus), une
+  touche tenue au clavier gardée, 42 scénarios de permissions sur 42 en français puis
+  en anglais, refus de polkit dans les deux langues ; avec le vrai modèle (carte
+  graphique de l'hôte) : Mousepad, Échap en pleine frappe (champ du popup vide),
+  terminal refusé y compris par Ctrl+Alt+T, commande tapée dans « Run Program »
+  escaladée et refusée.
 
 ### Encore à éprouver
 - [ ] Un vrai PC (pilotes Wi-Fi, rétroéclairage, cartes graphiques ; son et Wi-Fi ont été
@@ -536,10 +547,11 @@ Plus modestes, et directement issues de l'usage réel :
   ne »). Mousepad lui-même ne prenait que 2 à 5 caractères de retard : le défaut ne venait pas
   de l'application. Désormais l'arrêt tue l'injection en cours (`run_command(...,
   cancel=…)`), relâche ce qu'elle a enfoncé (pas ce que l'utilisateur tenait déjà), et
-  le popup n'est prévenu qu'après. Mêmes essais en VM sur le code corrigé (8 arrêts) :
-  0 à 2 touches après l'arrêt, la dernière au plus 29 ms après, plus aucune Entrée
-  répétée, champ du popup vide, et « Contrôle arrêté par l'utilisateur » au lieu de
-  « L'écran a changé » dans la carte de l'outil.
+  le popup n'est prévenu qu'après. Mêmes essais en VM sur le code corrigé (12 arrêts,
+  dont 4 sur l'ISO v1.10) : 0 à 3 touches après l'arrêt (une au plus avec Échap), la
+  dernière au plus 0,13 s après, plus aucune Entrée répétée, champ du popup vide, et
+  « Contrôle arrêté par l'utilisateur » au lieu de « L'écran a changé » dans la carte
+  de l'outil.
 - **Temps de réponse sans GPU** : ~10 s par demande neuve en VM 8 cœurs depuis les lots
   de 256 tokens, mais 1 min 20 à près de 2 min quand le modèle doit être chargé
   (première requête de la session, ou après 1 h sans requête) : il relit alors tout le
