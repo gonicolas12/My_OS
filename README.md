@@ -491,7 +491,7 @@ My_OS/
 │   ├── build_iso.sh
 │   ├── README.md
 │   └── archiso/              # profiledef, packages, airootfs
-├── tests/                    # ~860 tests (permissions first)
+├── tests/                    # ~1,060 tests (permissions first)
 ├── config.yaml
 ├── myosd.service             # systemd user service
 ├── requirements.txt
