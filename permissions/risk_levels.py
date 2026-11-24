@@ -250,10 +250,26 @@ DESTRUCTIVE_LABELS: tuple[str, ...] = (
 FORBIDDEN_COMBOS: frozenset[str] = frozenset(
     {
         "ctrl+alt+BackSpace",
-        "ctrl+alt+Delete",
+        "ctrl+alt+Delete",  # Xfce : fenêtre de fin de session (xfce4-session-logout)
         *(f"ctrl+alt+F{n}" for n in range(1, 13)),
+        # Xfce : xkill, le clic suivant tue l'application visée, sans confirmation.
+        "ctrl+alt+Escape",
+        # KDE : fermer la session, éteindre, redémarrer, sans confirmation.
+        "ctrl+alt+shift+Delete",
+        "ctrl+alt+shift+Next",
+        "ctrl+alt+shift+Prior",
     }
 )
+# Sans fenêtre d'application au premier plan (bureau, tableau de bord : la cible est
+# « bureau »), Alt+F4 ouvre la fenêtre « Log out » d'Xfce (Log Out, Restart, Shut
+# Down…). Vu en VM (Xfce 4.20) : cette fenêtre est hors du gestionnaire de fenêtres,
+# passe au-dessus de tout, confirmations de My_OS comprises, et garde le clavier ;
+# Entrée y choisit « Log Out ». Jamais injectée sur le bureau (niveau 3) ; dans une
+# fenêtre d'application, Alt+F4 la ferme (niveau 1).
+DESKTOP_SESSION_COMBOS: frozenset[str] = frozenset({"alt+F4"})
+# Verrouillage de l'écran (Xfce : Ctrl+Alt+L ; GNOME, KDE : Super+L) : l'IA n'y voit
+# plus rien et l'utilisateur doit retaper son mot de passe. Niveau 2.
+LOCK_COMBOS: frozenset[str] = frozenset({"ctrl+alt+l", "super+l"})
 FORBIDDEN_KEYS: frozenset[str] = frozenset(
     {"Sys_Req", "XF86PowerOff", "XF86Sleep", "XF86Suspend", "XF86LogOff"}
 )

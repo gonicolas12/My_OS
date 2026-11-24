@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import pytest
 
+from permissions.blocklist import is_blocked
 from permissions.confirmation import CONTROL_TOOL, build_control_confirmation
 from permissions.policy_engine import evaluate, grantable_scopes
 from permissions.risk_levels import (
@@ -202,6 +203,129 @@ def test_combinaisons_systeme_bloquees(combo: str) -> None:
 def test_combinaisons_courantes_autorisees(combo: str) -> None:
     decision, _ = _decide("press_keys", {"keys": combo}, _app_backend())
     assert decision.action == "auto"
+
+
+# ---- session : bureau, verrouillage, clavier tenu (suite de la v1.9) -------------
+
+
+def _desktop_backend() -> FakeBackend:
+    """Aucune fenêtre d'application au premier plan : le bureau (ou le tableau de
+    bord) a le focus, la cible des touches est « bureau »."""
+    return FakeBackend(
+        [make_window(active=False)], [make_element("button", "OK", BUTTON)]
+    )
+
+
+@pytest.mark.parametrize("combo", ["alt+F4", "Alt+F4", "ALT+f4", "Alt + F4"])
+def test_alt_f4_sur_le_bureau_bloque(combo: str) -> None:
+    # Vu en VM (v1.9) : la fenêtre « Log out » d'Xfce passait au-dessus de la
+    # confirmation de My_OS et l'Entrée du refus y choisissait « Log Out ».
+    decision, args = _decide("press_keys", {"keys": combo}, _desktop_backend())
+    assert (decision.action, decision.risk_level) == ("blocked", 3)
+    assert args["target"]["window_id"] == 0
+    assert "fermeture de session" in decision.summary
+
+
+def test_alt_f4_dans_une_fenetre_la_ferme_au_niveau_1() -> None:
+    decision, _ = _decide("press_keys", {"keys": "alt+F4"}, _app_backend())
+    assert (decision.action, decision.risk_level) == ("auto", 1)
+    assert "fermeture de session" not in decision.summary
+
+
+def test_alt_f4_sans_cible_connue_bloque() -> None:
+    # Défense en profondeur : sans cible résolue, la combinaison n'est jamais permise.
+    assert is_blocked("press_keys", {"keys": "alt+F4"})
+
+
+@pytest.mark.parametrize(
+    "combo",
+    [
+        "ctrl+alt+Escape",  # xkill (Xfce) : le clic suivant tue l'application visée
+        "Ctrl+Alt+Échap",
+        "ctrl+alt+shift+Delete",  # KDE : fermer la session sans confirmation
+        "Ctrl+Alt+Maj+Suppr",
+        "ctrl+alt+shift+PageDown",  # KDE : éteindre sans confirmation
+        "ctrl+alt+shift+Page Up",  # KDE : redémarrer sans confirmation
+    ],
+)
+def test_raccourcis_de_session_bloques_partout(combo: str) -> None:
+    for backend in (_app_backend(), _desktop_backend()):
+        decision, _ = _decide("press_keys", {"keys": combo}, backend)
+        assert decision.action == "blocked", combo
+
+
+@pytest.mark.parametrize("combo", ["ctrl+alt+l", "Ctrl+Alt+L", "super+l", "Win+L"])
+def test_verrouillage_de_l_ecran_en_niveau_2(combo: str) -> None:
+    decision, _ = _decide("press_keys", {"keys": combo}, _app_backend())
+    assert (decision.action, decision.risk_level) == ("confirm", 2)
+
+
+@pytest.mark.parametrize(
+    ("tool", "args"),
+    [
+        ("type_text", {"text": "bonjour"}),
+        ("press_keys", {"keys": "Entrée"}),
+        ("press_keys", {"keys": "Down"}),
+        ("press_keys", {"keys": "ctrl+s"}),
+    ],
+)
+def test_clavier_tenu_par_un_autre_programme_rien_n_est_tape(
+    tool: str, args: dict
+) -> None:
+    # Menu ouvert ou fenêtre « Log out » : les touches iraient à eux, pas à Mousepad.
+    backend = _app_backend()
+    backend.grabbed = True
+    decision, normalized = _decide(tool, args, backend)
+    assert decision.action == "blocked"
+    assert normalized["target"]["keyboard_grabbed"] is True
+    assert "tient le clavier" in decision.summary
+
+
+def test_clavier_tenu_echap_le_ferme() -> None:
+    backend = _app_backend()
+    backend.grabbed = True
+    decision, _ = _decide("press_keys", {"keys": "Échap"}, backend)
+    assert (decision.action, decision.risk_level) == ("auto", 1)
+
+
+def test_clavier_tenu_un_clic_ordinaire_reste_permis() -> None:
+    # Cliquer dans un menu ouvert (niveau 1) : rien à confirmer, rien de caché.
+    backend = _app_backend("Ouvrir")
+    backend.grabbed = True
+    decision, _ = _decide("click", {"element": 1}, backend)
+    assert (decision.action, decision.risk_level) == ("auto", 1)
+
+
+@pytest.mark.parametrize("label", ["Log Out", "Supprimer"])
+def test_clavier_tenu_jamais_de_confirmation_cachee(label: str) -> None:
+    # Une action de niveau 2 demanderait une confirmation : elle s'afficherait sous la
+    # fenêtre qui tient le clavier, qui en recevrait l'Entrée. Bloquée.
+    backend = _app_backend(label)
+    backend.grabbed = True
+    decision, _ = _decide("click", {"element": 1}, backend)
+    assert (decision.action, decision.risk_level) == ("blocked", 3)
+    assert "tient le clavier" in decision.summary
+
+
+def test_clavier_tenu_ouvrir_un_terminal_bloque() -> None:
+    terminal = AppEntry(
+        app_id="xfce4-terminal",
+        name="Terminal",
+        path="/usr/share/applications/xfce4-terminal.desktop",
+        executable="xfce4-terminal",
+        command="xfce4-terminal",
+    )
+    backend = FakeBackend([make_window()], apps={"terminal": terminal})
+    backend.grabbed = True
+    decision, _ = _decide("open_app", {"name": "terminal"}, backend)
+    assert decision.action == "blocked"
+
+
+def test_clavier_libre_rien_ne_change() -> None:
+    backend = _app_backend("Supprimer")
+    decision, normalized = _decide("click", {"element": 1}, backend)
+    assert (decision.action, decision.risk_level) == ("confirm", 2)
+    assert normalized["target"]["keyboard_grabbed"] is False
 
 
 def test_une_cible_fournie_par_le_modele_est_ignoree() -> None:

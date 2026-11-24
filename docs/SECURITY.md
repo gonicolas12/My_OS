@@ -174,9 +174,18 @@ n'importe quelle action devient un clic.
 - **Arrêt garanti.** Échap (écoute globale, sans capture ; les Échap injectés par le
   modèle sont décomptés un à un), le bouton ■, ou un popup déconnecté arrêtent la
   session ; dès lors un **garde**, vérifié avant chaque événement injecté et chaque
-  capture, refuse tout. La frappe part par morceaux de 16 caractères : un arrêt la coupe
-  en 0,2 s au plus. Les appels restants reçoivent « Arrêté par l'utilisateur » et le
-  modèle n'est plus rappelé.
+  capture, refuse tout. L'injection **déjà lancée** (un morceau de frappe de 16
+  caractères, des touches répétées, un défilement) est coupée : son `xdotool` est tué,
+  les touches et boutons qu'il tenait sont relâchés, et le popup n'apprend l'arrêt (il
+  revient alors au premier plan) qu'ensuite. Jusqu'à la v1.9, ce morceau finissait sa
+  course, jusqu'à 16 touches et 0,4 s après l'arrêt (0,65 s pour Entrée répétée), et
+  le popup revenu en recevait la fin dans son champ, Entrée comprise (vu en VM).
+  Mesuré en VM après le correctif (8 arrêts en pleine frappe, Échap et ■, français et
+  anglais) : 0 à 2 touches après l'arrêt, la dernière au plus 29 ms après, plus aucune
+  Entrée répétée, rien dans le champ du popup. Seules les touches enfoncées pendant
+  l'injection sont relâchées : un relâchement XTEST vaut pour tout le clavier, une
+  touche que l'utilisateur tenait déjà reste enfoncée (vérifié en VM). Les appels
+  restants reçoivent « Arrêté par l'utilisateur » et le modèle n'est plus rappelé.
 - **Cible réelle, jamais celle du modèle.** `normalize_args` résout ce que l'action vise
   (fenêtre sous le point, application, élément, champ focalisé) depuis l'état de
   l'écran ; une cible fournie par le modèle est ignorée.
@@ -184,16 +193,30 @@ n'importe quelle action devient un clic.
   jamais ses propres actions), bouton ■, écran verrouillé (rien n'y est même lu), agents
   polkit, trousseau, gestionnaires de mots de passe, partitionnement ; frappe dans un
   champ de mot de passe (sa valeur n'est jamais lue) ; Ctrl+Alt+Retour arrière,
-  Ctrl+Alt+Suppr, Ctrl+Alt+Fn, SysRq. Une autre écriture d'une combinaison ne contourne
-  pas la règle (forme canonique).
+  Ctrl+Alt+Suppr, Ctrl+Alt+Fn, SysRq, Ctrl+Alt+Échap (`xkill` d'Xfce : le clic suivant
+  tue l'application visée), les raccourcis de KDE qui ferment la session, éteignent ou
+  redémarrent sans confirmation (Ctrl+Alt+Maj+Suppr, Page suivante, Page précédente) ;
+  **Alt+F4 sans fenêtre d'application au premier plan** (bureau, tableau de bord) : il
+  ouvre la fenêtre « Log out » d'Xfce, hors du gestionnaire de fenêtres, qui passe
+  au-dessus de tout et garde le clavier (vu en VM en v1.9 : l'Entrée d'un refus y a
+  choisi « Log Out » et fermé la session) ; dans une fenêtre d'application, Alt+F4 la
+  ferme, au niveau 1. Une autre écriture d'une combinaison ne contourne pas la règle
+  (forme canonique).
+- **Clavier tenu par un autre programme.** Un menu ouvert ou la fenêtre « Log out »
+  d'Xfce prend tout le clavier et passe au-dessus de toute fenêtre, confirmations de
+  My_OS comprises : aucune pile de fenêtres ne peut l'éviter. La cible de chaque action
+  dit donc si le clavier est tenu (essai de prise du clavier, relâchée aussitôt). Dans
+  ce cas, rien n'est tapé (seul Échap passe, pour fermer le menu), et une action qui
+  demanderait une confirmation est bloquée : My_OS ne pose jamais une question qui
+  serait cachée et dont l'Entrée irait ailleurs.
 - **Escalade (niveau 2, redemandée à chaque fois).** Terminaux et lanceurs de commandes
   comme « Exécuter un programme » (y taper, c'est exécuter : le texte exact est montré),
   paramètres du système, libellés destructeurs ou sortants (Supprimer, Vider la
   corbeille, Envoyer, Submit, Payer, Éteindre…), Maj+Suppr, Entrée ou Espace sur un tel
   bouton focalisé, Entrée dans un champ d'une ligne quand la fenêtre montre un tel bouton
   (elle enverrait le formulaire, comme son clic ; v1.6), ouverture d'un terminal ou d'un
-  lanceur, y compris par leurs raccourcis (Ctrl+Alt+T, Alt+F2, Alt+F3) : un accès refusé
-  ne s'obtient pas par un autre chemin.
+  lanceur, y compris par leurs raccourcis (Ctrl+Alt+T, Alt+F2, Alt+F3), verrouillage de
+  l'écran (Ctrl+Alt+L, Super+L) : un accès refusé ne s'obtient pas par un autre chemin.
 - **Revérification juste avant d'agir.** La fenêtre visée (et, pour un élément de
   l'arbre d'accessibilité, l'élément lui-même) doit être encore là ; sinon l'action est
   annulée et le modèle doit observer à nouveau.
@@ -540,4 +563,6 @@ les demandes au modèle) :
   Alt+F4 sur le bureau (niveau 1) ouvre la fenêtre « Log out » de Xfce, qui passe
   au-dessus de la confirmation de niveau 2 et capte le clavier (un Entrée pour refuser
   y choisit « Log Out ») ; et une frappe déjà lancée finit son texte après l'arrêt par
-  Échap ou ■. Le clic du modèle sur « Log Out » était bien escaladé et refusé.
+  Échap ou ■. Le clic du modèle sur « Log Out » était bien escaladé et refusé. Corrigées
+  depuis (cf. menace 5 : Alt+F4 sans fenêtre d'application bloqué, aucune confirmation
+  quand un autre programme tient le clavier, injection en cours coupée à l'arrêt).

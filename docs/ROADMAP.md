@@ -472,19 +472,42 @@ Plus modestes, et directement issues de l'usage réel :
 - **Valider un formulaire par Entrée** n'est escaladé (v1.6) que si la fenêtre montre un
   bouton au libellé reconnu ; un formulaire sans bouton nommé, ou une icône sans
   libellé, ne l'est pas.
-- **Alt+F4 sur le bureau pendant le contrôle de l'ordinateur** : sans fenêtre
-  d'application au premier plan, Alt+F4 (niveau 1) ouvre la fenêtre « Log out » de Xfce
-  (Log Out, Restart, Shut Down…). Elle passe au-dessus de la confirmation de niveau 2 et
-  capte le clavier : un Entrée pour refuser y choisit « Log Out ». Vu en VM en novembre
-  2026 (ISO v1.9, code inchangé depuis la v1.5) : le modèle, privé de terminal, a fermé
-  « la fenêtre » puis voulu cliquer sur « Log Out », clic bien escaladé au niveau 2,
-  mais la touche Entrée du refus a fermé la session. Piste : Alt+F4 au niveau 2 quand
-  aucune fenêtre d'application n'a le focus, comme les lanceurs de commandes.
-- **Frappe en cours après l'arrêt du contrôle** : Échap ou ■ coupent la session, mais un
-  `xdotool type` déjà lancé finit son texte (jusqu'à 10 s) dans la fenêtre qui a le
-  focus, retours à la ligne compris ; vu en VM en novembre 2026, la fin d'une ligne en
-  cours a été tapée dans le popup. Piste : arrêter la frappe en cours à l'arrêt, ou taper
-  par morceaux en vérifiant le garde entre deux.
+- ~~**Alt+F4 sur le bureau pendant le contrôle de l'ordinateur**~~ — fait (novembre
+  2026, après la v1.9, à livrer dans la prochaine ISO) : sans fenêtre d'application au
+  premier plan, Alt+F4 (niveau 1) ouvrait la fenêtre « Log out » d'Xfce (Log Out,
+  Restart, Shut Down…), et la touche Entrée d'un refus y a choisi « Log Out » (vu en VM,
+  ISO v1.9, code inchangé depuis la v1.5). Reproduit en français et en anglais : cette
+  fenêtre est hors du gestionnaire de fenêtres (override-redirect), passe au-dessus de
+  toute fenêtre, confirmation de My_OS comprise, et garde le clavier. Aucune pile de
+  fenêtres ne peut donc remettre la confirmation au-dessus. D'où trois règles statiques
+  (`permissions/`) : Alt+F4 sans fenêtre d'application **bloqué** (niveau 3) ;
+  Ctrl+Alt+Échap (`xkill`) et les raccourcis de KDE qui ferment la session sans
+  confirmation bloqués partout, le verrouillage de l'écran (Ctrl+Alt+L, Super+L) au
+  niveau 2 ; et, quand un autre programme tient le clavier (menu ouvert, « Log out »),
+  rien n'est tapé (sauf Échap) et aucune confirmation n'est posée : l'action qui en
+  demanderait une est bloquée. Ctrl+Alt+Suppr et Ctrl+Alt+Retour arrière l'étaient déjà
+  partout depuis la v1.5. Validé en VM sur l'ISO v1.9 avec le code corrigé : Alt+F4 sur
+  le bureau bloqué en français et en anglais, sans fenêtre « Log out », session
+  intacte ; prise du clavier détectée avec la vraie fenêtre « Log out » et avec le menu
+  des applications, libre une fois fermés par Échap ; menu ouvert : frappe et
+  ouverture d'un terminal bloquées, Échap permis ; 42 scénarios de permissions dans
+  chaque langue, mêmes décisions ; avec le vrai modèle (carte graphique de l'hôte) :
+  Mousepad, arrêt par Échap en pleine frappe (champ du popup vide), terminal refusé
+  par trois chemins, commande tapée dans « Run Program » escaladée et refusée.
+- ~~**Frappe en cours après l'arrêt du contrôle**~~ — fait (novembre 2026, après la
+  v1.9, à livrer dans la prochaine ISO) : le garde était bien revérifié entre deux
+  morceaux de 16 caractères, mais le `xdotool` du morceau en cours n'était pas
+  interrompu, et le popup, prévenu aussitôt de l'arrêt, revenait au premier plan :
+  mesuré en VM (ISO v1.9, texte de 2 000 caractères dans Mousepad), jusqu'à 16 touches
+  et 0,4 s après l'arrêt pour du texte, 0,65 s pour Entrée répétée (`press_keys`, 20
+  appuis), dont la fin arrivait dans le champ du popup (« after.Line », « stant, a
+  ne »). Mousepad lui-même ne prenait que 2 à 5 caractères de retard : le défaut ne venait pas
+  de l'application. Désormais l'arrêt tue l'injection en cours (`run_command(...,
+  cancel=…)`), relâche ce qu'elle a enfoncé (pas ce que l'utilisateur tenait déjà), et
+  le popup n'est prévenu qu'après. Mêmes essais en VM sur le code corrigé (8 arrêts) :
+  0 à 2 touches après l'arrêt, la dernière au plus 29 ms après, plus aucune Entrée
+  répétée, champ du popup vide, et « Contrôle arrêté par l'utilisateur » au lieu de
+  « L'écran a changé » dans la carte de l'outil.
 - **Temps de réponse sans GPU** : ~10 s par demande neuve en VM 8 cœurs depuis les lots
   de 256 tokens, mais 1 min 20 à près de 2 min quand le modèle doit être chargé
   (première requête de la session, ou après 1 h sans requête) : il relit alors tout le

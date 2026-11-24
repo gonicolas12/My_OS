@@ -30,6 +30,7 @@ from collections.abc import Callable
 
 from permissions.risk_levels import (
     CRITICAL_PACKAGES,
+    DESKTOP_SESSION_COMBOS,
     FORBIDDEN_COMBOS,
     FORBIDDEN_KEYS,
     PROTECTED_APPS,
@@ -161,10 +162,13 @@ def _block_password(args: dict) -> bool:
 
 
 def _block_combo(args: dict) -> bool:
-    """Combinaisons interdites (tuer la session graphique, changer de console…).
+    """Combinaisons interdites (tuer la session graphique, changer de console…), et
+    Alt+F4 sans fenêtre d'application au premier plan (fermeture de session d'Xfce).
 
     ``keys`` est déjà en forme canonique (``tools.computer.keys.parse_combo``,
     appliqué par ``normalize_args``) : une autre écriture ne contourne pas la règle.
+    La fenêtre visée est celle que l'outil a résolue depuis l'écran (``window_id`` 0 :
+    le bureau ou le tableau de bord) ; sans cible connue, la combinaison est bloquée.
     """
     combo = args.get("keys")
     if not isinstance(combo, str):
@@ -172,8 +176,19 @@ def _block_combo(args: dict) -> bool:
     parts = combo.split("+")
     if combo in FORBIDDEN_COMBOS or any(part in FORBIDDEN_KEYS for part in parts):
         return True
+    if combo in DESKTOP_SESSION_COMBOS and not _target(args).get("window_id"):
+        return True
     # Alt+Impr. écran = SysRq : les « touches magiques » du noyau.
     return "alt" in parts and "Print" in parts
+
+
+def _block_grabbed_keyboard(args: dict) -> bool:
+    """Un autre programme tient le clavier (menu ouvert, fenêtre « Log out » d'Xfce) :
+    les touches iraient à lui, et non à la fenêtre jugée. Rien n'est tapé ; seul
+    Échap, qui le ferme, passe."""
+    if not _target(args).get("keyboard_grabbed"):
+        return False
+    return args.get("keys") != "Escape"
 
 
 _BLOCKERS: dict[str, tuple[Callable[[dict], bool], ...]] = {
@@ -187,8 +202,13 @@ _BLOCKERS: dict[str, tuple[Callable[[dict], bool], ...]] = {
     "scroll": (_block_screen_target,),
     "focus_window": (_block_screen_target,),
     "open_app": (_block_screen_target,),
-    "type_text": (_block_screen_target, _block_password),
-    "press_keys": (_block_screen_target, _block_password, _block_combo),
+    "type_text": (_block_screen_target, _block_password, _block_grabbed_keyboard),
+    "press_keys": (
+        _block_screen_target,
+        _block_password,
+        _block_combo,
+        _block_grabbed_keyboard,
+    ),
 }
 
 

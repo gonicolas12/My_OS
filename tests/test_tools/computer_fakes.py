@@ -92,6 +92,8 @@ class FakeBackend:
         # Éléments accessibles relus juste avant un clic ; None : ceux de l'écran.
         self.accessible: list[Element] | None = None
         self.guard: object | None = None
+        # Un autre programme tient le clavier (menu ouvert, « Log out » d'Xfce).
+        self.grabbed = False
         self._last: Observation | None = None
 
     # ---- état ------------------------------------------------------------------
@@ -131,6 +133,13 @@ class FakeBackend:
 
     def screen_locked(self) -> bool:
         return self.locked
+
+    def keyboard_grabbed(self) -> bool:
+        return self.grabbed
+
+    def check_guard(self) -> None:
+        if not self.guard_ok:
+            raise ControlStopped("arrêté")
 
     def reset(self) -> None:
         self._last = None

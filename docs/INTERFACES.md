@@ -702,6 +702,7 @@ class CommandResult:
     returncode: int
     stdout: str
     stderr: str
+    cancelled: bool = False     # annulée (cancel) avant la fin, ou jamais lancée
     @property
     def ok(self) -> bool: ...   # returncode == 0
 
@@ -711,8 +712,14 @@ def run_command(
     timeout: float = 120.0,
     runner: Runner | None = None,  # injectable pour les tests (défaut: subprocess.run)
     detach_output: bool = False,   # True → sortie vers /dev/null, aucun tube
+    cancel: threading.Event | None = None,  # posé → processus tué (≤ 10 ms)
 ) -> CommandResult: ...
 ```
+
+`cancel` sert au contrôle de l'ordinateur (§10.2) : déjà posé, rien n'est lancé ; posé
+pendant la commande, le processus est tué. Le résultat a alors `cancelled=True` (code
+-1, `stderr` « commande annulée »). Avec un `runner` injecté, seuls les contrôles avant
+et après le lancement ont lieu (un échec pendant l'annulation compte comme annulé).
 
 `detach_output` sert aux commandes qui laissent un processus derrière elles (lancer une
 application graphique) : hérités par ce processus, des tubes de capture resteraient
@@ -900,7 +907,10 @@ Autres fenêtres : [w2] « myos - Thunar » (Thunar).
 
 **Cible réelle.** `normalize_args` ajoute aux arguments une clé `target`, calculée depuis
 l'écran (une `target` fournie par le modèle est écrasée) : `window`, `window_id`, `app`,
-`instance`, `pid`, `myos` (fenêtre de My_OS), `locked` (écran verrouillé), et selon
+`instance`, `pid`, `myos` (fenêtre de My_OS), `locked` (écran verrouillé),
+`keyboard_grabbed` (un autre programme tient le clavier : menu ouvert, fenêtre « Log
+out » d'Xfce ; `type_text` et `press_keys` autres qu'Échap sont alors bloqués, et une
+action qui demanderait une confirmation aussi, cf. SECURITY menace 5), et selon
 l'outil `role`, `name`, `source` (`a11y`/`ocr`), `x`, `y`, `stop_button` ; pour
 `open_app` : `app` (identifiant `.desktop`), `instance` (binaire), `desktop_file`,
 `command` (ligne `Exec`), `terminal` (l'entrée ouvre un terminal : catégorie
@@ -926,6 +936,8 @@ class ComputerBackend(Protocol):         # production : DesktopBackend (X11 + AT
     def focused_element(self) -> Element | None: ...
     def accessible_at(self, x: int, y: int) -> list[Element]: ...
     def screen_locked(self) -> bool: ...
+    def keyboard_grabbed(self) -> bool: ...           # menu, « Log out » d'Xfce…
+    def check_guard(self) -> None: ...                # ControlStopped si arrêté
     def click(self, x, y, *, button="left", count=1) -> None: ...
     def type_text(self, text: str) -> None: ...
     def key(self, combo: str, *, repeat: int = 1) -> None: ...
@@ -940,7 +952,14 @@ class ComputerBackend(Protocol):         # production : DesktopBackend (X11 + AT
 ```
 
 Injection : `xdotool` via `core.elevation.run_command` ; rien n'est injecté ni capturé
-quand le garde refuse (`ControlStopped`).
+quand le garde refuse (`ControlStopped`). Retirer le garde (`set_guard(None)` : arrêt,
+fin de la session) **coupe l'injection en cours** : `run_command(..., cancel=…)` tue son
+`xdotool`, les touches et boutons enfoncés depuis le début de l'injection (relevés juste
+avant) sont relâchés par XTEST — pas ceux que l'utilisateur tenait déjà : un relâchement
+XTEST vaut pour tout le clavier (vérifié en VM) —, et `set_guard` ne rend la main qu'une
+fois l'injection finie (au plus 1 s). `keyboard_grabbed()` essaie de prendre le clavier et le
+relâche aussitôt : « déjà pris » signale un menu ouvert ou une fenêtre comme « Log out »
+d'Xfce, hors du gestionnaire de fenêtres, au-dessus de tout.
 
 ### 10.3 · Session de contrôle (`daemon/control.py`)
 
@@ -960,7 +979,9 @@ class ControlSession:                     # implémente InputGuard
 
 `begin` envoie `control_state` actif et attend `control_ready` (5 s) ; il branche alors
 le garde, active l'accessibilité de la session et lance l'écoute d'Échap. Une session à
-la fois.
+la fois. `cancel` retire le garde (ce qui coupe l'injection en cours, §10.2) **avant**
+d'envoyer `control_state` inactif : le popup, qui revient alors au premier plan, ne
+reçoit rien de ce que tapait le modèle.
 
 ### 10.4 · Orchestrator
 
