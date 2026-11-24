@@ -20,12 +20,20 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from core.elevation import PKEXEC, CommandResult, build_argv, run_command
+from core.elevation import (
+    CANCELLED_RETURNCODE,
+    PKEXEC,
+    CommandResult,
+    build_argv,
+    run_command,
+)
 from core.i18n import use_language
 
 
@@ -294,3 +302,80 @@ def test_faux_pkexec_par_le_vrai_lanceur(
     with use_language("en"):
         result = run_command(argv, elevate=True)
     assert result.stderr == (english or stderr)
+
+
+# ---- annulation (contrôle de l'ordinateur arrêté pendant une frappe) -------------
+
+_SLEEPER = [sys.executable, "-c", "import time; time.sleep(30)"]
+
+
+def test_annulation_tue_la_commande_en_cours() -> None:
+    cancel = threading.Event()
+    threading.Timer(0.3, cancel.set).start()
+    started = time.monotonic()
+    result = run_command(_SLEEPER, timeout=20, cancel=cancel)
+    elapsed = time.monotonic() - started
+    assert result.cancelled and not result.ok
+    assert elapsed < 5  # et non les 30 s de la commande
+    assert result.returncode == CANCELLED_RETURNCODE
+    assert "annulée" in result.stderr
+
+
+def test_annulation_avant_le_lancement_ne_lance_rien() -> None:
+    cancel = threading.Event()
+    cancel.set()
+    calls: list = []
+
+    def runner(argv: list[str], timeout: float) -> Any:
+        calls.append(argv)
+        return _fake_completed(0)
+
+    result = run_command(["xdotool", "type", "x"], runner=runner, cancel=cancel)
+    assert result.cancelled and calls == []
+    with use_language("en"):
+        assert "cancelled" in run_command(["true"], runner=runner, cancel=cancel).stderr
+
+
+def test_commande_annulable_qui_finit_normalement() -> None:
+    result = run_command(
+        [sys.executable, "-c", "print('fini')"], timeout=20, cancel=threading.Event()
+    )
+    assert result.ok and not result.cancelled
+    assert result.stdout.strip() == "fini"
+
+
+def test_commande_annulable_garde_son_delai() -> None:
+    result = run_command(_SLEEPER, timeout=0.5, cancel=threading.Event())
+    assert (result.returncode, result.cancelled) == (124, False)
+
+
+def test_runner_injecte_annulation_pendant_la_commande() -> None:
+    cancel = threading.Event()
+
+    def killed(argv: list[str], timeout: float) -> Any:
+        cancel.set()  # annulée pendant la commande, qui finit en échec (tuée)
+        return _fake_completed(-9)
+
+    def finished(argv: list[str], timeout: float) -> Any:
+        cancel.set()  # annulée juste après une fin normale : rien n'est perdu
+        return _fake_completed(0, "ok")
+
+    assert run_command(["xdotool", "key", "a"], runner=killed, cancel=cancel).cancelled
+    cancel.clear()
+    result = run_command(["xdotool", "key", "a"], runner=finished, cancel=cancel)
+    assert result.ok and not result.cancelled
+
+
+def test_sans_annulation_le_lanceur_reste_subprocess_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Les commandes système (pacman…) ne passent pas par le lanceur annulable.
+    seen: dict = {}
+
+    def fake_run(argv: list[str], **kwargs: Any) -> Any:
+        seen["kwargs"] = kwargs
+        return _fake_completed(0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert run_command(["pacman", "-Q"]).ok
+    assert seen["kwargs"]["shell"] is False

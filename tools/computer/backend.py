@@ -81,6 +81,13 @@ class ComputerBackend(Protocol):  # pylint: disable=too-many-public-methods
     def screen_locked(self) -> bool:
         """``True`` si l'écran est verrouillé."""
 
+    def keyboard_grabbed(self) -> bool:
+        """``True`` si un autre programme tient le clavier (menu ouvert, fenêtre
+        « Log out » d'Xfce) : les touches iraient à lui, pas à la fenêtre active."""
+
+    def check_guard(self) -> None:
+        """Lève ``ControlStopped`` si le contrôle est arrêté (ou pas accordé)."""
+
     def reset(self) -> None:
         """Oublie la dernière observation (nouvelle session : numéros périmés)."""
 
@@ -160,8 +167,17 @@ class DesktopBackend:  # pylint: disable=too-many-instance-attributes,too-many-p
         return self._last
 
     def set_guard(self, guard: InputGuard | None) -> None:
-        """Branche (ou retire) le garde de la session de contrôle."""
+        """Branche (ou retire) le garde de la session de contrôle ; le retirer coupe
+        l'injection en cours (cf. :meth:`X11Desktop.set_guard`)."""
         self._desktop.set_guard(guard)
+
+    def check_guard(self) -> None:
+        """Lève ``ControlStopped`` si le contrôle est arrêté (ou pas accordé)."""
+        self._desktop.check_guard()
+
+    def keyboard_grabbed(self) -> bool:
+        """``True`` si un autre programme tient le clavier (menu, « Log out »…)."""
+        return self._desktop.keyboard_grabbed()
 
     # ---- observation -----------------------------------------------------------
     def observe(self) -> Observation:

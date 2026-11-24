@@ -21,6 +21,7 @@ MESSAGES: dict[str, str] = {
     # ---- core/elevation.py ---------------------------------------------------------
     "commande introuvable : {error}": "command not found: {error}",
     "délai dépassé ({seconds}s) : {command}": "timed out ({seconds}s): {command}",
+    "commande annulée : interrompue avant la fin": "command cancelled: stopped before the end",
     "demande d'autorisation fermée sans réponse : la commande n'a pas été lancée": (
         "authorization request closed without an answer: the command was not run"
     ),
@@ -378,6 +379,12 @@ MESSAGES: dict[str, str] = {
     " — Entrée peut déclencher le bouton « {button} »": (
         " — Enter may trigger the “{button}” button"
     ),
+    " — une autre fenêtre (menu ouvert, « Log out »…) tient le clavier : fermez-la "
+    "d'abord par Échap": (
+        " — another window (open menu, “Log out”…) holds the keyboard: close it first "
+        "with Escape"
+    ),
+    " — ouvrirait la fermeture de session": " — would open the log-out window",
     "type_text : texte vide.": "type_text: empty text.",
     "type_text : caractère de contrôle refusé (seuls le retour à la ligne et la "
     "tabulation se tapent ; pour une touche, utilisez press_keys).": (

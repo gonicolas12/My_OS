@@ -19,7 +19,10 @@ auditable, dans le même esprit que le « choke point » du
 * un **refus de polkit** (fenêtre d'authentification fermée, autorisation
   refusée) est rendu dans la langue de My_OS : ``pkexec`` l'écrit en anglais, en
   dur. Seul le texte change : le code de retour reste celui de ``pkexec``, et la
-  commande n'a pas été lancée.
+  commande n'a pas été lancée ;
+* une commande peut être **annulée** (``cancel``) : son processus est tué dès que
+  l'événement est posé. Sert au contrôle de l'ordinateur, dont l'arrêt (Échap,
+  bouton ■) coupe une frappe déjà lancée.
 
 La sortie d'une commande renvoyée ici est une **donnée** non fiable comme tout
 contenu lu (cf. docs/SECURITY.md §2.2) : l'appelant la résume pour le LLM, il ne
@@ -29,8 +32,11 @@ l'exécute jamais.
 from __future__ import annotations
 
 import subprocess
+import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 
 from core.i18n import N_, tr
 
@@ -40,6 +46,13 @@ PKEXEC = "pkexec"
 
 # Délai par défaut (s) avant d'abandonner une commande système.
 DEFAULT_TIMEOUT_S = 120.0
+
+# Intervalle (s) auquel une commande annulable regarde si on l'a annulée : c'est le
+# retard maximal entre l'annulation et l'arrêt du processus.
+CANCEL_POLL_S = 0.01
+# Code de retour d'une commande annulée (tuée, ou jamais lancée).
+CANCELLED_RETURNCODE = -1
+_CANCELLED = N_("commande annulée : interrompue avant la fin")
 
 # Refus de polkit : (code de retour de pkexec, ligne qu'il écrit sur stderr, message
 # de My_OS). pkexec écrit ces lignes en anglais, sans gettext (polkit 128,
@@ -69,12 +82,14 @@ class CommandResult:
 
     ``ok`` est vrai si le code de retour est 0. ``stdout``/``stderr`` sont du
     texte (décodé UTF-8, erreurs remplacées) — des **données** à résumer, pas
-    des instructions.
+    des instructions. ``cancelled`` : la commande a été annulée (``cancel`` de
+    :func:`run_command`) avant de finir, ou n'a pas été lancée.
     """
 
     returncode: int
     stdout: str
     stderr: str
+    cancelled: bool = False
 
     @property
     def ok(self) -> bool:
@@ -123,6 +138,48 @@ def _detached_runner(
     return subprocess.CompletedProcess(argv, completed.returncode, "", "")
 
 
+def _cancellable_runner(
+    argv: list[str], timeout: float, *, cancel: threading.Event
+) -> subprocess.CompletedProcess[str]:
+    """Lanceur annulable : comme :func:`_default_runner`, mais le processus est tué
+    dès que ``cancel`` est posé (au plus :data:`CANCEL_POLL_S` après). Une commande
+    tuée renvoie un code non nul : :func:`run_command` la reconnaît à ``cancel``."""
+    deadline = time.monotonic() + timeout
+    with subprocess.Popen(
+        argv,
+        shell=False,  # jamais de shell : pas d'interprétation d'entrée (SECURITY §7)
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    ) as process:
+        while True:
+            try:
+                stdout, stderr = process.communicate(timeout=CANCEL_POLL_S)
+            except subprocess.TimeoutExpired:
+                if cancel.is_set() or time.monotonic() >= deadline:
+                    process.kill()
+                    stdout, stderr = process.communicate()
+                    if not cancel.is_set():
+                        raise subprocess.TimeoutExpired(argv, timeout) from None
+                    return subprocess.CompletedProcess(
+                        argv, process.returncode or CANCELLED_RETURNCODE, stdout, stderr
+                    )
+                continue
+            return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
+
+
+def _cancelled_result(stdout: str = "") -> CommandResult:
+    return CommandResult(
+        returncode=CANCELLED_RETURNCODE,
+        stdout=stdout,
+        stderr=tr(_CANCELLED),
+        cancelled=True,
+    )
+
+
 def build_argv(argv: list[str], *, elevate: bool) -> list[str]:
     """Construit l'argv final, préfixé par ``pkexec`` si ``elevate``.
 
@@ -158,6 +215,7 @@ def run_command(
     timeout: float = DEFAULT_TIMEOUT_S,
     runner: Runner | None = None,
     detach_output: bool = False,
+    cancel: threading.Event | None = None,
 ) -> CommandResult:
     """Exécute ``argv`` (sans shell), avec élévation polkit ponctuelle si demandé.
 
@@ -171,7 +229,11 @@ def run_command(
     :param detach_output: pas de capture de la sortie (``/dev/null``), pour une
         commande qui lance un processus durable (application graphique) : la
         sortie n'est pas lue et seul le code de retour compte.
-    :returns: :class:`CommandResult` (code, stdout, stderr).
+    :param cancel: événement d'annulation. Déjà posé : rien n'est lancé. Posé
+        pendant la commande : le processus est tué (au plus :data:`CANCEL_POLL_S`
+        après). Dans les deux cas, le résultat a ``cancelled=True``. Avec un
+        ``runner`` injecté, seule la vérification avant et après le lancement a lieu.
+    :returns: :class:`CommandResult` (code, stdout, stderr, annulation).
 
     En cas de timeout ou d'absence du binaire (``pkexec`` ou la commande
     introuvable), renvoie un :class:`CommandResult` d'échec lisible plutôt que
@@ -181,8 +243,16 @@ def run_command(
     ``pkexec`` ; le code de retour ne change pas.
     """
     final_argv = build_argv(argv, elevate=elevate)
-    default = _detached_runner if detach_output else _default_runner
-    run = runner if runner is not None else default
+    if cancel is not None and cancel.is_set():
+        return _cancelled_result()  # annulée avant même d'être lancée
+    if runner is not None:
+        run = runner
+    elif detach_output:
+        run = _detached_runner
+    elif cancel is not None:
+        run = partial(_cancellable_runner, cancel=cancel)
+    else:
+        run = _default_runner
     try:
         completed = run(final_argv, timeout=timeout)
     except FileNotFoundError as exc:
@@ -202,6 +272,9 @@ def run_command(
             ),
         )
     returncode = int(completed.returncode)
+    if cancel is not None and cancel.is_set() and returncode != 0:
+        # Tuée par l'annulation (ou en échec au même moment : l'annulation prime).
+        return _cancelled_result(completed.stdout or "")
     stderr = completed.stderr or ""
     if elevate:
         # Seul pkexec écrit ces refus : sans élévation, la sortie reste telle quelle.

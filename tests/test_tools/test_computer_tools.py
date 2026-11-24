@@ -227,6 +227,64 @@ def test_saisie_annulee_si_la_fenetre_change_en_cours() -> None:
     assert calls["n"] == 1
 
 
+def test_arret_pendant_la_frappe_plus_rien_n_est_tape() -> None:
+    # Faux bureau qui compte les caractères tapés ; l'arrêt (Échap, ■) arrive pendant
+    # le 3e morceau, puis le popup revient au premier plan (vu en VM, v1.9 : la fin du
+    # morceau arrivait dans son champ).
+    backend = _editor()
+    tools = screen_tools(backend)
+    backend.observe()
+    args = tools["type_text"].normalize_args({"text": "x" * 2000})
+    typed = {"n": 0}
+
+    def type_then_stop(text: str) -> None:
+        backend._act("type", text)  # pylint: disable=protected-access
+        typed["n"] += len(text)
+        if typed["n"] >= 48:
+            backend.guard_ok = False
+            backend.windows_list = [
+                make_window(active=False),
+                make_window(5, "My_OS", pid=POPUP_PID, rect=Rect(480, 200, 960, 680)),
+            ]
+
+    backend.type_text = type_then_stop  # type: ignore[method-assign]
+    result = tools["type_text"].run(args)
+    assert typed["n"] == 48  # trois morceaux de 16, rien après l'arrêt
+    assert not result.success
+    assert result.output == STOPPED  # et non « l'écran a changé »
+
+
+def test_frappe_apres_l_arret_rien_ne_part() -> None:
+    backend = _editor()
+    tools = screen_tools(backend)
+    backend.observe()
+    args = tools["type_text"].normalize_args({"text": "bonjour"})
+    backend.guard_ok = False
+    result = tools["type_text"].run(args)
+    assert result.output == STOPPED
+    assert backend.actions == []
+
+
+def test_cible_dit_si_le_clavier_est_tenu() -> None:
+    backend = _editor()
+    tools = screen_tools(backend)
+    backend.observe()
+    assert (
+        tools["type_text"].normalize_args({"text": "a"})["target"]["keyboard_grabbed"]
+        is False
+    )
+    backend.grabbed = True
+    for name, args in (
+        ("type_text", {"text": "a"}),
+        ("press_keys", {"keys": "Tab"}),
+        ("click", {"element": 1}),
+        ("scroll", {"direction": "down"}),
+    ):
+        assert tools[name].normalize_args(args)["target"]["keyboard_grabbed"] is True, (
+            name
+        )
+
+
 # ---- touches -------------------------------------------------------------------
 
 

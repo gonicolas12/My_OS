@@ -12,7 +12,10 @@
 
 Chaque injection passe d'abord par un **garde** (:class:`InputGuard`) : une fois le
 contrôle arrêté (Échap, bouton ■), plus aucun événement n'est envoyé, quoi que
-fasse le modèle. C'est la garantie de l'arrêt, au plus bas niveau.
+fasse le modèle. L'arrêt coupe aussi l'injection **en cours** : le ``xdotool`` qui
+tape encore est tué, les touches qu'il tenait sont relâchées, et l'arrêt ne rend la
+main (le popup ne revient) qu'ensuite. C'est la garantie de l'arrêt, au plus bas
+niveau.
 
 X11 seulement : sous Wayland, ni XTEST ni capture globale (le compositeur les
 interdit). Les imports lourds (Xlib, Pillow) sont paresseux : le module se charge
@@ -22,6 +25,7 @@ sous Windows et dans les tests.
 from __future__ import annotations
 
 import os
+import threading
 from collections.abc import Callable
 from typing import Any, Protocol
 
@@ -39,9 +43,15 @@ TYPE_DELAY_MS = 12
 REPEAT_DELAY_MS = 80
 # Délai max d'une commande xdotool (s) : une fenêtre qui ne s'active pas ne bloque pas.
 _XDOTOOL_TIMEOUT_S = 10.0
+# Attente max (s), à l'arrêt, de la fin de l'injection en cours (son xdotool est tué
+# aussitôt : quelques centièmes de seconde en pratique).
+_STOP_WAIT_S = 1.0
 # Boutons de souris X11.
 MOUSE_BUTTONS = {"left": 1, "middle": 2, "right": 3}
 SCROLL_BUTTONS = {"up": 4, "down": 5, "left": 6, "right": 7}
+
+# Touches enfoncées (codes X) et masque des boutons de la souris (cf. _pressed).
+Pressed = tuple[frozenset[int], int]
 
 # Types de fenêtres EWMH qui ne sont pas des fenêtres d'application.
 _SKIPPED_TYPES = ("_NET_WM_WINDOW_TYPE_DESKTOP", "_NET_WM_WINDOW_TYPE_DOCK")
@@ -135,10 +145,30 @@ class X11Desktop:  # pylint: disable=too-many-public-methods
     ) -> None:
         self._guard = guard
         self._runner = runner
+        # Posé quand le garde est retiré : run_command tue l'injection en cours.
+        self._cancel = threading.Event()
+        # Tenu pendant une injection : retirer le garde attend qu'elle soit finie.
+        self._injecting = threading.Lock()
 
     def set_guard(self, guard: InputGuard | None) -> None:
-        """Branche le garde de la session de contrôle (``None`` : aucun événement)."""
-        self._guard = guard
+        """Branche le garde de la session de contrôle (``None`` : aucun événement).
+
+        Retirer le garde (arrêt par Échap ou ■, fin de la session) coupe aussi
+        l'injection en cours : son ``xdotool`` est tué, ses touches relâchées, et
+        la méthode ne rend la main qu'une fois l'injection finie (au plus
+        :data:`_STOP_WAIT_S`). Le popup, prévenu ensuite de l'arrêt, ne revient donc
+        qu'une fois que plus rien n'est tapé : rien n'arrive dans son champ.
+        """
+        if guard is not None:
+            self._cancel = threading.Event()
+            self._guard = guard
+            return
+        self._guard = None
+        self._cancel.set()
+        if self._injecting.acquire(timeout=_STOP_WAIT_S):
+            self._injecting.release()
+        else:
+            _log.warning("Injection encore en cours %.1f s après l'arrêt", _STOP_WAIT_S)
 
     # ---- lecture -------------------------------------------------------------
     @staticmethod
@@ -224,11 +254,118 @@ class X11Desktop:  # pylint: disable=too-many-public-methods
             raise ControlStopped("aucune session de contrôle active : action refusée")
         self._guard.check()
 
+    def keyboard_grabbed(self) -> bool:
+        """``True`` si un autre programme tient le clavier : menu ouvert, fenêtre
+        « Log out » d'Xfce… Ses touches iraient à lui, quelle que soit la fenêtre
+        active, et une confirmation de My_OS s'afficherait sous lui (vu en VM :
+        ces fenêtres-là sont hors du gestionnaire de fenêtres, au-dessus de tout).
+
+        Essai de prise du clavier, relâchée aussitôt. Sans serveur X joignable :
+        ``False`` (aucune action n'y est de toute façon possible).
+        """
+        try:
+            from Xlib import X  # pylint: disable=import-outside-toplevel
+        except ImportError:
+            return False
+        try:
+            disp = self._open()
+        except DesktopError:
+            return False
+        try:
+            status = disp.screen().root.grab_keyboard(
+                False, X.GrabModeAsync, X.GrabModeAsync, X.CurrentTime
+            )
+            if status == X.GrabSuccess:
+                disp.ungrab_keyboard(X.CurrentTime)
+                disp.sync()
+                return False
+            return status in (X.AlreadyGrabbed, X.GrabFrozen)
+        except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+            return False
+        finally:
+            disp.close()
+
+    def _pressed(self) -> Pressed | None:
+        """Touches (codes X) et boutons de la souris (masque) enfoncés à l'instant,
+        ou ``None`` s'ils sont illisibles (pas de serveur X)."""
+        try:
+            disp = self._open()
+        except DesktopError:
+            return None
+        try:
+            keys = frozenset(
+                index * 8 + bit
+                for index, byte in enumerate(disp.query_keymap())
+                for bit in range(8)
+                if byte & (1 << bit)
+            )
+            return keys, int(disp.screen().root.query_pointer().mask)
+        except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+            return None
+        finally:
+            disp.close()
+
+    def _release_input(self, before: Pressed | None) -> None:
+        """Relâche les touches et boutons enfoncés depuis ``before`` (relevé juste
+        avant l'injection) : un ``xdotool`` tué a pu en laisser un, qui se
+        répéterait (touche) ou ferait glisser la souris (bouton).
+
+        Par XTEST, comme xdotool. Vu en VM : le relâchement vaut pour le clavier
+        entier, y compris une touche que tient l'utilisateur ; celles déjà tenues
+        avant l'injection ne sont donc pas relâchées. Sans relevé : rien.
+        """
+        after = self._pressed()
+        if before is None or after is None:
+            _log.warning(
+                "Touches non relâchées après l'arrêt : état du clavier illisible"
+            )
+            return
+        keys = after[0] - before[0]
+        buttons = [
+            button
+            for button in range(1, 6)
+            if after[1] & ~before[1] & (1 << (7 + button))  # Button1Mask = 1 << 8
+        ]
+        if not keys and not buttons:
+            return
+        try:
+            from Xlib import X  # pylint: disable=import-outside-toplevel
+            from Xlib.ext import xtest  # pylint: disable=import-outside-toplevel
+
+            disp = self._open()
+        except (ImportError, DesktopError) as exc:
+            _log.warning("Touches non relâchées après l'arrêt : %s", exc)
+            return
+        try:
+            for keycode in sorted(keys):
+                xtest.fake_input(disp, X.KeyRelease, keycode)
+            for button in buttons:
+                xtest.fake_input(disp, X.ButtonRelease, button)
+            disp.sync()
+            _log.info(
+                "Arrêt pendant une injection : %d touche(s), %d bouton(s) relâchés",
+                len(keys),
+                len(buttons),
+            )
+        except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+            _log.warning("Touches non relâchées après l'arrêt : %s", exc)
+        finally:
+            disp.close()
+
     def _xdotool(self, *args: str) -> CommandResult:
-        self.check_guard()
-        result = run_command(
-            ["xdotool", *args], timeout=_XDOTOOL_TIMEOUT_S, runner=self._runner
-        )
+        with self._injecting:
+            self.check_guard()
+            before = self._pressed()
+            result = run_command(
+                ["xdotool", *args],
+                timeout=_XDOTOOL_TIMEOUT_S,
+                runner=self._runner,
+                cancel=self._cancel,
+            )
+            if result.cancelled:
+                # Arrêt pendant l'injection : xdotool tué en cours de route.
+                self._release_input(before)
+                raise ControlStopped("contrôle arrêté pendant une injection")
         if not result.ok:
             detail = result.stderr.strip() or f"code {result.returncode}"
             raise DesktopError(

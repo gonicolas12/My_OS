@@ -38,8 +38,10 @@ from core.i18n import N_, tr
 from permissions.risk_levels import (
     ACTIVATION_KEYS,
     COMMAND_LAUNCHERS,
+    DESKTOP_SESSION_COMBOS,
     DESTRUCTIVE_COMBOS,
     LAUNCHER_COMBOS,
+    LOCK_COMBOS,
     SYSTEM_SETTINGS_APPS,
     TERMINAL_APPS,
     app_keys,
@@ -90,7 +92,8 @@ _LAUNCHERS: frozenset[str] = frozenset(
     }
 )
 # Texte tapé au plus par appel, et par morceau : la fenêtre et le garde sont revérifiés
-# entre deux morceaux, donc un arrêt (Échap) coupe la frappe en 0,2 s au plus.
+# entre deux morceaux. L'arrêt (Échap, ■) coupe aussi le morceau en cours : son xdotool
+# est tué avant que le popup ne revienne (cf. x11.X11Desktop.set_guard).
 MAX_TEXT = 2000
 _CHUNK = 16
 _DIRECTIONS = {
@@ -139,6 +142,12 @@ _TYPABLE_CONTROLS = frozenset("\n\t")
 _SUBMITTING_FIELDS = frozenset({"text_field", "password", "spin"})
 _ENTER_KEYS = frozenset({"Return", "KP_Enter"})
 _SUBMITS = N_(" — Entrée peut déclencher le bouton « {button} »")
+# Un autre programme tient le clavier : la raison d'un blocage, dite au modèle.
+_GRABBED = N_(
+    " — une autre fenêtre (menu ouvert, « Log out »…) tient le clavier : fermez-la "
+    "d'abord par Échap"
+)
+_SESSION = N_(" — ouvrirait la fermeture de session")
 
 
 @dataclass
@@ -203,6 +212,11 @@ def _submits(target: dict) -> str:
     return tr(_SUBMITS, button=target["submits"]) if target.get("submits") else ""
 
 
+def _grab_note(target: dict) -> str:
+    """« — une autre fenêtre … tient le clavier … », si c'est le cas."""
+    return tr(_GRABBED) if target.get("keyboard_grabbed") else ""
+
+
 def _as_bool(value: object) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in ("true", "1", "oui", "yes")
@@ -240,6 +254,9 @@ class _ScreenTool(BaseTool):  # pylint: disable=abstract-method
             "pid": window.pid if window else None,
             "myos": bool(window and window.pid in self._ctx.myos_pids()),
             "locked": self._backend.screen_locked(),
+            # Un autre programme tient le clavier : les touches n'iraient pas à la
+            # fenêtre ci-dessus, et une confirmation s'afficherait sous lui.
+            "keyboard_grabbed": self._backend.keyboard_grabbed(),
         }
         if element is not None:
             target["role"] = element.role
@@ -367,6 +384,9 @@ class _ScreenTool(BaseTool):  # pylint: disable=abstract-method
 
     def _guarded(self, action: Callable[[], ToolResult]) -> ToolResult:
         try:
+            # Arrêté entre deux actions : « arrêté par l'utilisateur », et non un écran
+            # qui aurait changé (le popup revenu à l'arrêt a pris le focus).
+            self._backend.check_guard()
             return action()
         except ControlStopped:
             return _err(tr(STOPPED))
@@ -441,7 +461,9 @@ class Click(_ScreenTool):
         )
         if args.get("button") == "right":
             verb = N_("Clic droit sur {element}{where}")
-        return tr(verb, element=_element_phrase(args), where=_in_window(args))
+        return tr(verb, element=_element_phrase(args), where=_in_window(args)) + (
+            _grab_note(_target_of(args))
+        )
 
     def run(self, args: dict) -> ToolResult:
         target = args.get("target")
@@ -526,13 +548,17 @@ class TypeText(_ScreenTool):
             if args.get("element") is not None
             else ""
         )
-        return tr(
-            "Taper « {text} »{enter}{field}{where}",
-            text=args.get("text", ""),
-            enter=enter,
-            field=in_field,
-            where=_in_window(args),
-        ) + _submits(target)
+        return (
+            tr(
+                "Taper « {text} »{enter}{field}{where}",
+                text=args.get("text", ""),
+                enter=enter,
+                field=in_field,
+                where=_in_window(args),
+            )
+            + _submits(target)
+            + _grab_note(target)
+        )
 
     def run(self, args: dict) -> ToolResult:
         text = str(args.get("text", ""))
@@ -577,6 +603,7 @@ class TypeText(_ScreenTool):
             else:
                 self._refocus(target)
             for start in range(0, len(text), _CHUNK):
+                self._backend.check_guard()  # arrêt entre deux morceaux
                 problem = self._still(target, self._backend.active_window())
                 if problem:
                     return _err(problem)
@@ -624,11 +651,12 @@ class PressKeys(_ScreenTool):
 
     def escalate(self, args: dict) -> int:
         """En plus de la cible : Maj+Suppr (suppression définitive), les raccourcis
-        qui ouvrent un terminal ou un lanceur de commandes (Ctrl+Alt+T, Alt+F2), et
-        Entrée ou Espace sur un élément focalisé au libellé destructeur, comme son clic."""
+        qui ouvrent un terminal ou un lanceur de commandes (Ctrl+Alt+T, Alt+F2), le
+        verrouillage de l'écran, et Entrée ou Espace sur un élément focalisé au
+        libellé destructeur, comme son clic."""
         level = super().escalate(args)
         keys = str(args.get("keys", ""))
-        if keys in DESTRUCTIVE_COMBOS or keys in LAUNCHER_COMBOS:
+        if keys in DESTRUCTIVE_COMBOS or keys in LAUNCHER_COMBOS or keys in LOCK_COMBOS:
             return max(level, 2)
         _modifiers, key = combo_parts(keys)
         target = args.get("target") if isinstance(args.get("target"), dict) else {}
@@ -648,13 +676,24 @@ class PressKeys(_ScreenTool):
             if target.get("name")
             else ""
         )
-        return tr(
-            "Appuyer sur « {keys} »{times}{where}{focus}",
-            keys=args.get("keys", ""),
-            times=times,
-            where=_in_window(args),
-            focus=focus,
-        ) + _submits(target)
+        session = (
+            tr(_SESSION)
+            if args.get("keys") in DESKTOP_SESSION_COMBOS
+            and not target.get("window_id")
+            else ""
+        )
+        return (
+            tr(
+                "Appuyer sur « {keys} »{times}{where}{focus}",
+                keys=args.get("keys", ""),
+                times=times,
+                where=_in_window(args),
+                focus=focus,
+            )
+            + session
+            + _submits(target)
+            + _grab_note(target)
+        )
 
     def run(self, args: dict) -> ToolResult:
         if args.get("invalid"):
@@ -726,7 +765,7 @@ class Scroll(_ScreenTool):
             direction=way,
             amount=args.get("amount", 3),
             where=_in_window(args),
-        )
+        ) + _grab_note(_target_of(args))
 
     def run(self, args: dict) -> ToolResult:
         if args.get("direction") not in ("up", "down", "left", "right"):
@@ -777,8 +816,11 @@ class FocusWindow(_ScreenTool):
 
     def describe(self, args: dict) -> str | None:
         """« Passer à la fenêtre « Titre » (app) »."""
-        window = _target_of(args).get("window")
-        return tr("Passer à la fenêtre {window}", window=window) if window else None
+        target = _target_of(args)
+        window = target.get("window")
+        if not window:
+            return None
+        return tr("Passer à la fenêtre {window}", window=window) + _grab_note(target)
 
     def run(self, args: dict) -> ToolResult:
         target = args.get("target")
@@ -832,6 +874,7 @@ class OpenApp(_ScreenTool):
                 "command": entry.command,
                 "terminal": entry.opens_terminal,
                 "locked": self._backend.screen_locked(),
+                "keyboard_grabbed": self._backend.keyboard_grabbed(),
             }
         return clean
 
@@ -845,7 +888,7 @@ class OpenApp(_ScreenTool):
             "Ouvrir l'application « {name} »{command}",
             name=target.get("window", ""),
             command=command,
-        )
+        ) + _grab_note(target)
 
     def run(self, args: dict) -> ToolResult:
         name = str(args.get("name", ""))

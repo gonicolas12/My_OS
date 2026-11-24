@@ -11,7 +11,9 @@ Le modèle ne voit l'écran et n'agit sur la souris et le clavier que pendant un
 * s'arrête **à tout moment** : touche Échap (écoute globale, sans capture du
   clavier), bouton ■ de la barre (``stop_control``), popup déconnecté. Dès l'arrêt,
   le garde (:meth:`check`) refuse tout nouvel événement : plus rien n'est injecté,
-  quoi que fasse le modèle ;
+  quoi que fasse le modèle. L'injection déjà en cours (frappe, touches répétées) est
+  coupée, et le popup n'est prévenu de l'arrêt (il revient alors au premier plan)
+  qu'une fois qu'elle l'est : rien de ce que tapait le modèle n'arrive dans son champ ;
 * se termine avec la requête (``control_state`` inactif : la lueur s'éteint).
 
 Une seule session à la fois (un seul écran, un seul indicateur). L'écoute d'Échap
@@ -226,7 +228,12 @@ class ControlSession:  # pylint: disable=too-many-instance-attributes
         self._ready.set()
 
     def cancel(self, reason: str = "user") -> None:
-        """Arrêt immédiat (Échap, bouton ■, popup perdu) : plus aucune injection."""
+        """Arrêt immédiat (Échap, bouton ■, popup perdu) : plus aucune injection.
+
+        Retirer le garde coupe aussi l'injection en cours et attend qu'elle le soit
+        (cf. ``X11Desktop.set_guard``) : le popup, prévenu ensuite, revient au premier
+        plan quand plus rien n'est tapé.
+        """
         with self._lock:
             if not self._active or self._cancelled:
                 return

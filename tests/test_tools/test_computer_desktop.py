@@ -7,6 +7,8 @@ applications, injection X11 (xdotool simulé) et backend d'observation."""
 from __future__ import annotations
 
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -167,7 +169,9 @@ def _desktop(returncode: int = 0) -> tuple[X11Desktop, list, _Guard]:
         return subprocess.CompletedProcess(argv, returncode, "", "erreur X")
 
     guard = _Guard()
-    return X11Desktop(guard=guard, runner=runner), calls, guard
+    desktop = X11Desktop(guard=guard, runner=runner)
+    desktop._pressed = lambda: None  # type: ignore[method-assign]  # pylint: disable=protected-access
+    return desktop, calls, guard
 
 
 def test_session_x11_requise() -> None:
@@ -223,6 +227,100 @@ def test_rien_n_est_injecte_sans_garde_ou_apres_l_arret() -> None:
     with pytest.raises(ControlStopped):
         desktop.type_text("x")
     assert calls == []
+
+
+def _blocking_desktop() -> tuple[X11Desktop, _Guard, list, threading.Event]:
+    """Bureau dont le « xdotool » tourne jusqu'à son annulation (frappe en cours)."""
+    events: list = []
+    started = threading.Event()
+    holder: dict = {}
+
+    def runner(argv: list[str], timeout: float) -> subprocess.CompletedProcess:
+        _ = timeout
+        events.append("xdotool lancé")
+        started.set()
+        desktop = holder["desktop"]
+        # pylint: disable=protected-access
+        while not desktop._cancel.is_set():  # comme un processus tué par run_command
+            time.sleep(0.005)
+        time.sleep(0.05)  # le processus met un peu de temps à mourir
+        events.append("xdotool tué")
+        return subprocess.CompletedProcess(argv, -9, "", "")
+
+    guard = _Guard()
+    desktop = X11Desktop(guard=guard, runner=runner)
+    holder["desktop"] = desktop
+    desktop._pressed = lambda: None  # type: ignore[method-assign]  # pylint: disable=protected-access
+    desktop._release_input = lambda _before: events.append("touches relâchées")  # type: ignore[method-assign]  # pylint: disable=protected-access
+    return desktop, guard, events, started
+
+
+def test_arret_coupe_l_injection_en_cours() -> None:
+    desktop, _guard, events, started = _blocking_desktop()
+    outcome: dict = {}
+
+    def typing() -> None:
+        try:
+            desktop.type_text("x" * 16)
+        except ControlStopped:
+            outcome["stopped"] = True
+
+    worker = threading.Thread(target=typing)
+    worker.start()
+    assert started.wait(2)
+    desktop.set_guard(None)  # Échap ou ■ : rend la main une fois la frappe coupée
+    events.append("arrêt rendu")
+    worker.join(2)
+    assert outcome == {"stopped": True}
+    assert events == [
+        "xdotool lancé",
+        "xdotool tué",
+        "touches relâchées",
+        "arrêt rendu",
+    ]
+
+
+def test_arret_sans_injection_en_cours_immediat() -> None:
+    desktop, calls, _ = _desktop()
+    started = time.monotonic()
+    desktop.set_guard(None)
+    assert time.monotonic() - started < 0.5
+    with pytest.raises(ControlStopped):
+        desktop.type_text("x")
+    assert calls == []
+
+
+def test_nouvelle_session_apres_un_arret() -> None:
+    desktop, calls, guard = _desktop()
+    desktop.set_guard(None)
+    desktop.set_guard(guard)  # session suivante : nouvel événement d'annulation
+    desktop.type_text("ok")
+    assert calls[0][-1] == "ok"
+
+
+def test_relache_seulement_ce_qui_a_ete_enfonce_pendant_l_injection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Vu en VM : un relâchement XTEST vaut pour tout le clavier, y compris une touche
+    # que tient l'utilisateur. Seul ce qui a été enfoncé pendant l'injection est relâché.
+    pytest.importorskip("Xlib")
+    from Xlib import X  # pylint: disable=import-outside-toplevel
+    from Xlib.ext import xtest  # pylint: disable=import-outside-toplevel
+
+    sent: list = []
+    monkeypatch.setattr(
+        xtest, "fake_input", lambda _d, kind, detail: sent.append((kind, detail))
+    )
+    desktop, _, _ = _desktop()
+    display = type("D", (), {"sync": lambda self: None, "close": lambda self: None})()
+    monkeypatch.setattr(desktop, "_open", lambda: display)
+    # Après l'arrêt : Maj (50, déjà tenue par l'utilisateur), « a » (38) et le bouton 1.
+    monkeypatch.setattr(desktop, "_pressed", lambda: (frozenset({50, 38}), 1 << 8))
+    desktop._release_input((frozenset({50}), 0))  # pylint: disable=protected-access
+    assert sent == [(X.KeyRelease, 38), (X.ButtonRelease, 1)]
+    sent.clear()
+    desktop._release_input(None)  # pylint: disable=protected-access
+    assert sent == []  # état d'avant inconnu : rien n'est relâché à l'aveugle
 
 
 def test_echec_de_xdotool_signale() -> None:

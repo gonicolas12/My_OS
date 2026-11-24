@@ -17,6 +17,10 @@ Ordre impératif (cf. docs/INTERFACES.md §3) :
    (confirmation renforcée) est redemandé à chaque fois : sinon un grant obtenu
    sur une action anodine couvrirait une action escaladée (ex. ``~/.ssh``).
 4. Décision par niveau : 0 → auto ; 1 → confirm ; 2 → confirm ; 3 → bloqué.
+   Une action de l'écran qui demanderait une confirmation pendant qu'un autre
+   programme tient le clavier (menu ouvert, fenêtre « Log out » d'Xfce) est
+   bloquée : ces fenêtres passent au-dessus de toute confirmation de My_OS et en
+   reçoivent les touches (Entrée y choisirait « Log Out »).
 
 ``requires_elevation`` (polkit) est **orthogonal au niveau** : il reflète
 uniquement ``tool.requires_elevation(args)``, c'est-à-dire un outil qui passe
@@ -70,6 +74,17 @@ def _effective_risk(tool: BaseTool, args: dict) -> int:
     return max(tool.escalate(args), tool.risk_level)
 
 
+def _keyboard_grabbed(tool: BaseTool, args: dict) -> bool:
+    """``True`` pour une action de l'écran dont la cible (résolue par l'outil depuis
+    l'écran, jamais par le modèle) signale un autre programme qui tient le clavier."""
+    target = args.get("target")
+    return (
+        tool.name in COMPUTER_TOOLS
+        and isinstance(target, dict)
+        and bool(target.get("keyboard_grabbed"))
+    )
+
+
 def _summary(tool: BaseTool, args: dict, level: int) -> str:
     """Résumé de l'action : la phrase de l'outil (``describe``), sinon ``outil(args)``,
     dans la langue de la requête."""
@@ -114,6 +129,9 @@ def evaluate(tool: BaseTool, args: dict, grants: Grants) -> Decision:
     summary = _summary(tool, args, level)
     if level == 0:
         return Decision(action="auto", risk_level=0, summary=summary)
+    if level in (1, 2) and _keyboard_grabbed(tool, args):
+        # Jamais de confirmation sous une fenêtre qui tient le clavier.
+        return Decision(action="blocked", risk_level=3, summary=_summary(tool, args, 3))
     if level in (1, 2):
         return Decision(
             action="confirm",

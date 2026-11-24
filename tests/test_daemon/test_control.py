@@ -161,6 +161,36 @@ def test_arret_immediat_et_idempotent() -> None:
         session.check()
 
 
+def test_popup_prevenu_seulement_une_fois_l_injection_coupee() -> None:
+    # Vu en VM (v1.9) : le popup revenait au premier plan pendant que la frappe
+    # continuait, et la fin du morceau en cours arrivait dans son champ. Le garde est
+    # retiré (ce qui coupe l'injection en cours, cf. X11Desktop.set_guard) AVANT que le
+    # popup n'apprenne l'arrêt.
+    order: list[str] = []
+    backend = FakeBackend([make_window()])
+    original = backend.set_guard
+
+    def set_guard(guard: object | None) -> None:
+        original(guard)
+        if guard is None:
+            order.append("garde retiré, injection coupée")
+
+    backend.set_guard = set_guard  # type: ignore[method-assign]
+    popup = _Popup()
+    sent = popup.send
+
+    def send(message: dict) -> bool:
+        if message.get("type") == "control_state" and not message.get("active"):
+            order.append("popup prévenu")
+        return sent(message)
+
+    session, _, _, _ = _session(backend=backend, popup=popup)
+    session._send = send
+    session.begin("m1")
+    session.cancel("user")
+    assert order == ["garde retiré, injection coupée", "popup prévenu"]
+
+
 def test_fin_de_requete_eteint_l_indicateur() -> None:
     session, popup, backend, listeners = _session()
     session.begin("m1")
