@@ -389,6 +389,23 @@ brute. La note qui suit (« nécessite un modèle cloud ») était donc juste po
   avertissement de dépréciation du SDK 2.12 (journal du daemon, avertissements Python),
   l'en-tête bêta `thinking-binding-controls-2026-08-01` toujours accepté.
 
+### v1.10 — contrôle de l'ordinateur plus sûr (novembre 2026)
+- [ ] ISO à publier : elle remplacera celle de la v1.9. **Mêmes paquets que la v1.9**
+  (instantané Arch Linux Archive du 2026-11-23) : seul le code de My_OS change.
+- [x] **L'arrêt coupe la frappe en cours** : Échap ou ■ tuent l'injection déjà lancée
+  (frappe, touches répétées, défilement), relâchent ce qu'elle a enfoncé, et le popup ne
+  revient qu'ensuite ; jusqu'à la v1.9, la fin d'un morceau de 16 caractères (0,4 s, 0,65
+  s pour Entrée répétée) pouvait arriver dans le champ du popup (cf. « Frappe en cours
+  après l'arrêt du contrôle » plus bas).
+- [x] **Alt+F4 sans fenêtre d'application bloqué** : il ouvrait la fenêtre « Log out »
+  d'Xfce, au-dessus de toute confirmation de My_OS, et l'Entrée d'un refus y fermait la
+  session. Aussi : Ctrl+Alt+Échap (`xkill`) et les raccourcis de KDE qui ferment la
+  session sans confirmation bloqués, verrouillage de l'écran au niveau 2, et aucune
+  confirmation quand un autre programme tient le clavier (menu ouvert, « Log out »)
+  (cf. « Alt+F4 sur le bureau pendant le contrôle de l'ordinateur » plus bas).
+- [x] **Mode cloud éprouvé avec une vraie clé**, sur l'ISO v1.9 (cf. section v1.9).
+- [ ] Validation de l'ISO construite depuis `main`, en VM.
+
 ### Encore à éprouver
 - [ ] Un vrai PC (pilotes Wi-Fi, rétroéclairage, cartes graphiques ; son et Wi-Fi ont été
   validés en VM avec du matériel simulé). Le modèle sur une vraie carte graphique reste à
