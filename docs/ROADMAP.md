@@ -328,7 +328,8 @@ brute. La note qui suit (« nécessite un modèle cloud ») était donc juste po
   cache K/V toujours chargé en 8 bits, Ollama en local seul.
 
 ### v1.9 — mise à jour de sécurité de l'ISO (novembre 2026)
-- [ ] ISO à publier : elle remplacera celle de la v1.8, pour une raison de sécurité.
+- [x] ISO publiée : [release `v1.9`](https://github.com/gonicolas12/My_OS/releases/tag/v1.9),
+  avec sa somme SHA-256 ; elle remplace celle de la v1.8, pour une raison de sécurité.
   Paquets figés sur l'instantané Arch Linux Archive du **2026-11-23** : les 769 paquets
   de la v1.8, dont 55 mis à jour, plus `simdutf` (770 en tout).
 - [x] **GPGME de pacman** : gpgme 2.3.1 corrige une double libération qu'un identifiant
