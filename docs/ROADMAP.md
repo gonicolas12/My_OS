@@ -372,9 +372,21 @@ brute. La note qui suit (« nécessite un modèle cloud ») était donc juste po
   première demande à froid 77 à 80 s (v1.8 : 79 à 86 s), puis 7,5 à 7,7 s par demande,
   11,8 tokens/s, bon outil 12 fois sur 12 à chaque passe, mêmes outils et mêmes
   réponses ; cache K/V toujours chargé en 8 bits, Ollama en local seul, aucun
-  rechargement du modèle entre deux demandes. Restent à éprouver : le mode cloud avec
-  une vraie clé (seule la connexion TLS l'a été, avec une fausse clé) et Mesa 26.3 sur
-  une vraie carte graphique.
+  rechargement du modèle entre deux demandes. Reste à éprouver : Mesa 26.3 sur une
+  vraie carte graphique.
+- [x] **Mode cloud avec une vraie clé**, sur l'ISO v1.9 publiée (somme SHA-256 vérifiée,
+  SDK `python-anthropic` 2.12, Claude Sonnet 5.5, 24 novembre 2026), clé saisie dans la
+  fenêtre « Clé API Anthropic » du popup. Scénario de bout en bout de la v1.8, par le
+  popup et le daemon (processus, écriture confirmée, lecture et dossier en anglais dans
+  la même conversation, puis contrôle de l'écran : liste tapée dans Mousepad) : 13
+  appels, **6,9 centimes** (v1.8 : 15 appels, 9,9), aucune erreur, aucun bloc de
+  réflexion écarté, aucun arrêt `max_tokens` ni `model_context_window_exceeded`, cache
+  lu dès la 2e demande de chaque langue, premier mot médian 1,4 s. Banc (13 demandes en
+  français et 13 en anglais, deux passes, premier tour) : bon outil **48 fois sur 52**
+  comme en v1.8 (les 4 autres : « Désinstalle glibc », refusé par écrit), **0,15 centime
+  par requête** en rafale (v1.8 : 0,16), 0,8 s médian par requête avec outil. Aucun
+  avertissement de dépréciation du SDK 2.12 (journal du daemon, avertissements Python),
+  l'en-tête bêta `thinking-binding-controls-2026-08-01` toujours accepté.
 
 ### Encore à éprouver
 - [ ] Un vrai PC (pilotes Wi-Fi, rétroéclairage, cartes graphiques ; son et Wi-Fi ont été
@@ -388,7 +400,9 @@ brute. La note qui suit (« nécessite un modèle cloud ») était donc juste po
   appel. Au banc (SDK 2.6, 13 demandes en français et 13 en anglais, deux passes) : bon
   outil 48 fois sur 52 avec le réglage par défaut (les 4 autres : « Désinstalle glibc »,
   refusé par écrit avec une explication), ~1 centime par requête. Réglage par défaut
-  gardé (cf. [INTERFACES.md](INTERFACES.md) §5.2).
+  gardé (cf. [INTERFACES.md](INTERFACES.md) §5.2). Revérifié sur l'ISO v1.9 publiée (SDK
+  2.12, novembre 2026) : mêmes choix d'outils, 0,15 centime par requête avec le cache de
+  prompt (cf. la section v1.9 ci-dessus).
 
 ---
 
