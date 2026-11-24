@@ -23,7 +23,7 @@ My_OS est la suite logique de [My_AI](https://github.com/gonicolas12/My_AI) : on
 d'une *application* qui parle au PC à un *système* dans lequel l'IA est résidente et
 profondément intégrée.
 
-> **État du projet : v1.9 publiée ([télécharger](https://github.com/gonicolas12/My_OS/releases/tag/v1.9)), validée en VM ; nouveauté : une mise à jour de sécurité de l'ISO (GPGME de pacman, bibliothèques de polices du serveur X, fontconfig, magasin de certificats et noyau Linux à jour). Elle garde tout de la v1.8 : un premier démarrage qui se passe du réseau, un mode cloud moins cher (cache de prompt) avec Claude Sonnet 5.5, les menus standard de Qt dans la langue de My_OS, le français et l'anglais (bouton 🌐), et le contrôle de l'ordinateur — le modèle local voit l'écran et agit à la souris et au clavier, avec des bords lumineux et une barre d'arrêt (session X11).** Les cinq jalons (socle →
+> **État du projet : v1.10 publiée ([télécharger](https://github.com/gonicolas12/My_OS/releases/tag/v1.10)), validée en VM ; nouveauté : un contrôle de l'ordinateur plus sûr — l'arrêt (Échap ou ■) coupe aussi la frappe déjà lancée, Alt+F4 sur le bureau n'ouvre plus la fenêtre de fermeture de session d'Xfce, et My_OS ne pose jamais une confirmation cachée sous un menu. Elle garde tout de la v1.9 : la mise à jour de sécurité de l'ISO du 23 novembre (mêmes paquets), un premier démarrage qui se passe du réseau, un mode cloud moins cher (cache de prompt) avec Claude Sonnet 5.5, les menus standard de Qt dans la langue de My_OS, le français et l'anglais (bouton 🌐), et le contrôle de l'ordinateur — le modèle local voit l'écran et agit à la souris et au clavier, avec des bords lumineux et une barre d'arrêt (session X11).** Les cinq jalons (socle →
 > fichiers/permissions → pilotage système → routeur cloud → packaging) sont terminés, et
 > l'ISO a été testée de bout en bout en VM (BIOS et UEFI) en octobre 2026 : permissions,
 > confirmations, élévation polkit, réglages, modèle local, contrôle de l'ordinateur, les
@@ -197,7 +197,7 @@ Deux voies. Détails complets dans **[docs/INSTALLATION.md](docs/INSTALLATION.md
 ### a) Via l'ISO live (le plus simple)
 
 Une ISO bootable (base Arch + Xfce/X11) embarque My_OS prêt à l'emploi :
-**[télécharger l'ISO de la v1.9](https://github.com/gonicolas12/My_OS/releases/tag/v1.9)**
+**[télécharger l'ISO de la v1.10](https://github.com/gonicolas12/My_OS/releases/tag/v1.10)**
 (avec son fichier `.sha256`). Pour la construire vous-même, le profil
 [archiso](https://wiki.archlinux.org/title/Archiso) et le script de build sont dans
 [`packaging/`](packaging/) (`./packaging/build_iso.sh` sur un hôte Arch, sans root depuis
@@ -416,6 +416,14 @@ par le point de passage unique `permissions/policy_engine.py`.
   serveur X (tout programme de la session pouvait faire planter le serveur X),
   fontconfig, magasin de certificats (NSS 3.134), Linux 7.3.5, Ollama 0.40.17 ; validée
   en VM dans les deux langues.
+- [x] **v1.10 publiée** : [release GitHub](https://github.com/gonicolas12/My_OS/releases/tag/v1.10),
+  contrôle de l'ordinateur plus sûr : l'arrêt coupe la frappe déjà lancée (la fin d'un
+  morceau pouvait arriver dans le champ du popup), Alt+F4 sans fenêtre d'application
+  bloqué (il ouvrait la fenêtre de fermeture de session d'Xfce, au-dessus de la
+  confirmation de My_OS), aucune confirmation quand un menu ou cette fenêtre tient le
+  clavier, xkill et les raccourcis de KDE qui ferment la session sans confirmation
+  bloqués, verrouillage de l'écran confirmé ; mode cloud éprouvé avec une vraie clé ;
+  mêmes paquets que la v1.9 ; validée en VM dans les deux langues.
 
 **Encore à éprouver :** matériel réel (pilotes Wi-Fi, rétroéclairage, cartes graphiques)
 — retours bienvenus dans les [issues](https://github.com/gonicolas12/My_OS/issues).
