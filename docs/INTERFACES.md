@@ -466,7 +466,12 @@ et plus ne les propose d'ailleurs plus). Règles d'une boucle d'outils :
   `cache_control` au niveau de la requête existe dans toutes ces versions. Le SDK 2.x
   envoie la version d'API `2026-10-21` ; My_OS n'utilise rien de ce qu'elle retire, et
   l'en-tête `thinking-binding-controls-2026-08-01` reste parmi les valeurs bêta
-  reconnues du SDK 2.12.
+  reconnues du SDK 2.12. Le SDK 2.12 a aussi été éprouvé avec une vraie clé, dans la VM
+  de l'ISO v1.9 publiée (24 novembre 2026) : scénario de bout en bout de la v1.8 en 13
+  appels, 6,9 centimes, cache lu dès la 2e demande de chaque langue ; banc des 52
+  demandes à 0,15 centime par requête, bon outil 48 fois sur 52 ; aucune erreur, aucun
+  bloc de réflexion écarté, aucun arrêt `max_tokens`, aucun avertissement de
+  dépréciation (cf. ROADMAP, section v1.9).
 
 ### 5.3 · Routage **par requête** (côté orchestrator)
 
